@@ -1,0 +1,29 @@
+name: vinland
+description: Lecteur de musique personnel
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  just_audio: ^0.9.46
+  audio_service: ^0.18.19
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  shared_preferences: ^2.3.2
+  provider: ^6.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  
+  # AJOUTE CECI :
+  assets:
+    - assets/music/
