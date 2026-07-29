@@ -13,8 +13,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _pathController = TextEditingController(
-      text:
-          r'C:\Users\thett\Music\Nouveau dossier\Arcane\Arcane League of Legends (Original Score from Act 1 of the Animated Series)');
+    text: 'assets/music', // ← Chemin assets au lieu de Windows
+  );
   bool _isScanning = false;
 
   @override
@@ -125,7 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _login() async {
+  Future _login() async {
     if (_nameController.text.isEmpty || _emailController.text.isEmpty) return;
 
     setState(() => _isScanning = true);
@@ -133,9 +133,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final state = context.read<AppState>();
     await state.login(_nameController.text, _emailController.text);
 
-    if (_pathController.text.isNotEmpty) {
-      await state.scanMusic(_pathController.text);
-    }
+    // Scan automatique des assets
+    await state.scanMusic(_pathController.text);
 
     if (mounted) {
       setState(() => _isScanning = false);

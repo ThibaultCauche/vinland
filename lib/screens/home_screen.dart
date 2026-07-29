@@ -15,10 +15,12 @@ class HomeScreen extends StatelessWidget {
           child: CustomScrollView(
             slivers: [
               // Header avec profil
+              // Header avec profil
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start, // ← AJOUTE
                     children: [
                       GestureDetector(
                         onTap: () => _showProfileMenu(context),
@@ -35,7 +37,8 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: SearchBarWidget(),
+                        child:
+                            SearchBarWidget(), // ← Expanded contient la recherche
                       ),
                     ],
                   ),
@@ -43,9 +46,13 @@ class HomeScreen extends StatelessWidget {
               ),
 
               // Toutes les musiques
-              _buildSectionTitle('Toutes les musiques'),
+              _buildSectionTitleWithAction(
+                'Toutes les musiques',
+                'Voir tout',
+                () => _showAllTracks(context),
+              ),
               state.allTracks.isEmpty
-                  ? _buildEmpty('Aucune musique trouv\u00e9e')
+                  ? _buildEmpty('Aucune musique trouvée')
                   : SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
@@ -57,7 +64,9 @@ class HomeScreen extends StatelessWidget {
                             onLike: () =>
                                 state.toggleLike(state.allTracks[index].id),
                           ),
-                          childCount: state.allTracks.length,
+                          childCount: state.allTracks.length > 5
+                              ? 5
+                              : state.allTracks.length,
                         ),
                       ),
                     ),
@@ -91,6 +100,69 @@ class HomeScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSectionTitleWithAction(
+      String title, String action, VoidCallback onTap) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            GestureDetector(
+              onTap: onTap,
+              child: Text(
+                action,
+                style: const TextStyle(
+                  color: Color(0xFF1DB954),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAllTracks(BuildContext context) {
+    final state = context.read<AppState>();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: const Color(0xFF121212),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF121212),
+            elevation: 0,
+            title: const Text(
+              'Toutes les musiques',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 120),
+            itemCount: state.allTracks.length,
+            itemBuilder: (context, index) => TrackTile(
+              track: state.allTracks[index],
+              onTap: () => state.playTrack(state.allTracks[index]),
+              onLike: () => state.toggleLike(state.allTracks[index].id),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

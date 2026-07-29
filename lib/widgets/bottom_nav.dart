@@ -18,7 +18,13 @@ class BottomNav extends StatelessWidget {
           ),
           child: BottomNavigationBar(
             currentIndex: state.currentTab,
-            onTap: (i) => state.setTab(i),
+            onTap: (i) {
+              // ← CORRECTION : Vide les overlays quand on change d'onglet
+              if (state.overlayStack.isNotEmpty) {
+                state.clearOverlays();
+              }
+              state.setTab(i);
+            },
             backgroundColor: const Color(0xFF121212),
             selectedItemColor: Colors.white,
             unselectedItemColor: Colors.white38,

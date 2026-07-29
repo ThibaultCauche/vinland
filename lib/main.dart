@@ -51,10 +51,13 @@ class AppShell extends StatelessWidget {
         return Scaffold(
           body: Stack(
             children: [
-              screens[state.currentTab],
+              // Contenu principal : overlay ou onglet actif
+              state.currentOverlay ?? screens[state.currentTab],
+
+              // Mini player toujours visible si une musique joue
               if (state.currentTrack != null)
                 const Positioned(
-                  bottom: 20, // Hauteur de la bottom nav
+                  bottom: 20,
                   left: 8,
                   right: 8,
                   child: MiniPlayer(),

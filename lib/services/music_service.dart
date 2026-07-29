@@ -26,42 +26,47 @@ class MusicService {
   Future<void> initialize() async {
     if (_initialized) return;
     await _loadFromCache();
-
-    // Charge les musiques depuis les assets si aucune n'est en cache
-    if (_allTracks.isEmpty) {
-      await _loadAssetsMusic();
-    }
-
     _initialized = true;
   }
 
-  Future<void> _loadAssetsMusic() async {
-    final assetFiles = [
-      'assets/music/1. The Bridge.ogg',
-      'assets/music/2. The City of Progress.ogg',
-      'assets/music/3. Intruders.ogg',
-    ];
+  Future<void> scanAssetsMusic() async {
+    print('SCAN DES ASSETS...');
+
+    final manifestContent = await rootBundle.loadString('AssetManifest.json');
+    final Map<String, dynamic> manifest = jsonDecode(manifestContent);
 
     final List<Track> loaded = [];
 
-    for (final assetPath in assetFiles) {
+    for (final String assetPath in manifest.keys) {
+      if (!assetPath.startsWith('assets/music/')) continue;
+
+      final ext = p.extension(assetPath).toLowerCase();
+      if (ext != '.mp3' &&
+          ext != '.flac' &&
+          ext != '.m4a' &&
+          ext != '.ogg' &&
+          ext != '.wav') continue;
+
       try {
-        // Vérifie que le fichier existe
         final byteData = await rootBundle.load(assetPath);
         print('FICHIER CHARGÉ: $assetPath (${byteData.lengthInBytes} bytes)');
 
-        final fileName = assetPath.split('/').last.replaceAll('.ogg', '');
+        final fileName = p.basenameWithoutExtension(assetPath);
+
         String title = fileName;
         final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
         if (numberMatch != null) {
           title = fileName.substring(numberMatch.end).trim();
         }
 
+        final album = p.basename(p.dirname(assetPath));
+        final artist = _extractArtistFromAlbum(album);
+
         loaded.add(Track(
           id: assetPath,
           title: title,
-          artist: 'Arcane',
-          album: 'Arcane League of Legends',
+          artist: artist,
+          album: album,
           duration: const Duration(minutes: 3),
           filePath: assetPath,
         ));
@@ -70,11 +75,18 @@ class MusicService {
       }
     }
 
-    _allTracks = loaded;
-    print('${_allTracks.length} MUSIQUES CHARGÉES');
+    print('${loaded.length} MUSIQUES ASSETS CHARGÉES');
 
-    // Sauvegarde en cache
-    await _saveToCache();
+    if (loaded.isNotEmpty) {
+      final localTracks = _allTracks
+          .where(
+              (t) => t.filePath != null && !t.filePath!.startsWith('assets/'))
+          .toList();
+
+      _allTracks = [...localTracks, ...loaded];
+      _rebuildAlbums();
+      await _saveToCache();
+    }
   }
 
   Future<void> scanDirectory(String dirPath) async {
@@ -88,7 +100,6 @@ class MusicService {
 
     print('SCAN DE: $normalizedPath');
     final List<Track> scanned = [];
-    final Map<String, List<Track>> albumMap = {};
 
     try {
       await for (final entity
@@ -103,7 +114,6 @@ class MusicService {
             print('FICHIER TROUVE: ${entity.path}');
             final track = _parseFile(entity.path);
             scanned.add(track);
-            albumMap.putIfAbsent(track.album, () => []).add(track);
           }
         }
       }
@@ -114,22 +124,41 @@ class MusicService {
     print('${scanned.length} MUSIQUES TROUVEES');
 
     if (scanned.isNotEmpty) {
-      _allTracks = scanned;
-      _albums = albumMap.entries
-          .map((e) => Album(
-                id: e.key.hashCode.toString(),
-                title: e.key,
-                artist: e.value.first.artist,
-                trackIds: e.value.map((t) => t.id).toList(),
-                isSaved: true,
-              ))
+      final assetTracks = _allTracks
+          .where((t) => t.filePath != null && t.filePath!.startsWith('assets/'))
           .toList();
+
+      _allTracks = [...assetTracks, ...scanned];
+      _rebuildAlbums();
       await _saveToCache();
+    }
+  }
+
+  void _rebuildAlbums() {
+    final Map<String, List<Track>> albumMap = {};
+    for (final track in _allTracks) {
+      albumMap.putIfAbsent(track.album, () => []).add(track);
+    }
+
+    _albums = albumMap.entries
+        .map((e) => Album(
+              id: e.key.hashCode.toString(),
+              title: e.key,
+              artist: e.value.first.artist,
+              trackIds: e.value.map((t) => t.id).toList(),
+              isSaved: true,
+            ))
+        .toList();
+
+    print('${_albums.length} ALBUMS RECONSTRUITS');
+    for (final album in _albums) {
+      print('  - ${album.title} (${album.trackCount} titres)');
     }
   }
 
   Track _parseFile(String filePath) {
     final fileName = p.basenameWithoutExtension(filePath);
+    final parentDir = p.basename(p.dirname(filePath));
 
     String title = fileName;
     final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
@@ -137,20 +166,11 @@ class MusicService {
       title = fileName.substring(numberMatch.end).trim();
     }
 
-    final parentDir = p.basename(p.dirname(filePath));
-    String artist = parentDir;
-
-    final grandParent = p.basename(p.dirname(p.dirname(filePath)));
-    if (grandParent.isNotEmpty &&
-        grandParent != '.' &&
-        grandParent != 'Music') {
-      artist = grandParent;
-    }
-
     String album = parentDir;
+    String artist = _extractArtistFromAlbum(album);
 
     return Track(
-      id: filePath.hashCode.toString(),
+      id: filePath,
       title: title,
       artist: artist,
       album: album,
@@ -159,7 +179,25 @@ class MusicService {
     );
   }
 
-  // Recherche
+  String _extractArtistFromAlbum(String albumName) {
+    if (albumName.contains(':')) {
+      final parts = albumName.split(':');
+      final first = parts[0].trim();
+
+      if (RegExp(r'^Vol\.?\s*\d+', caseSensitive: false).hasMatch(first)) {
+        return parts.sublist(1).join(':').trim();
+      }
+      return first;
+    }
+
+    final parenIdx = albumName.indexOf('(');
+    if (parenIdx > 0) {
+      return albumName.substring(0, parenIdx).trim();
+    }
+
+    return albumName;
+  }
+
   List<Track> searchTracks(String query) {
     if (query.isEmpty) return [];
     final lower = query.toLowerCase();
@@ -189,7 +227,6 @@ class MusicService {
     _saveToCache();
   }
 
-  // Tracks likes
   List<Track> get likedTracks => _allTracks.where((t) => t.isLiked).toList();
 
   void toggleLike(String trackId) {
@@ -198,7 +235,6 @@ class MusicService {
     _saveToCache();
   }
 
-  // Playlists
   void createPlaylist(String name) {
     _playlists.add(Playlist(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -221,7 +257,6 @@ class MusicService {
     _saveToCache();
   }
 
-  // Historique de lecture
   void recordPlay(String trackId) {
     final track = _allTracks.firstWhere((t) => t.id == trackId);
     track.playCount++;
@@ -229,7 +264,16 @@ class MusicService {
     _saveToCache();
   }
 
-  // Cache
+  void removeSearchQuery(String query) {
+    _searchHistory.remove(query);
+    _saveToCache();
+  }
+
+  void clearSearchHistory() {
+    _searchHistory.clear();
+    _saveToCache();
+  }
+
   Future<void> _saveToCache() async {
     final appDir = await getApplicationDocumentsDirectory();
     final cacheDir = Directory(p.join(appDir.path, 'cache'));
@@ -263,22 +307,15 @@ class MusicService {
             .toList();
         _searchHistory = List<String>.from(data['searchHistory'] ?? []);
 
-        final albumMap = <String, List<Track>>{};
-        for (final track in _allTracks) {
-          albumMap.putIfAbsent(track.album, () => []).add(track);
-        }
-        _albums = albumMap.entries
-            .map((e) => Album(
-                  id: e.key.hashCode.toString(),
-                  title: e.key,
-                  artist: e.value.first.artist,
-                  trackIds: e.value.map((t) => t.id).toList(),
-                  isSaved: true,
-                ))
-            .toList();
+        _rebuildAlbums();
+        print(
+            'CACHE CHARGÉ: ${_allTracks.length} titres, ${_albums.length} albums');
       } catch (e) {
         print('ERREUR CHARGEMENT CACHE: $e');
+        await scanAssetsMusic();
       }
+    } else {
+      await scanAssetsMusic();
     }
   }
 }

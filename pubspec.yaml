@@ -27,3 +27,7 @@ flutter:
   # AJOUTE CECI :
   assets:
     - assets/music/
+    - assets/music/Arcane League of Legends (Original Score from Act 1 of the Animated Series)/
+    - assets/music/Arcane League of Legends (Original Score from Act 2 of the Animated Series)/
+    - assets/music/Arcane League of Legends (Original Score from Act 3 of the Animated Series)/
+

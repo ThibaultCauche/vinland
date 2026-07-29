@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../screens/artist_screen.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -25,7 +26,6 @@ class PlayerScreen extends StatelessWidget {
           body: SafeArea(
             child: Column(
               children: [
-                // Header avec padding top pour éviter la barre de notif
                 Padding(
                   padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
                   child: Row(
@@ -43,10 +43,7 @@ class PlayerScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const Spacer(),
-
-                // Cover
                 Container(
                   width: 280,
                   height: 280,
@@ -57,10 +54,7 @@ class PlayerScreen extends StatelessWidget {
                   child: const Icon(Icons.music_note,
                       color: Colors.white54, size: 80),
                 ),
-
                 const Spacer(),
-
-                // Info
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
@@ -80,11 +74,19 @@ class PlayerScreen extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              track.artist,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                context.read<AppState>().pushOverlay(
+                                      ArtistScreen(artistName: track.artist),
+                                    );
+                              },
+                              child: Text(
+                                track.artist,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 16,
+                                ),
                               ),
                             ),
                           ],
@@ -105,10 +107,7 @@ class PlayerScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 24),
-
-                // Progress bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Column(
@@ -142,10 +141,7 @@ class PlayerScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
-                // Controls
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Row(
@@ -188,7 +184,6 @@ class PlayerScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 32),
               ],
             ),
