@@ -27,20 +27,20 @@ class _ImportScreenState extends State<ImportScreen> {
     });
   }
 
-  Future<void> _analyzeFiles() async {
+  void _analyzeFiles() async {
+    // ← async
     final validExts = {'.mp3', '.flac', '.m4a', '.ogg', '.wav'};
     final tracks = <Track>[];
     int valid = 0;
     int invalid = 0;
-
-    final musicService = context.read<AppState>().musicService;
 
     for (final path in widget.filePaths) {
       final ext = path.substring(path.lastIndexOf('.')).toLowerCase();
       if (validExts.contains(ext)) {
         valid++;
         try {
-          final track = await musicService.parseFile(path);
+          final track =
+              await context.read<AppState>().musicService.parseFile(path);
           tracks.add(track);
         } catch (e) {
           invalid++;
@@ -50,14 +50,12 @@ class _ImportScreenState extends State<ImportScreen> {
       }
     }
 
-    if (mounted) {
-      setState(() {
-        _previewTracks = tracks;
-        _validCount = valid;
-        _invalidCount = invalid;
-        _isLoading = false;
-      });
-    }
+    setState(() {
+      _previewTracks = tracks;
+      _validCount = valid;
+      _invalidCount = invalid;
+      _isLoading = false;
+    });
   }
 
   @override

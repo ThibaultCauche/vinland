@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../screens/settings_screen.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/track_tile.dart';
 
@@ -336,6 +337,7 @@ class HomeScreen extends StatelessWidget {
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
+                  state.pushOverlay(const SettingsScreen());
                 },
               ),
               ListTile(

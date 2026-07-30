@@ -12,43 +12,49 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: const Color(0xFF121212),
         appBar: AppBar(
           backgroundColor: const Color(0xFF121212),
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => context.read<AppState>().popOverlay(),
+          ),
           title:
               const Text('Paramètres', style: TextStyle(color: Colors.white)),
           iconTheme: const IconThemeData(color: Colors.white),
         ),
         body: ListView(
           children: [
-            // Mode stockage
+            // Mode stockage (local uniquement pour l'instant)
             ListTile(
               title: const Text('Mode stockage',
                   style: TextStyle(color: Colors.white)),
-              subtitle: Text(
-                state.isLocalMode ? 'Fichiers locaux' : 'NAS (Navidrome)',
-                style: const TextStyle(color: Colors.white54),
+              subtitle: const Text(
+                'Fichiers locaux (NAS désactivé)',
+                style: TextStyle(color: Colors.white54),
               ),
-              trailing: Switch(
-                value: state.isLocalMode,
-                activeColor: const Color(0xFF1DB954),
-                onChanged: (v) => state.switchMode(v),
-              ),
+              trailing: const Icon(Icons.lock, color: Colors.white38),
             ),
 
-            // URL du serveur (visible quand NAS activé)
-            if (!state.isLocalMode)
-              ListTile(
-                title: const Text('URL du serveur',
-                    style: TextStyle(color: Colors.white)),
-                subtitle: TextField(
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'https://musique.tondomaine.fr',
-                    hintStyle: TextStyle(color: Colors.white38),
-                  ),
-                  onSubmitted: (url) {
-                    // Sauvegarde l'URL
-                  },
-                ),
-              ),
+            const Divider(color: Color(0xFF2A2A2A)),
+
+            // Rescan covers (bouton temporaire)
+            ListTile(
+              leading: const Icon(Icons.image, color: Color(0xFF1DB954)),
+              title: const Text('Réextraire les covers',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text('À utiliser une seule fois',
+                  style: TextStyle(color: Colors.white38)),
+              onTap: () async {
+                await context.read<AppState>().rescanCoversForExistingTracks();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Covers réextraites'),
+                      backgroundColor: Color(0xFF1DB954),
+                    ),
+                  );
+                }
+              },
+            ),
 
             const Divider(color: Color(0xFF2A2A2A)),
 
@@ -56,8 +62,7 @@ class SettingsScreen extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'Mode local : musiques stockées sur ce téléphone\n'
-                'Mode NAS : streaming depuis ton serveur Navidrome',
+                'Vinland v1.0.0\nMode NAS désactivé — sera réactivé après configuration du serveur.',
                 style: TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ),

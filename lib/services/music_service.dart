@@ -61,7 +61,6 @@ class MusicService {
 
   Future<void> scanAssetsMusic() async {
     print('SCAN DES ASSETS...');
-
     final manifestContent = await rootBundle.loadString('AssetManifest.json');
     final Map<String, dynamic> manifest = jsonDecode(manifestContent);
 
@@ -71,16 +70,10 @@ class MusicService {
       if (!assetPath.startsWith('assets/music/')) continue;
 
       final ext = p.extension(assetPath).toLowerCase();
-      if (ext != '.mp3' &&
-          ext != '.flac' &&
-          ext != '.m4a' &&
-          ext != '.ogg' &&
-          ext != '.wav') continue;
+      if (!['.mp3', '.flac', '.m4a', '.ogg', '.wav'].contains(ext)) continue;
 
       try {
         final byteData = await rootBundle.load(assetPath);
-        print('FICHIER CHARGÉ: $assetPath (${byteData.lengthInBytes} bytes)');
-
         final fileName = p.basenameWithoutExtension(assetPath);
         String title = fileName;
         final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
@@ -91,7 +84,6 @@ class MusicService {
         final album = p.basename(p.dirname(assetPath));
         final artist = _extractArtistFromAlbum(album);
 
-        // Extraction cover depuis asset
         String? coverPath;
         try {
           final tempDir = await getTemporaryDirectory();
@@ -101,7 +93,6 @@ class MusicService {
           final metadata = await MetadataGod.readMetadata(file: tempFile.path);
           if (metadata.picture != null) {
             coverPath = await _saveCover(metadata.picture!.data, assetPath);
-            print('COVER EXTRAITE ASSET: $assetPath -> $coverPath');
           }
           await tempFile.delete();
         } catch (e) {
@@ -121,8 +112,6 @@ class MusicService {
         print('ERREUR FICHIER: $assetPath - $e');
       }
     }
-
-    print('${loaded.length} MUSIQUES ASSETS CHARGÉES');
 
     if (loaded.isNotEmpty) {
       final localTracks = _allTracks
@@ -145,30 +134,16 @@ class MusicService {
       return;
     }
 
-    print('SCAN DE: $normalizedPath');
     final List<Track> scanned = [];
-
-    try {
-      await for (final entity
-          in dir.list(recursive: true, followLinks: false)) {
-        if (entity is File) {
-          final ext = p.extension(entity.path).toLowerCase();
-          if (ext == '.mp3' ||
-              ext == '.flac' ||
-              ext == '.m4a' ||
-              ext == '.ogg' ||
-              ext == '.wav') {
-            print('FICHIER TROUVE: ${entity.path}');
-            final track = await parseFile(entity.path);
-            scanned.add(track);
-          }
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        final ext = p.extension(entity.path).toLowerCase();
+        if (['.mp3', '.flac', '.m4a', '.ogg', '.wav'].contains(ext)) {
+          final track = await parseFile(entity.path);
+          scanned.add(track);
         }
       }
-    } catch (e) {
-      print('ERREUR SCAN: $e');
     }
-
-    print('${scanned.length} MUSIQUES TROUVEES');
 
     if (scanned.isNotEmpty) {
       final assetTracks = _allTracks
@@ -206,12 +181,6 @@ class MusicService {
         coverPath: albumCover,
       );
     }).toList();
-
-    print('${_albums.length} ALBUMS RECONSTRUITS');
-    for (final album in _albums) {
-      print(
-          '  - ${album.title} (${album.trackCount} titres, cover: ${album.coverPath != null ? 'OUI' : 'NON'})');
-    }
   }
 
   Future<Track> parseFile(String filePath) async {
@@ -234,7 +203,6 @@ class MusicService {
 
       if (metadata.picture != null) {
         coverPath = await _saveCover(metadata.picture!.data, filePath);
-        print('COVER EXTRAITE: $filePath -> $coverPath');
       }
 
       if (metadata.durationMs != null && metadata.durationMs! > 0) {
@@ -399,11 +367,57 @@ class MusicService {
         _searchHistory = List<String>.from(data['searchHistory'] ?? []);
 
         rebuildAlbums();
-        print(
-            'CACHE CHARGÉ: ${_allTracks.length} titres, ${_albums.length} albums');
       } catch (e) {
         print('ERREUR CHARGEMENT CACHE: $e');
       }
     }
+  }
+
+  Future<void> rescanCoversForExistingTracks() async {
+    final localTracks = _allTracks
+        .where((t) => t.filePath != null && !t.filePath!.startsWith('assets/'))
+        .toList();
+
+    int updated = 0;
+    for (final track in localTracks) {
+      if (track.coverPath != null) {
+        final file = File(track.coverPath!);
+        if (await file.exists()) continue;
+      }
+
+      try {
+        final metadata = await MetadataGod.readMetadata(file: track.filePath!);
+        if (metadata.picture != null) {
+          final coverPath =
+              await _saveCover(metadata.picture!.data, track.filePath!);
+          if (coverPath != null) {
+            final index = _allTracks.indexWhere((t) => t.id == track.id);
+            if (index != -1) {
+              _allTracks[index] = Track(
+                id: track.id,
+                title: track.title,
+                artist: track.artist,
+                album: track.album,
+                duration: track.duration,
+                filePath: track.filePath,
+                coverPath: coverPath,
+                isLiked: track.isLiked,
+                playCount: track.playCount,
+                lastPlayed: track.lastPlayed,
+              );
+              updated++;
+            }
+          }
+        }
+      } catch (e) {
+        print('ERREUR COVER ${track.filePath}: $e');
+      }
+    }
+
+    if (updated > 0) {
+      rebuildAlbums();
+      await _saveToCache();
+    }
+    print('RESCAN COVERS: $updated covers ajoutées');
   }
 }

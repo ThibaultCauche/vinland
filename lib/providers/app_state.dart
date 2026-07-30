@@ -118,15 +118,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> initialize() async {
+  Future initialize() async {
     await _auth.initialize();
     await _music.initialize();
     notifyListeners();
 
-    // Scan des assets en background après le premier rendu
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _music.scanAssetsMusic();
-      notifyListeners();
+      final hasAssets = _music.allTracks
+          .any((t) => t.filePath?.startsWith('assets/') ?? false);
+      if (!hasAssets) {
+        await _music.scanAssetsMusic();
+        notifyListeners();
+      }
     });
   }
 
@@ -265,6 +268,11 @@ class AppState extends ChangeNotifier {
 
   void clearOverlays() {
     _overlayStack.clear();
+    notifyListeners();
+  }
+
+  Future rescanCoversForExistingTracks() async {
+    await _music.rescanCoversForExistingTracks();
     notifyListeners();
   }
 }

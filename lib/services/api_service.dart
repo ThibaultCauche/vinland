@@ -1,64 +1,78 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/track.dart';
+import 'secure_storage.dart';
 
 class ApiService {
-  // Change cette URL quand ton NAS sera prêt
-  static const String baseUrl =
-      'https://musique.tondomaine.fr'; // ou IP locale : 'http://192.168.1.50:4533'
+  String? _baseUrl;
+  String? _username;
+  String? _password;
+  bool useLocal = true; // ← true = mode local actif, NAS désactivé
 
-  // Navidrome API (Subsonic compatible)
-  static const String username = 'ton_user';
-  static const String password = 'ton_pass';
+  /// Charge les credentials depuis le stockage sécurisé.
+  /// Appeler au démarrage de l'app quand le NAS sera configuré.
+  Future<void> loadCredentials() async {
+    final creds = await SecureStorage.getCredentials();
+    _baseUrl = creds['url'];
+    _username = creds['username'];
+    _password = creds['password'];
+  }
 
-  // Mode local vs NAS
-  bool useLocal = true; // ← true = fichiers sur téléphone, false = NAS
+  bool get hasCredentials =>
+      _baseUrl != null && _username != null && _password != null;
 
+  /// Active/désactive le mode NAS. Pour l'instant, forcer à true (local).
   void setMode(bool local) => useLocal = local;
 
   Future<List<Track>> getTracks() async {
-    if (useLocal) return []; // Géré par MusicService en local
+    if (useLocal || !hasCredentials) return [];
 
-    // Appel API Navidrome
     final response = await http.get(
       Uri.parse(
-          '$baseUrl/rest/getSongs.view?u=$username&p=$password&v=1.16.1&c=vinland&f=json'),
+        '$_baseUrl/rest/getSongs.view?u=$_username&p=$_password&v=1.16.1&c=vinland&f=json',
+      ),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return (data['subsonic-response']['songs'] as List)
-          .map((json) => Track(
-                id: json['id'],
-                title: json['title'],
-                artist: json['artist'],
-                album: json['album'],
-                duration: Duration(seconds: json['duration'] ?? 180),
-                filePath:
-                    '$baseUrl/rest/stream.view?id=${json['id']}&u=$username&p=$password&v=1.16.1&c=vinland',
-              ))
-          .toList();
+      final songs = data['subsonic-response']['songs'] as List? ?? [];
+      return songs.map((json) => _mapSubsonicTrack(json)).toList();
     }
     return [];
   }
 
   Future<List<Map<String, dynamic>>> getAlbums() async {
-    if (useLocal) return [];
+    if (useLocal || !hasCredentials) return [];
 
     final response = await http.get(
       Uri.parse(
-          '$baseUrl/rest/getAlbumList2.view?type=alphabeticalByName&u=$username&p=$password&v=1.16.1&c=vinland&f=json'),
+        '$_baseUrl/rest/getAlbumList2.view?type=alphabeticalByName&u=$_username&p=$_password&v=1.16.1&c=vinland&f=json',
+      ),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return (data['subsonic-response']['albumList2']['album'] as List)
-          .cast<Map<String, dynamic>>();
+      final albums =
+          data['subsonic-response']['albumList2']['album'] as List? ?? [];
+      return albums.cast<Map<String, dynamic>>();
     }
     return [];
   }
 
   String getCoverUrl(String id) {
-    return '$baseUrl/rest/getCoverArt.view?id=$id&u=$username&p=$password&v=1.16.1&c=vinland';
+    if (_baseUrl == null || _username == null || _password == null) return '';
+    return '$_baseUrl/rest/getCoverArt.view?id=$id&u=$_username&p=$_password&v=1.16.1&c=vinland';
+  }
+
+  Track _mapSubsonicTrack(dynamic json) {
+    return Track(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Inconnu',
+      artist: json['artist']?.toString() ?? 'Inconnu',
+      album: json['album']?.toString() ?? 'Inconnu',
+      duration: Duration(seconds: json['duration'] ?? 180),
+      filePath:
+          '$_baseUrl/rest/stream.view?id=${json['id']}&u=$_username&p=$_password&v=1.16.1&c=vinland',
+    );
   }
 }
