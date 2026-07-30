@@ -84,7 +84,7 @@ class MusicService {
           .toList();
 
       _allTracks = [...localTracks, ...loaded];
-      _rebuildAlbums();
+      rebuildAlbums();
       await _saveToCache();
     }
   }
@@ -112,7 +112,7 @@ class MusicService {
               ext == '.ogg' ||
               ext == '.wav') {
             print('FICHIER TROUVE: ${entity.path}');
-            final track = _parseFile(entity.path);
+            final track = parseFile(entity.path);
             scanned.add(track);
           }
         }
@@ -129,12 +129,12 @@ class MusicService {
           .toList();
 
       _allTracks = [...assetTracks, ...scanned];
-      _rebuildAlbums();
+      rebuildAlbums();
       await _saveToCache();
     }
   }
 
-  void _rebuildAlbums() {
+  void rebuildAlbums() {
     final Map<String, List<Track>> albumMap = {};
     for (final track in _allTracks) {
       albumMap.putIfAbsent(track.album, () => []).add(track);
@@ -156,9 +156,11 @@ class MusicService {
     }
   }
 
-  Track _parseFile(String filePath) {
+  Track parseFile(String filePath) {
     final fileName = p.basenameWithoutExtension(filePath);
-    final parentDir = p.basename(p.dirname(filePath));
+    final albumDir = p.basename(p.dirname(filePath)); // Album
+    final artistDir = p.basename(
+        p.dirname(p.dirname(filePath))); // Artiste (parent de l'album)
 
     String title = fileName;
     final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
@@ -166,14 +168,17 @@ class MusicService {
       title = fileName.substring(numberMatch.end).trim();
     }
 
-    String album = parentDir;
-    String artist = _extractArtistFromAlbum(album);
+    // L'artiste = le dossier parent de l'album, ou fallback sur l'album
+    String artist = artistDir;
+    if (artistDir == '.' || artistDir == '/' || artistDir == filePath) {
+      artist = _extractArtistFromAlbum(albumDir);
+    }
 
     return Track(
       id: filePath,
       title: title,
       artist: artist,
-      album: album,
+      album: albumDir,
       duration: const Duration(minutes: 3),
       filePath: filePath,
     );
@@ -296,6 +301,14 @@ class MusicService {
     await file.writeAsString(jsonEncode(data));
   }
 
+  void addTrack(Track track) {
+    if (!_allTracks.any((t) => t.id == track.id)) {
+      _allTracks.add(track);
+    }
+  }
+
+  Future<void> saveToCache() async => _saveToCache();
+
   Future<void> _loadFromCache() async {
     final appDir = await getApplicationDocumentsDirectory();
     final file = File(p.join(appDir.path, 'cache', 'library.json'));
@@ -307,7 +320,7 @@ class MusicService {
             .toList();
         _searchHistory = List<String>.from(data['searchHistory'] ?? []);
 
-        _rebuildAlbums();
+        rebuildAlbums();
         print(
             'CACHE CHARGÉ: ${_allTracks.length} titres, ${_albums.length} albums');
       } catch (e) {

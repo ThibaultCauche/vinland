@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../providers/app_state.dart';
 import '../widgets/track_tile.dart';
+import 'import_screen.dart';
+import 'package:path/path.dart' as p;
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -33,7 +38,6 @@ class _LibraryScreenState extends State<LibraryScreen>
         return SafeArea(
           child: Column(
             children: [
-              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
@@ -49,12 +53,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                     const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.add, color: Colors.white),
+                      onPressed: () => _showImportOptions(context),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.playlist_add, color: Colors.white),
                       onPressed: () => _showCreatePlaylistDialog(context),
                     ),
                   ],
                 ),
               ),
-              // Tabs
               TabBar(
                 controller: _tabController,
                 labelColor: Colors.white,
@@ -67,7 +74,6 @@ class _LibraryScreenState extends State<LibraryScreen>
                   Tab(text: 'Playlists'),
                 ],
               ),
-              // Content
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
@@ -82,6 +88,149 @@ class _LibraryScreenState extends State<LibraryScreen>
           ),
         );
       },
+    );
+  }
+
+  void _showImportOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Importer de la musique',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.folder, color: Color(0xFF1DB954)),
+                title: const Text('Depuis un dossier',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Scanner un dossier et ses sous-dossiers',
+                    style: TextStyle(color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFolder(context);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.audio_file, color: Color(0xFF1DB954)),
+                title: const Text('Fichiers individuels',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Sélectionner des fichiers un par un',
+                    style: TextStyle(color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFiles(context);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickFiles(BuildContext context) async {
+    final nav = Navigator.of(context); // ← Sauvegarde avant await
+
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'flac', 'm4a', 'ogg', 'wav'],
+      allowMultiple: true,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      final paths = result.files.map((f) => f.path!).toList();
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => ImportScreen(filePaths: paths),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickFolder(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context); // ← Sauvegarde Navigator avant await
+
+    PermissionStatus status;
+    if (Platform.isAndroid) {
+      status = await Permission.audio.request();
+      if (!status.isGranted) {
+        status = await Permission.storage.request();
+      }
+    } else {
+      status = await Permission.storage.request();
+    }
+
+    if (!status.isGranted) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Permission de stockage refusée'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+
+    if (selectedDirectory != null) {
+      final files = <String>[];
+
+      try {
+        final dir = Directory(selectedDirectory);
+        await for (final entity in dir.list(recursive: true)) {
+          if (entity is File) {
+            final ext = p.extension(entity.path).toLowerCase();
+            if (['.mp3', '.flac', '.m4a', '.ogg', '.wav'].contains(ext)) {
+              files.add(entity.path);
+            }
+          }
+        }
+      } catch (e) {
+        print('ERREUR LECTURE DOSSIER: $e');
+      }
+
+      if (files.isNotEmpty) {
+        // ← Utilise nav sauvegardé avant await
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => ImportScreen(filePaths: files),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Aucun fichier musical trouvé dans ce dossier'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Supprime _navigateToImport ou garde-le pour _pickFiles
+
+  void _navigateToImport(BuildContext context, List<String> paths) {
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ImportScreen(filePaths: paths),
+      ),
     );
   }
 
@@ -125,8 +274,49 @@ class _LibraryScreenState extends State<LibraryScreen>
       itemCount: savedAlbums.length,
       itemBuilder: (context, i) {
         final album = savedAlbums[i];
+        final albumTracks =
+            state.allTracks.where((t) => t.album == album.key).toList();
+
         return GestureDetector(
-          onTap: () {},
+          onTap: () {
+            final appState = context.read<AppState>(); // ← Capture avant
+            final albumTracks =
+                state.allTracks.where((t) => t.album == album.key).toList();
+
+            appState.pushOverlay(
+              Scaffold(
+                backgroundColor: const Color(0xFF121212),
+                appBar: AppBar(
+                  backgroundColor: const Color(0xFF121212),
+                  elevation: 0,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => appState
+                        .popOverlay(), // ← Utilise la référence capturée
+                  ),
+                  title: Text(
+                    album.key,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                body: ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 120),
+                  itemCount: albumTracks.length,
+                  itemBuilder: (context, index) => TrackTile(
+                    track: albumTracks[index],
+                    onTap: () => appState.playTrack(
+                      albumTracks[index],
+                      trackList: albumTracks,
+                    ),
+                    onLike: () => appState.toggleLike(albumTracks[index].id),
+                  ),
+                ),
+              ),
+            );
+          },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -164,7 +354,6 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Widget _buildPlaylists(AppState state) {
-    // TODO: récupérer les vraies playlists depuis le service
     return _buildEmpty('Aucune playlist');
   }
 

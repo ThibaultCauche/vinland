@@ -5,11 +5,14 @@ import '../services/auth_service.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/album.dart';
 import '../screens/artist_screen.dart';
+import 'package:path/path.dart' as p;
+import '../services/api_service.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
   final AuthService _auth = AuthService();
   final AudioPlayer _player = AudioPlayer();
+  final ApiService _api = ApiService();
 
   // Player state
   Track? currentTrack;
@@ -25,14 +28,20 @@ class AppState extends ChangeNotifier {
   bool showSearchResults = false;
 
   // Getters
-  List<Track> get allTracks => _music.allTracks;
+  List<Track> get allTracks => _api.useLocal ? _music.allTracks : [];
   List<Track> get likedTracks => _music.likedTracks;
-  List<Track> get searchResults => _music.searchTracks(searchQuery);
+  List<Track> get searchResults {
+    if (searchQuery.isEmpty) return [];
+    return _music.searchTracks(searchQuery);
+  }
+
   List<String> get searchHistory => _music.searchHistory;
   bool get isLoggedIn => _auth.isLoggedIn;
   String? get userName => _auth.userName;
   String? get userEmail => _auth.userEmail;
   List<Album> get albums => _music.albums;
+  MusicService get musicService => _music;
+  bool get isLocalMode => _api.useLocal;
 
   // Overlay navigation (pour afficher des pages par-dessus les onglets)
   final List<Widget> _overlayStack = [];
@@ -54,6 +63,32 @@ class AppState extends ChangeNotifier {
     _overlayStack.add(screen);
     notifyListeners();
   }
+
+  void switchMode(bool local) {
+    _api.useLocal = local;
+    notifyListeners();
+  }
+
+  Future<void> importTracks(List<String> filePaths) async {
+    for (final path in filePaths) {
+      final ext = p.extension(path).toLowerCase();
+      if (ext == '.mp3' ||
+          ext == '.flac' ||
+          ext == '.m4a' ||
+          ext == '.ogg' ||
+          ext == '.wav') {
+        final track = _music.parseFile(path);
+        if (!_music.allTracks.any((t) => t.id == track.id)) {
+          // Track déjà géré dans MusicService via parseFile + rebuildAlbums
+        }
+      }
+    }
+    _music.rebuildAlbums();
+    notifyListeners();
+  }
+
+  // Expose rebuildAlbums pour l'import
+  void rebuildAlbums() => _music.rebuildAlbums();
 
   void popOverlay() {
     if (_overlayStack.isNotEmpty) {
