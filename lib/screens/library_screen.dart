@@ -144,7 +144,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Future<void> _pickFiles(BuildContext context) async {
-    final nav = Navigator.of(context); // ← Sauvegarde avant await
+    final nav = Navigator.of(context);
 
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -164,7 +164,7 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   Future<void> _pickFolder(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final nav = Navigator.of(context); // ← Sauvegarde Navigator avant await
+    final nav = Navigator.of(context);
 
     PermissionStatus status;
     if (Platform.isAndroid) {
@@ -206,7 +206,6 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
 
       if (files.isNotEmpty) {
-        // ← Utilise nav sauvegardé avant await
         nav.push(
           MaterialPageRoute(
             builder: (_) => ImportScreen(filePaths: files),
@@ -222,8 +221,6 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
     }
   }
-
-  // Supprime _navigateToImport ou garde-le pour _pickFiles
 
   void _navigateToImport(BuildContext context, List<String> paths) {
     if (!mounted) return;
@@ -250,14 +247,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Widget _buildAlbums(AppState state) {
-    final savedAlbums = state.allTracks
-        .fold<Map<String, List>>({}, (map, track) {
-          map.putIfAbsent(track.album, () => [track.artist, <String>[]]);
-          (map[track.album]![1] as List<String>).add(track.id);
-          return map;
-        })
-        .entries
-        .toList();
+    final savedAlbums = state.albums;
 
     if (savedAlbums.isEmpty) {
       return _buildEmpty('Aucun album');
@@ -275,13 +265,11 @@ class _LibraryScreenState extends State<LibraryScreen>
       itemBuilder: (context, i) {
         final album = savedAlbums[i];
         final albumTracks =
-            state.allTracks.where((t) => t.album == album.key).toList();
+            state.allTracks.where((t) => t.album == album.title).toList();
 
         return GestureDetector(
           onTap: () {
-            final appState = context.read<AppState>(); // ← Capture avant
-            final albumTracks =
-                state.allTracks.where((t) => t.album == album.key).toList();
+            final appState = context.read<AppState>();
 
             appState.pushOverlay(
               Scaffold(
@@ -291,11 +279,10 @@ class _LibraryScreenState extends State<LibraryScreen>
                   elevation: 0,
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => appState
-                        .popOverlay(), // ← Utilise la référence capturée
+                    onPressed: () => appState.popOverlay(),
                   ),
                   title: Text(
-                    album.key,
+                    album.title,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -325,15 +312,26 @@ class _LibraryScreenState extends State<LibraryScreen>
                   decoration: BoxDecoration(
                     color: const Color(0xFF2A2A2A),
                     borderRadius: BorderRadius.circular(8),
+                    image: album.coverPath != null &&
+                            File(album.coverPath!).existsSync()
+                        ? DecorationImage(
+                            image: FileImage(File(album.coverPath!)),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
-                  child: const Center(
-                    child: Icon(Icons.album, color: Colors.white54, size: 48),
-                  ),
+                  child: album.coverPath == null ||
+                          !File(album.coverPath!).existsSync()
+                      ? const Center(
+                          child: Icon(Icons.album,
+                              color: Colors.white54, size: 48),
+                        )
+                      : null,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                album.key,
+                album.title,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,
@@ -343,7 +341,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                album.value[0] as String,
+                album.artist,
                 style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
             ],

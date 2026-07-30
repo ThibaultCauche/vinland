@@ -43,20 +43,18 @@ class AppState extends ChangeNotifier {
   MusicService get musicService => _music;
   bool get isLocalMode => _api.useLocal;
 
-  // Overlay navigation (pour afficher des pages par-dessus les onglets)
+  // Overlay navigation
   final List<Widget> _overlayStack = [];
   List<Widget> get overlayStack => List.unmodifiable(_overlayStack);
   Widget? get currentOverlay =>
       _overlayStack.isNotEmpty ? _overlayStack.last : null;
 
   void pushOverlay(Widget screen) {
-    // Vérifie si le dernier overlay est déjà du même type
     if (_overlayStack.isNotEmpty) {
       final last = _overlayStack.last;
       if (last.runtimeType == screen.runtimeType) {
-        // Si c'est un ArtistScreen, vérifie aussi le nom
         if (last is ArtistScreen && screen is ArtistScreen) {
-          if (last.artistName == screen.artistName) return; // Déjà ouvert
+          if (last.artistName == screen.artistName) return;
         }
       }
     }
@@ -77,7 +75,7 @@ class AppState extends ChangeNotifier {
           ext == '.m4a' ||
           ext == '.ogg' ||
           ext == '.wav') {
-        final track = _music.parseFile(path);
+        final track = await _music.parseFile(path);
         if (!_music.allTracks.any((t) => t.id == track.id)) {
           // Track déjà géré dans MusicService via parseFile + rebuildAlbums
         }
@@ -87,7 +85,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Expose rebuildAlbums pour l'import
   void rebuildAlbums() => _music.rebuildAlbums();
 
   void popOverlay() {
@@ -108,7 +105,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
     });
-    // ← AJOUTE CELA : écoute l'état de lecture réel
     _player.playerStateStream.listen((state) {
       isPlaying = state.playing;
       notifyListeners();
@@ -126,10 +122,15 @@ class AppState extends ChangeNotifier {
     await _auth.initialize();
     await _music.initialize();
     notifyListeners();
+
+    // Scan des assets en background après le premier rendu
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _music.scanAssetsMusic();
+      notifyListeners();
+    });
   }
 
   Future<void> scanMusic(String path) async {
-    // Si le chemin contient "assets", on scanne les assets
     if (path.contains('assets')) {
       await _music.scanAssetsMusic();
     } else {
@@ -150,7 +151,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Player
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
     currentTrack = track;
     queue = trackList ?? [track];
@@ -218,18 +218,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Like
   void toggleLike(String trackId) {
     _music.toggleLike(trackId);
     notifyListeners();
   }
 
-  // Search
   void setSearchQuery(String query) {
     searchQuery = query;
     showSearchResults = query.isNotEmpty;
     if (query.isNotEmpty) {
-      _music.addSearchQuery(query); // Sauvegarde dans l'historique
+      _music.addSearchQuery(query);
     }
     notifyListeners();
   }
@@ -240,7 +238,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Playlists
   void createPlaylist(String name) {
     _music.createPlaylist(name);
     notifyListeners();

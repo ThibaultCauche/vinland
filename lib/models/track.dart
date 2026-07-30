@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 class Track {
   final String id;
@@ -7,6 +8,7 @@ class Track {
   final String album;
   final Duration duration;
   final String? filePath;
+  final String? coverPath; // ← chemin fichier, pas Uint8List
   bool isLiked;
   int playCount;
   DateTime? lastPlayed;
@@ -18,6 +20,7 @@ class Track {
     required this.album,
     required this.duration,
     this.filePath,
+    this.coverPath,
     this.isLiked = false,
     this.playCount = 0,
     this.lastPlayed,
@@ -30,6 +33,7 @@ class Track {
         'album': album,
         'duration': duration.inSeconds,
         'filePath': filePath,
+        'coverPath': coverPath,
         'isLiked': isLiked,
         'playCount': playCount,
         'lastPlayed': lastPlayed?.toIso8601String(),
@@ -42,6 +46,7 @@ class Track {
         album: json['album'],
         duration: Duration(seconds: json['duration']),
         filePath: json['filePath'],
+        coverPath: json['coverPath'],
         isLiked: json['isLiked'] ?? false,
         playCount: json['playCount'] ?? 0,
         lastPlayed: json['lastPlayed'] != null

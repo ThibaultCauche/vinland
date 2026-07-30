@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -255,6 +256,15 @@ class ArtistScreen extends StatelessWidget {
     List<dynamic> tracksDynamic,
     Color color,
   ) {
+    final tracks = tracksDynamic.cast<Track>();
+    String? albumCover;
+    for (final track in tracks) {
+      if (track.coverPath != null && File(track.coverPath!).existsSync()) {
+        albumCover = track.coverPath;
+        break;
+      }
+    }
+
     return GestureDetector(
       onTap: () => _openAlbumPage(context, albumTitle, tracksDynamic),
       child: Column(
@@ -265,14 +275,22 @@ class ArtistScreen extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(8),
+                image: albumCover != null
+                    ? DecorationImage(
+                        image: FileImage(File(albumCover)),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
-              child: Center(
-                child: Icon(
-                  Icons.album,
-                  color: color.withOpacity(0.6),
-                  size: 48,
-                ),
-              ),
+              child: albumCover == null
+                  ? Center(
+                      child: Icon(
+                        Icons.album,
+                        color: color.withOpacity(0.6),
+                        size: 48,
+                      ),
+                    )
+                  : null,
             ),
           ),
           const SizedBox(height: 8),

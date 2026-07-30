@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:metadata_god/metadata_god.dart';
 import 'providers/app_state.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -9,6 +10,8 @@ import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  MetadataGod.initialize();
   runApp(const VinlandApp());
 }
 
@@ -51,10 +54,7 @@ class AppShell extends StatelessWidget {
         return Scaffold(
           body: Stack(
             children: [
-              // Contenu principal : overlay ou onglet actif
               state.currentOverlay ?? screens[state.currentTab],
-
-              // Mini player toujours visible si une musique joue
               if (state.currentTrack != null)
                 const Positioned(
                   bottom: 20,

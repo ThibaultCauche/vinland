@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -23,21 +22,25 @@ class _ImportScreenState extends State<ImportScreen> {
   @override
   void initState() {
     super.initState();
-    _analyzeFiles();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _analyzeFiles();
+    });
   }
 
-  void _analyzeFiles() {
+  Future<void> _analyzeFiles() async {
     final validExts = {'.mp3', '.flac', '.m4a', '.ogg', '.wav'};
     final tracks = <Track>[];
     int valid = 0;
     int invalid = 0;
+
+    final musicService = context.read<AppState>().musicService;
 
     for (final path in widget.filePaths) {
       final ext = path.substring(path.lastIndexOf('.')).toLowerCase();
       if (validExts.contains(ext)) {
         valid++;
         try {
-          final track = context.read<AppState>().musicService.parseFile(path);
+          final track = await musicService.parseFile(path);
           tracks.add(track);
         } catch (e) {
           invalid++;
@@ -47,12 +50,14 @@ class _ImportScreenState extends State<ImportScreen> {
       }
     }
 
-    setState(() {
-      _previewTracks = tracks;
-      _validCount = valid;
-      _invalidCount = invalid;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _previewTracks = tracks;
+        _validCount = valid;
+        _invalidCount = invalid;
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -70,13 +75,12 @@ class _ImportScreenState extends State<ImportScreen> {
             TextButton(
               onPressed: () {
                 final state = context.read<AppState>();
-                // Ajoute les tracks directement au MusicService
                 for (final track in _previewTracks) {
                   state.musicService.addTrack(track);
                 }
                 state.musicService.rebuildAlbums();
                 state.musicService.saveToCache();
-                state.notifyListeners(); // Force refresh UI
+                state.notifyListeners();
 
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -103,7 +107,6 @@ class _ImportScreenState extends State<ImportScreen> {
             )
           : Column(
               children: [
-                // Résumé
                 Container(
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(16),
@@ -129,8 +132,6 @@ class _ImportScreenState extends State<ImportScreen> {
                     ],
                   ),
                 ),
-
-                // Liste des fichiers valides
                 if (_previewTracks.isNotEmpty) ...[
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -160,8 +161,6 @@ class _ImportScreenState extends State<ImportScreen> {
                     ),
                   ),
                 ],
-
-                // Aucun fichier valide
                 if (_previewTracks.isEmpty && !_isLoading)
                   const Expanded(
                     child: Center(

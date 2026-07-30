@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:metadata_god/metadata_god.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -17,6 +19,7 @@ class MusicService {
   List<Playlist> _playlists = [];
   List<String> _searchHistory = [];
   bool _initialized = false;
+  String? _coversDir;
 
   List<Track> get allTracks => List.unmodifiable(_allTracks);
   List<Album> get albums => List.unmodifiable(_albums);
@@ -25,8 +28,35 @@ class MusicService {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    _coversDir = await _getCoversDir();
     await _loadFromCache();
     _initialized = true;
+  }
+
+  Future<String> _getCoversDir() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(appDir.path, 'covers'));
+    await dir.create(recursive: true);
+    return dir.path;
+  }
+
+  Future<String?> _saveCover(Uint8List bytes, String trackId) async {
+    if (_coversDir == null) return null;
+    try {
+      final ext = _detectImageFormat(bytes);
+      final file = File(p.join(_coversDir!, '${trackId.hashCode}.$ext'));
+      await file.writeAsBytes(bytes);
+      return file.path;
+    } catch (e) {
+      print('ERREUR SAUVEGARDE COVER: $e');
+      return null;
+    }
+  }
+
+  String _detectImageFormat(Uint8List bytes) {
+    if (bytes.length > 2 && bytes[0] == 0xFF && bytes[1] == 0xD8) return 'jpg';
+    if (bytes.length > 8 && bytes[0] == 0x89) return 'png';
+    return 'jpg';
   }
 
   Future<void> scanAssetsMusic() async {
@@ -52,7 +82,6 @@ class MusicService {
         print('FICHIER CHARGÉ: $assetPath (${byteData.lengthInBytes} bytes)');
 
         final fileName = p.basenameWithoutExtension(assetPath);
-
         String title = fileName;
         final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
         if (numberMatch != null) {
@@ -62,6 +91,23 @@ class MusicService {
         final album = p.basename(p.dirname(assetPath));
         final artist = _extractArtistFromAlbum(album);
 
+        // Extraction cover depuis asset
+        String? coverPath;
+        try {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile = File(p.join(tempDir.path, p.basename(assetPath)));
+          await tempFile.writeAsBytes(byteData.buffer.asUint8List());
+
+          final metadata = await MetadataGod.readMetadata(file: tempFile.path);
+          if (metadata.picture != null) {
+            coverPath = await _saveCover(metadata.picture!.data, assetPath);
+            print('COVER EXTRAITE ASSET: $assetPath -> $coverPath');
+          }
+          await tempFile.delete();
+        } catch (e) {
+          print('ERREUR COVER ASSET: $assetPath - $e');
+        }
+
         loaded.add(Track(
           id: assetPath,
           title: title,
@@ -69,6 +115,7 @@ class MusicService {
           album: album,
           duration: const Duration(minutes: 3),
           filePath: assetPath,
+          coverPath: coverPath,
         ));
       } catch (e) {
         print('ERREUR FICHIER: $assetPath - $e');
@@ -112,7 +159,7 @@ class MusicService {
               ext == '.ogg' ||
               ext == '.wav') {
             print('FICHIER TROUVE: ${entity.path}');
-            final track = parseFile(entity.path);
+            final track = await parseFile(entity.path);
             scanned.add(track);
           }
         }
@@ -140,66 +187,97 @@ class MusicService {
       albumMap.putIfAbsent(track.album, () => []).add(track);
     }
 
-    _albums = albumMap.entries
-        .map((e) => Album(
-              id: e.key.hashCode.toString(),
-              title: e.key,
-              artist: e.value.first.artist,
-              trackIds: e.value.map((t) => t.id).toList(),
-              isSaved: true,
-            ))
-        .toList();
+    _albums = albumMap.entries.map((e) {
+      final tracks = e.value;
+      String? albumCover;
+      for (final track in tracks) {
+        if (track.coverPath != null) {
+          albumCover = track.coverPath;
+          break;
+        }
+      }
+
+      return Album(
+        id: e.key.hashCode.toString(),
+        title: e.key,
+        artist: e.value.first.artist,
+        trackIds: e.value.map((t) => t.id).toList(),
+        isSaved: true,
+        coverPath: albumCover,
+      );
+    }).toList();
 
     print('${_albums.length} ALBUMS RECONSTRUITS');
     for (final album in _albums) {
-      print('  - ${album.title} (${album.trackCount} titres)');
+      print(
+          '  - ${album.title} (${album.trackCount} titres, cover: ${album.coverPath != null ? 'OUI' : 'NON'})');
     }
   }
 
-  Track parseFile(String filePath) {
+  Future<Track> parseFile(String filePath) async {
     final fileName = p.basenameWithoutExtension(filePath);
-    final albumDir = p.basename(p.dirname(filePath)); // Album
-    final artistDir = p.basename(
-        p.dirname(p.dirname(filePath))); // Artiste (parent de l'album)
+    final albumDir = p.basename(p.dirname(filePath));
+    final artistDir = p.basename(p.dirname(p.dirname(filePath)));
 
     String title = fileName;
-    final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
-    if (numberMatch != null) {
-      title = fileName.substring(numberMatch.end).trim();
-    }
-
-    // L'artiste = le dossier parent de l'album, ou fallback sur l'album
     String artist = artistDir;
-    if (artistDir == '.' || artistDir == '/' || artistDir == filePath) {
-      artist = _extractArtistFromAlbum(albumDir);
+    String album = albumDir;
+    String? coverPath;
+    Duration duration = const Duration(minutes: 3);
+
+    try {
+      final metadata = await MetadataGod.readMetadata(file: filePath);
+
+      title = metadata.title ?? _extractTitleFromFileName(fileName);
+      artist = metadata.artist ?? artistDir;
+      album = metadata.album ?? albumDir;
+
+      if (metadata.picture != null) {
+        coverPath = await _saveCover(metadata.picture!.data, filePath);
+        print('COVER EXTRAITE: $filePath -> $coverPath');
+      }
+
+      if (metadata.durationMs != null && metadata.durationMs! > 0) {
+        duration = Duration(milliseconds: metadata.durationMs!.toInt());
+      }
+    } catch (e) {
+      print('ERREUR METADATA: $filePath - $e');
+      title = _extractTitleFromFileName(fileName);
     }
 
     return Track(
       id: filePath,
       title: title,
       artist: artist,
-      album: albumDir,
-      duration: const Duration(minutes: 3),
+      album: album,
+      duration: duration,
       filePath: filePath,
+      coverPath: coverPath,
     );
+  }
+
+  String _extractTitleFromFileName(String fileName) {
+    String title = fileName;
+    final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
+    if (numberMatch != null) {
+      title = fileName.substring(numberMatch.end).trim();
+    }
+    return title;
   }
 
   String _extractArtistFromAlbum(String albumName) {
     if (albumName.contains(':')) {
       final parts = albumName.split(':');
       final first = parts[0].trim();
-
       if (RegExp(r'^Vol\.?\s*\d+', caseSensitive: false).hasMatch(first)) {
         return parts.sublist(1).join(':').trim();
       }
       return first;
     }
-
     final parenIdx = albumName.indexOf('(');
     if (parenIdx > 0) {
       return albumName.substring(0, parenIdx).trim();
     }
-
     return albumName;
   }
 
@@ -325,10 +403,7 @@ class MusicService {
             'CACHE CHARGÉ: ${_allTracks.length} titres, ${_albums.length} albums');
       } catch (e) {
         print('ERREUR CHARGEMENT CACHE: $e');
-        await scanAssetsMusic();
       }
-    } else {
-      await scanAssetsMusic();
     }
   }
 }

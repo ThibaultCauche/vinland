@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/track.dart';
 
@@ -19,15 +20,7 @@ class TrackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: const Color(0xFF3E3E3E),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Icon(Icons.music_note, color: Colors.white54),
-      ),
+      leading: _buildCover(),
       title: Text(
         track.title,
         style: const TextStyle(
@@ -65,6 +58,31 @@ class TrackTile extends StatelessWidget {
         ],
       ),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildCover() {
+    if (track.coverPath != null && File(track.coverPath!).existsSync()) {
+      return Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(4),
+          image: DecorationImage(
+            image: FileImage(File(track.coverPath!)),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: const Color(0xFF3E3E3E),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Icon(Icons.music_note, color: Colors.white54),
     );
   }
 }

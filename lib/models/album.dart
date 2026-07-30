@@ -3,16 +3,16 @@ class Album {
   final String title;
   final String artist;
   final List<String> trackIds;
-  final Duration? duration;
-  bool isSaved;
+  final bool isSaved;
+  final String? coverPath; // ← chemin fichier
 
   Album({
     required this.id,
     required this.title,
     required this.artist,
-    this.trackIds = const [],
-    this.duration,
+    required this.trackIds,
     this.isSaved = false,
+    this.coverPath,
   });
 
   int get trackCount => trackIds.length;

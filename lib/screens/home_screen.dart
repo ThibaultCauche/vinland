@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -14,13 +15,11 @@ class HomeScreen extends StatelessWidget {
         return SafeArea(
           child: CustomScrollView(
             slivers: [
-              // Header avec profil
-              // Header avec profil
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start, // ← AJOUTE
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       GestureDetector(
                         onTap: () => _showProfileMenu(context),
@@ -37,15 +36,12 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child:
-                            SearchBarWidget(), // ← Expanded contient la recherche
+                        child: SearchBarWidget(),
                       ),
                     ],
                   ),
                 ),
               ),
-
-              // Toutes les musiques
               _buildSectionTitleWithAction(
                 'Toutes les musiques',
                 'Voir tout',
@@ -70,15 +66,11 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-
-              // R\u00e9cemment \u00e9cout\u00e9 (albums et playlists uniquement)
-              _buildSectionTitle('R\u00e9cemment \u00e9cout\u00e9'),
+              _buildSectionTitle('Récemment écouté'),
               _buildRecentlyPlayed(state),
-
-              // Titres lik\u00e9s
-              _buildSectionTitle('Titres lik\u00e9s'),
+              _buildSectionTitle('Titres likés'),
               state.likedTracks.isEmpty
-                  ? _buildEmpty('Aucun titre lik\u00e9')
+                  ? _buildEmpty('Aucun titre liké')
                   : SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
@@ -94,7 +86,6 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
@@ -226,6 +217,8 @@ class HomeScreen extends StatelessWidget {
                 state.allTracks.where((t) => t.album == albumTitle).toList();
             final artist =
                 albumTracks.isNotEmpty ? albumTracks.first.artist : 'Artiste';
+            final coverPath =
+                albumTracks.isNotEmpty ? albumTracks.first.coverPath : null;
 
             return GestureDetector(
               onTap: () {
@@ -241,16 +234,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF3E3E3E),
-                        borderRadius:
-                            BorderRadius.horizontal(left: Radius.circular(6)),
-                      ),
-                      child: const Icon(Icons.album, color: Colors.white54),
-                    ),
+                    _buildAlbumCover(coverPath),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -285,6 +269,31 @@ class HomeScreen extends StatelessWidget {
           childCount: recentAlbums.length,
         ),
       ),
+    );
+  }
+
+  Widget _buildAlbumCover(String? coverPath) {
+    if (coverPath != null && File(coverPath).existsSync()) {
+      return Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
+          image: DecorationImage(
+            image: FileImage(File(coverPath)),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: const BoxDecoration(
+        color: Color(0xFF3E3E3E),
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
+      ),
+      child: const Icon(Icons.album, color: Colors.white54),
     );
   }
 
@@ -323,7 +332,7 @@ class HomeScreen extends StatelessWidget {
               const Divider(color: Color(0xFF2A2A2A)),
               ListTile(
                 leading: const Icon(Icons.settings, color: Colors.white54),
-                title: const Text('Param\u00e8tres',
+                title: const Text('Paramètres',
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);
@@ -331,7 +340,7 @@ class HomeScreen extends StatelessWidget {
               ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.white54),
-                title: const Text('Se d\u00e9connecter',
+                title: const Text('Se déconnecter',
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
                   Navigator.pop(context);

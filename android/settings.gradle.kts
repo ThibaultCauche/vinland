@@ -23,3 +23,22 @@ plugins {
 }
 
 include(":app")
+
+// FIX: Injecte le namespace après l'évaluation de chaque sous-projet
+gradle.allprojects {
+    afterEvaluate {
+        if (extensions.findByName("android") != null) {
+            val androidExt = extensions.getByName("android")
+            try {
+                val getNs = androidExt::class.java.getMethod("getNamespace")
+                val ns = getNs.invoke(androidExt)
+                if (ns == null) {
+                    val setNs = androidExt::class.java.getMethod("setNamespace", String::class.java)
+                    setNs.invoke(androidExt, group.toString())
+                }
+            } catch (_: Exception) {
+                // Ignore si pas de méthode getNamespace/setNamespace
+            }
+        }
+    }
+}

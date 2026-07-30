@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -44,16 +45,7 @@ class PlayerScreen extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Container(
-                  width: 280,
-                  height: 280,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.music_note,
-                      color: Colors.white54, size: 80),
-                ),
+                _buildCover(track.coverPath),
                 const Spacer(),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -190,6 +182,31 @@ class PlayerScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCover(String? coverPath) {
+    if (coverPath != null && File(coverPath).existsSync()) {
+      return Container(
+        width: 280,
+        height: 280,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          image: DecorationImage(
+            image: FileImage(File(coverPath)),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: 280,
+      height: 280,
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Icon(Icons.music_note, color: Colors.white54, size: 80),
     );
   }
 
