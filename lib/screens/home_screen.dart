@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../screens/settings_screen.dart';
+import '../screens/missing_tracks_screen.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/track_tile.dart';
-import '../screens/missing_tracks_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -236,7 +236,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _buildAlbumCover(coverPath),
+                    _AlbumCover(coverPath: coverPath),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -271,31 +271,6 @@ class HomeScreen extends StatelessWidget {
           childCount: recentAlbums.length,
         ),
       ),
-    );
-  }
-
-  Widget _buildAlbumCover(String? coverPath) {
-    if (coverPath != null && File(coverPath).existsSync()) {
-      return Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
-          image: DecorationImage(
-            image: FileImage(File(coverPath)),
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: const BoxDecoration(
-        color: Color(0xFF3E3E3E),
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
-      ),
-      child: const Icon(Icons.album, color: Colors.white54),
     );
   }
 
@@ -374,6 +349,66 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AlbumCover extends StatefulWidget {
+  final String? coverPath;
+  const _AlbumCover({this.coverPath});
+
+  @override
+  State<_AlbumCover> createState() => _AlbumCoverState();
+}
+
+class _AlbumCoverState extends State<_AlbumCover> {
+  bool? _exists;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AlbumCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coverPath != widget.coverPath) _check();
+  }
+
+  void _check() async {
+    final path = widget.coverPath;
+    if (path == null) {
+      if (mounted) setState(() => _exists = false);
+      return;
+    }
+    final result = await File(path).exists();
+    if (mounted) setState(() => _exists = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_exists == true) {
+      return Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
+          image: DecorationImage(
+            image: FileImage(File(widget.coverPath!)),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    }
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: const BoxDecoration(
+        color: Color(0xFF3E3E3E),
+        borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
+      ),
+      child: const Icon(Icons.album, color: Colors.white54),
     );
   }
 }

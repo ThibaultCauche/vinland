@@ -13,11 +13,15 @@ class AuthService {
   String? get userName => _userName;
   String? get userEmail => _userEmail;
 
+  static const _keyIsLoggedIn = 'vinland_isLoggedIn';
+  static const _keyUserName = 'vinland_userName';
+  static const _keyUserEmail = 'vinland_userEmail';
+
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    _isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    _userName = prefs.getString('userName');
-    _userEmail = prefs.getString('userEmail');
+    _isLoggedIn = prefs.getBool(_keyIsLoggedIn) ?? false;
+    _userName = prefs.getString(_keyUserName);
+    _userEmail = prefs.getString(_keyUserEmail);
   }
 
   Future<void> login(String name, String email) async {
@@ -25,9 +29,9 @@ class AuthService {
     _isLoggedIn = true;
     _userName = name;
     _userEmail = email;
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userName', name);
-    await prefs.setString('userEmail', email);
+    await prefs.setBool(_keyIsLoggedIn, true);
+    await prefs.setString(_keyUserName, name);
+    await prefs.setString(_keyUserEmail, email);
   }
 
   Future<void> logout() async {
@@ -35,6 +39,8 @@ class AuthService {
     _isLoggedIn = false;
     _userName = null;
     _userEmail = null;
-    await prefs.clear();
+    await prefs.remove(_keyIsLoggedIn);
+    await prefs.remove(_keyUserName);
+    await prefs.remove(_keyUserEmail);
   }
 }

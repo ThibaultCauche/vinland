@@ -143,8 +143,9 @@ class _LibraryScreenState extends State<LibraryScreen>
                 title: const Text('Depuis un service de streaming',
                     style: TextStyle(color: Colors.white)),
                 subtitle: const Text(
-                    'Spotify, YouTube Music, Deezer, Tidal, Apple Music...',
-                    style: TextStyle(color: Colors.white54)),
+                  'Spotify, YouTube Music, Deezer, Tidal, Apple Music...',
+                  style: TextStyle(color: Colors.white54),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.of(context).push(
@@ -316,26 +317,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.circular(8),
-                    image: album.coverPath != null &&
-                            File(album.coverPath!).existsSync()
-                        ? DecorationImage(
-                            image: FileImage(File(album.coverPath!)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: album.coverPath == null ||
-                          !File(album.coverPath!).existsSync()
-                      ? const Center(
-                          child: Icon(Icons.album,
-                              color: Colors.white54, size: 48),
-                        )
-                      : null,
-                ),
+                child: _AlbumCoverGrid(coverPath: album.coverPath),
               ),
               const SizedBox(height: 8),
               Text(
@@ -406,6 +388,61 @@ class _LibraryScreenState extends State<LibraryScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AlbumCoverGrid extends StatefulWidget {
+  final String? coverPath;
+  const _AlbumCoverGrid({this.coverPath});
+
+  @override
+  State<_AlbumCoverGrid> createState() => _AlbumCoverGridState();
+}
+
+class _AlbumCoverGridState extends State<_AlbumCoverGrid> {
+  bool? _exists;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AlbumCoverGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coverPath != widget.coverPath) _check();
+  }
+
+  void _check() async {
+    final path = widget.coverPath;
+    if (path == null) {
+      if (mounted) setState(() => _exists = false);
+      return;
+    }
+    final result = await File(path).exists();
+    if (mounted) setState(() => _exists = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+        image: _exists == true
+            ? DecorationImage(
+                image: FileImage(File(widget.coverPath!)),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: _exists != true
+          ? const Center(
+              child: Icon(Icons.album, color: Colors.white54, size: 48),
+            )
+          : null,
     );
   }
 }

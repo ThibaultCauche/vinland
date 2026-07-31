@@ -9,12 +9,20 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     // Propagation de l'état du player vers la notification système
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
 
-    // Média en cours
+    // Média en cours — recrée le MediaItem complet car copyWith n'existe pas
     _player.durationStream.listen((duration) {
       final index = _player.currentIndex;
       if (index != null && index < queue.value.length) {
         final item = queue.value[index];
-        mediaItem.add(item.copyWith(duration: duration));
+        mediaItem.add(MediaItem(
+          id: item.id,
+          title: item.title,
+          artist: item.artist,
+          album: item.album,
+          duration: duration,
+          artUri: item.artUri,
+          extras: item.extras,
+        ));
       }
     });
   }
@@ -39,10 +47,16 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     queue.add(items);
 
     final sources = items.map((item) {
-      if (item.extras?['isAsset'] == true) {
+      final isAsset = item.extras?['isAsset'] == true;
+      final isRemote = item.id.startsWith('http');
+
+      if (isAsset) {
         return AudioSource.asset(item.id);
+      } else if (isRemote) {
+        return AudioSource.uri(Uri.parse(item.id));
+      } else {
+        return AudioSource.file(item.id);
       }
-      return AudioSource.file(item.id);
     }).toList();
 
     await _player.setAudioSource(

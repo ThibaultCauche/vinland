@@ -23,7 +23,7 @@ void main() async {
       androidNotificationChannelId: 'com.vinland.audio',
       androidNotificationChannelName: 'Vinland',
       androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true, // ← true, pas false
+      androidStopForegroundOnPause: true,
     ),
   );
 
@@ -67,16 +67,20 @@ class AppShell extends StatelessWidget {
           const FriendsScreen(),
         ];
 
+        // Hauteur dynamique de la bottom nav + safe area bottom
+        final bottomPadding = MediaQuery.of(context).padding.bottom;
+        final navHeight = kBottomNavigationBarHeight + bottomPadding;
+
         return Scaffold(
           body: Stack(
             children: [
               state.currentOverlay ?? screens[state.currentTab],
               if (state.currentTrack != null)
-                const Positioned(
-                  bottom: 20,
+                Positioned(
+                  bottom: navHeight + 8,
                   left: 8,
                   right: 8,
-                  child: MiniPlayer(),
+                  child: const MiniPlayer(),
                 ),
             ],
           ),

@@ -21,6 +21,9 @@ class MusicService {
   bool _initialized = false;
   String? _coversDir;
 
+  // Cache en mémoire des covers existantes pour éviter les existsSync()
+  final Set<String> _existingCovers = {};
+
   List<Track> get allTracks => List.unmodifiable(_allTracks);
   List<Album> get albums => List.unmodifiable(_albums);
   List<Playlist> get playlists => List.unmodifiable(_playlists);
@@ -30,6 +33,7 @@ class MusicService {
     if (_initialized) return;
     _coversDir = await _getCoversDir();
     await _loadFromCache();
+    await _refreshCoverCache();
     _initialized = true;
   }
 
@@ -40,13 +44,32 @@ class MusicService {
     return dir.path;
   }
 
+  /// Rafraîchit le cache des covers existantes (appelé une fois au démarrage)
+  Future<void> _refreshCoverCache() async {
+    _existingCovers.clear();
+    if (_coversDir == null) return;
+    final dir = Directory(_coversDir!);
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list()) {
+      if (entity is File) _existingCovers.add(entity.path);
+    }
+  }
+
+  /// Vérifie si une cover existe (utilise le cache, pas de I/O synchrone)
+  bool coverExists(String? path) {
+    if (path == null) return false;
+    return _existingCovers.contains(path);
+  }
+
   Future<String?> _saveCover(Uint8List bytes, String trackId) async {
     if (_coversDir == null) return null;
     try {
       final ext = _detectImageFormat(bytes);
-      final file = File(p.join(_coversDir!, '${trackId.hashCode}.$ext'));
+      final filePath = p.join(_coversDir!, '${trackId.hashCode}.$ext');
+      final file = File(filePath);
       await file.writeAsBytes(bytes);
-      return file.path;
+      _existingCovers.add(filePath);
+      return filePath;
     } catch (e) {
       print('ERREUR SAUVEGARDE COVER: $e');
       return null;
@@ -76,7 +99,7 @@ class MusicService {
         final byteData = await rootBundle.load(assetPath);
         final fileName = p.basenameWithoutExtension(assetPath);
         String title = fileName;
-        final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
+        final numberMatch = RegExp(r'^\\d+\\.\\s*').firstMatch(fileName);
         if (numberMatch != null) {
           title = fileName.substring(numberMatch.end).trim();
         }
@@ -126,7 +149,7 @@ class MusicService {
   }
 
   Future<void> scanDirectory(String dirPath) async {
-    final normalizedPath = dirPath.replaceAll(r'\\', r'\');
+    final normalizedPath = dirPath.replaceAll(r'\\\\', r'\\');
     final dir = Directory(normalizedPath);
 
     if (!await dir.exists()) {
@@ -226,7 +249,7 @@ class MusicService {
 
   String _extractTitleFromFileName(String fileName) {
     String title = fileName;
-    final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
+    final numberMatch = RegExp(r'^\\d+\\.\\s*').firstMatch(fileName);
     if (numberMatch != null) {
       title = fileName.substring(numberMatch.end).trim();
     }
@@ -237,7 +260,7 @@ class MusicService {
     if (albumName.contains(':')) {
       final parts = albumName.split(':');
       final first = parts[0].trim();
-      if (RegExp(r'^Vol\.?\s*\d+', caseSensitive: false).hasMatch(first)) {
+      if (RegExp(r'^Vol\\.?\\s*\\d+', caseSensitive: false).hasMatch(first)) {
         return parts.sublist(1).join(':').trim();
       }
       return first;
@@ -270,59 +293,59 @@ class MusicService {
         .toList();
   }
 
-  void addSearchQuery(String query) {
+  Future<void> addSearchQuery(String query) async {
     if (query.isEmpty) return;
     _searchHistory.remove(query);
     _searchHistory.insert(0, query);
     if (_searchHistory.length > 20) _searchHistory.removeLast();
-    _saveToCache();
+    await _saveToCache();
   }
 
   List<Track> get likedTracks => _allTracks.where((t) => t.isLiked).toList();
 
-  void toggleLike(String trackId) {
+  Future<void> toggleLike(String trackId) async {
     final track = _allTracks.firstWhere((t) => t.id == trackId);
     track.isLiked = !track.isLiked;
-    _saveToCache();
+    await _saveToCache();
   }
 
-  void createPlaylist(String name) {
+  Future<void> createPlaylist(String name) async {
     _playlists.add(Playlist(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
     ));
-    _saveToCache();
+    await _saveToCache();
   }
 
-  void addToPlaylist(String playlistId, String trackId) {
+  Future<void> addToPlaylist(String playlistId, String trackId) async {
     final playlist = _playlists.firstWhere((p) => p.id == playlistId);
     if (!playlist.trackIds.contains(trackId)) {
       playlist.trackIds.add(trackId);
-      _saveToCache();
+      await _saveToCache();
     }
   }
 
-  void removeFromPlaylist(String playlistId, String trackId) {
+  Future<void> removeFromPlaylist(String playlistId, String trackId) async {
     final playlist = _playlists.firstWhere((p) => p.id == playlistId);
     playlist.trackIds.remove(trackId);
-    _saveToCache();
+    await _saveToCache();
   }
 
-  void recordPlay(String trackId) {
+  Future<void> recordPlay(String trackId) async {
     final track = _allTracks.firstWhere((t) => t.id == trackId);
     track.playCount++;
     track.lastPlayed = DateTime.now();
-    _saveToCache();
+    await _saveToCache();
   }
 
-  void removeSearchQuery(String query) {
+  Future<void> removeSearchQuery(String query) async {
     _searchHistory.remove(query);
-    _saveToCache();
+    await _saveToCache();
   }
 
-  void clearSearchHistory() {
+  Future<void> clearSearchHistory() async {
     _searchHistory.clear();
-    _saveToCache();
+    await _saveToCache();
   }
 
   Future<void> _saveToCache() async {

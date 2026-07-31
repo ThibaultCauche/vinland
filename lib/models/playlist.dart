@@ -8,10 +8,33 @@ class Playlist {
   Playlist({
     required this.id,
     required this.name,
-    this.trackIds = const [],
+    List<String>? trackIds,
     DateTime? createdAt,
     this.isSaved = false,
-  }) : createdAt = createdAt ?? DateTime.now();
+  })  : trackIds = trackIds ?? [],
+        createdAt = createdAt ?? DateTime.now();
 
-  int get trackCount => trackIds.length;
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'trackIds': trackIds,
+        'createdAt': createdAt.toIso8601String(),
+        'isSaved': isSaved,
+      };
+
+  factory Playlist.fromJson(Map<String, dynamic> json) {
+    DateTime? createdAt;
+    try {
+      createdAt = DateTime.parse(json['createdAt']);
+    } catch (_) {
+      createdAt = DateTime.now();
+    }
+    return Playlist(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Inconnu',
+      trackIds: List<String>.from(json['trackIds'] ?? []),
+      createdAt: createdAt,
+      isSaved: json['isSaved'] == true,
+    );
+  }
 }

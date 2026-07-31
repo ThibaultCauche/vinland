@@ -27,12 +27,14 @@ class AppState extends ChangeNotifier {
   String searchQuery = '';
   bool showSearchResults = false;
 
-  // Getters
-  List<Track> get allTracks => _music.allTracks;
-  List<Track> get likedTracks => _music.likedTracks;
+  // Missing tracks from streaming import
   List<Map<String, String>> _missingTracks = [];
   List<Map<String, String>> get missingTracks =>
       List.unmodifiable(_missingTracks);
+
+  // Getters
+  List<Track> get allTracks => _music.allTracks;
+  List<Track> get likedTracks => _music.likedTracks;
   List<Track> get searchResults {
     if (searchQuery.isEmpty) return [];
     return _music.searchTracks(searchQuery);
@@ -122,9 +124,19 @@ class AppState extends ChangeNotifier {
           .any((t) => t.filePath?.startsWith('assets/') ?? false);
       if (!hasAssets) {
         await _music.scanAssetsMusic();
-        notifyListeners();
+        // Vérifie que le ChangeNotifier n'est pas disposed avant notify
+        if (!_isDisposed) notifyListeners();
       }
     });
+  }
+
+  bool _isDisposed = false;
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _audioHandler.player.dispose();
+    super.dispose();
   }
 
   Future<void> scanMusic(String path) async {
@@ -169,7 +181,7 @@ class AppState extends ChangeNotifier {
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
 
-    _music.recordPlay(track.id);
+    await _music.recordPlay(track.id);
     notifyListeners();
   }
 
@@ -210,8 +222,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleLike(String trackId) {
-    _music.toggleLike(trackId);
+  Future<void> toggleLike(String trackId) async {
+    await _music.toggleLike(trackId);
     notifyListeners();
   }
 
@@ -230,13 +242,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void createPlaylist(String name) {
-    _music.createPlaylist(name);
+  Future<void> createPlaylist(String name) async {
+    await _music.createPlaylist(name);
     notifyListeners();
   }
 
-  void addToPlaylist(String playlistId, String trackId) {
-    _music.addToPlaylist(playlistId, trackId);
+  Future<void> addToPlaylist(String playlistId, String trackId) async {
+    await _music.addToPlaylist(playlistId, trackId);
     notifyListeners();
   }
 
@@ -245,25 +257,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void removeSearchQuery(String query) {
-    _music.removeSearchQuery(query);
+  Future<void> removeSearchQuery(String query) async {
+    await _music.removeSearchQuery(query);
     notifyListeners();
   }
 
-  void clearSearchHistory() {
-    _music.clearSearchHistory();
+  Future<void> clearSearchHistory() async {
+    await _music.clearSearchHistory();
     notifyListeners();
   }
 
   Future<void> rescanCoversForExistingTracks() async {
     await _music.rescanCoversForExistingTracks();
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _audioHandler.player.dispose();
-    super.dispose();
   }
 
   void setMissingTracks(List<Map<String, String>> tracks) {

@@ -11,35 +11,35 @@ class MiniPlayer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, state, child) {
-        final track = state.currentTrack;
-        if (track == null) return const SizedBox.shrink();
+        if (state.currentTrack == null) return const SizedBox.shrink();
 
         return GestureDetector(
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PlayerScreen()),
-            );
-          },
+          onTap: () => state.pushOverlay(const PlayerScreen()),
           child: Container(
             height: 64,
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: _buildCover(track.coverPath),
-                ),
+                const SizedBox(width: 8),
+                _MiniCover(coverPath: state.currentTrack!.coverPath),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        track.title,
+                        state.currentTrack!.title,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,
@@ -49,7 +49,7 @@ class MiniPlayer extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        track.artist,
+                        state.currentTrack!.artist,
                         style: const TextStyle(
                             color: Colors.white54, fontSize: 11),
                       ),
@@ -67,6 +67,7 @@ class MiniPlayer extends StatelessWidget {
                   icon: const Icon(Icons.skip_next, color: Colors.white),
                   onPressed: () => state.nextTrack(),
                 ),
+                const SizedBox(width: 8),
               ],
             ),
           ),
@@ -74,16 +75,51 @@ class MiniPlayer extends StatelessWidget {
       },
     );
   }
+}
 
-  Widget _buildCover(String? coverPath) {
-    if (coverPath != null && File(coverPath).existsSync()) {
+class _MiniCover extends StatefulWidget {
+  final String? coverPath;
+  const _MiniCover({this.coverPath});
+
+  @override
+  State<_MiniCover> createState() => _MiniCoverState();
+}
+
+class _MiniCoverState extends State<_MiniCover> {
+  bool? _exists;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MiniCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coverPath != widget.coverPath) _check();
+  }
+
+  void _check() async {
+    final path = widget.coverPath;
+    if (path == null) {
+      if (mounted) setState(() => _exists = false);
+      return;
+    }
+    final result = await File(path).exists();
+    if (mounted) setState(() => _exists = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_exists == true) {
       return Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
-            image: FileImage(File(coverPath)),
+            image: FileImage(File(widget.coverPath!)),
             fit: BoxFit.cover,
           ),
         ),

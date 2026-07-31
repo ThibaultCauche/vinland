@@ -20,7 +20,7 @@ class TrackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: _buildCover(),
+      leading: _AsyncCover(coverPath: track.coverPath),
       title: Text(
         track.title,
         style: const TextStyle(
@@ -60,16 +60,52 @@ class TrackTile extends StatelessWidget {
       onTap: onTap,
     );
   }
+}
 
-  Widget _buildCover() {
-    if (track.coverPath != null && File(track.coverPath!).existsSync()) {
+/// Widget interne qui vérifie l'existence de la cover de manière asynchrone.
+class _AsyncCover extends StatefulWidget {
+  final String? coverPath;
+  const _AsyncCover({this.coverPath});
+
+  @override
+  State<_AsyncCover> createState() => _AsyncCoverState();
+}
+
+class _AsyncCoverState extends State<_AsyncCover> {
+  bool? _exists;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AsyncCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.coverPath != widget.coverPath) _check();
+  }
+
+  void _check() async {
+    final path = widget.coverPath;
+    if (path == null) {
+      if (mounted) setState(() => _exists = false);
+      return;
+    }
+    final result = await File(path).exists();
+    if (mounted) setState(() => _exists = result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_exists == true) {
       return Container(
         width: 48,
         height: 48,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
-            image: FileImage(File(track.coverPath!)),
+            image: FileImage(File(widget.coverPath!)),
             fit: BoxFit.cover,
           ),
         ),
