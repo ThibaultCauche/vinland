@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/track_tile.dart';
+import '../screens/missing_tracks_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -338,6 +339,26 @@ class HomeScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(context);
                   state.pushOverlay(const SettingsScreen());
+                },
+              ),
+              ListTile(
+                leading:
+                    const Icon(Icons.playlist_remove, color: Colors.orange),
+                title: const Text('Titres manquants',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: Text(
+                  '${state.missingTracks.length} titre(s) à importer',
+                  style: const TextStyle(color: Colors.white54),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (state.missingTracks.isNotEmpty) {
+                    state.pushOverlay(const MissingTracksScreen());
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Aucun titre manquant')),
+                    );
+                  }
                 },
               ),
               ListTile(

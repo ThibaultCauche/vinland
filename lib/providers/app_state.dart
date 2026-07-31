@@ -30,6 +30,9 @@ class AppState extends ChangeNotifier {
   // Getters
   List<Track> get allTracks => _music.allTracks;
   List<Track> get likedTracks => _music.likedTracks;
+  List<Map<String, String>> _missingTracks = [];
+  List<Map<String, String>> get missingTracks =>
+      List.unmodifiable(_missingTracks);
   List<Track> get searchResults {
     if (searchQuery.isEmpty) return [];
     return _music.searchTracks(searchQuery);
@@ -261,5 +264,15 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _audioHandler.player.dispose();
     super.dispose();
+  }
+
+  void setMissingTracks(List<Map<String, String>> tracks) {
+    _missingTracks = tracks;
+    notifyListeners();
+  }
+
+  void clearMissingTracks() {
+    _missingTracks = [];
+    notifyListeners();
   }
 }

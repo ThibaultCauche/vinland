@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -40,7 +41,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         final localTitle = _normalize(local.title);
         final localArtist = _normalize(local.artist);
 
-        // Plusieurs strategies de matching
         final exactTitle = title == localTitle;
         final exactArtist = artist == localArtist;
         final titleContains =
@@ -56,7 +56,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         } else if (titleContains && (artist.isEmpty || artistContains)) {
           score = 0.85;
         } else {
-          // Distance de Levenshtein pour les fautes de frappe
           final titleSim = _similarity(title, localTitle);
           final artistSim =
               artist.isEmpty ? 1.0 : _similarity(artist, localArtist);
@@ -138,13 +137,15 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     if (_showMissingOnly) {
       return _matches.where((m) => m.matchedTrack == null).toList();
     }
-    return _matches;
+    return _matches.where((m) => m.matchedTrack != null).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final matched = _matches.where((m) => m.matchedTrack != null).length;
-    final unmatched = _matches.length - matched;
+    final matched = _matches.where((m) => m.matchedTrack != null).toList();
+    final unmatched = _matches.where((m) => m.matchedTrack == null).toList();
+    final alreadyLiked = matched.where((m) => m.matchedTrack!.isLiked).length;
+    final newLikes = matched.length - alreadyLiked;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -155,11 +156,11 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (!_isLoading && matched > 0)
+          if (!_isLoading && matched.isNotEmpty)
             TextButton(
               onPressed: _likeMatched,
               child: Text(
-                'Liker $matched',
+                newLikes > 0 ? 'Liker $newLikes' : 'Tout liké',
                 style: const TextStyle(
                   color: Color(0xFF1DB954),
                   fontWeight: FontWeight.bold,
@@ -184,15 +185,15 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             )
           : Column(
               children: [
-                _buildSummary(matched, unmatched),
-                _buildFilterBar(matched, unmatched),
+                _buildSummary(matched.length, unmatched.length, alreadyLiked),
+                _buildFilterBar(matched.length, unmatched.length),
                 Expanded(
                   child: _filteredMatches.isEmpty
                       ? Center(
                           child: Text(
                             _showMissingOnly
                                 ? 'Aucun titre manquant'
-                                : 'Aucun resultat',
+                                : 'Aucune correspondance',
                             style: const TextStyle(color: Colors.white38),
                           ),
                         )
@@ -207,7 +208,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     );
   }
 
-  Widget _buildSummary(int matched, int unmatched) {
+  Widget _buildSummary(int matched, int unmatched, int alreadyLiked) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -238,11 +239,18 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
               ),
             ],
           ),
-          if (unmatched > 0) ...[
+          if (alreadyLiked > 0) ...[
             const SizedBox(height: 12),
             Text(
-              '$unmatched titre(s) non trouve(s) dans votre bibliotheque locale. '
-              'Importez ces fichiers pour les liker.',
+              '$alreadyLiked deja like(s), ${matched - alreadyLiked} a liker',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (unmatched > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              '$unmatched titre(s) non trouve(s). Importez ces fichiers.',
               style: const TextStyle(color: Colors.white38, fontSize: 12),
               textAlign: TextAlign.center,
             ),
@@ -261,14 +269,14 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             child: TextButton.icon(
               onPressed: () => setState(() => _showMissingOnly = false),
               icon: Icon(
-                Icons.list,
+                Icons.check_circle,
                 color: !_showMissingOnly
                     ? const Color(0xFF1DB954)
                     : Colors.white38,
                 size: 18,
               ),
               label: Text(
-                'Tous (${_matches.length})',
+                'Trouves ($matched)',
                 style: TextStyle(
                   color: !_showMissingOnly
                       ? const Color(0xFF1DB954)
@@ -428,27 +436,44 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   void _likeMatched() {
     final state = context.read<AppState>();
     int liked = 0;
+    int already = 0;
 
     for (final match in _matches) {
-      if (match.matchedTrack != null && !match.matchedTrack!.isLiked) {
-        if (match.dateAdded != null) {
-          final index =
-              state.allTracks.indexWhere((t) => t.id == match.matchedTrack!.id);
-          if (index != -1) {
-            state.allTracks[index].dateAdded = match.dateAdded;
+      if (match.matchedTrack != null) {
+        if (match.matchedTrack!.isLiked) {
+          already++;
+        } else {
+          if (match.dateAdded != null) {
+            final index = state.allTracks
+                .indexWhere((t) => t.id == match.matchedTrack!.id);
+            if (index != -1) {
+              state.allTracks[index].dateAdded = match.dateAdded;
+            }
           }
+          state.toggleLike(match.matchedTrack!.id);
+          liked++;
         }
-        state.toggleLike(match.matchedTrack!.id);
-        liked++;
       }
     }
 
     state.musicService.saveToCache();
 
+    // Sauvegarde les manquants dans l'app state pour y acceder plus tard
+    final missing = _matches
+        .where((m) => m.matchedTrack == null)
+        .map((m) => {'title': m.title, 'artist': m.artist, 'album': m.album})
+        .toList();
+    state.setMissingTracks(missing);
+
     Navigator.pop(context);
+
+    final msg = liked > 0
+        ? '$liked like(s) ajoute(s), $already deja present(s)'
+        : '$already titre(s) deja like(s)';
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$liked titre(s) like(s)'),
+        content: Text(msg),
         backgroundColor: const Color(0xFF1DB954),
       ),
     );

@@ -99,10 +99,17 @@ class StreamingImportService {
   }
 
   static int _findIndexInList(List<String> list, List<String> keywords) {
+    // Phase 1 : match exact
+    for (var i = 0; i < list.length; i++) {
+      for (final kw in keywords) {
+        if (list[i] == kw) return i;
+      }
+    }
+    // Phase 2 : match contient
     for (var i = 0; i < list.length; i++) {
       final clean = list[i].replaceAll(RegExp(r'[^\w\s]'), '').trim();
       for (final kw in keywords) {
-        if (clean == kw || clean.contains(kw)) return i;
+        if (clean.contains(kw)) return i;
       }
     }
     return -1;
