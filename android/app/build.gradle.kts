@@ -6,7 +6,10 @@ plugins {
 
 android {
     namespace = "com.example.vinland"
-    compileSdk = flutter.compileSdkVersion
+    
+    // ← FORCÉ À 35 pour le predictive back et les notifications média
+    compileSdk = 35
+    
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -20,8 +23,13 @@ android {
 
     defaultConfig {
         applicationId = "com.example.vinland"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        
+        // ← Vérifie que c'est bien 21 minimum (audio_service l'exige)
+        minSdk = 21
+        
+        // ← FORCÉ À 35 pour le Play Store et les dernières APIs
+        targetSdk = 35
+        
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

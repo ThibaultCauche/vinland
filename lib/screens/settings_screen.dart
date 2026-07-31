@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/music_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});

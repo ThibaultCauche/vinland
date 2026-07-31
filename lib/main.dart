@@ -67,24 +67,42 @@ class AppShell extends StatelessWidget {
           const FriendsScreen(),
         ];
 
-        // Hauteur dynamique de la bottom nav + safe area bottom
         final bottomPadding = MediaQuery.of(context).padding.bottom;
         final navHeight = kBottomNavigationBarHeight + bottomPadding;
 
-        return Scaffold(
-          body: Stack(
-            children: [
-              state.currentOverlay ?? screens[state.currentTab],
-              if (state.currentTrack != null)
-                Positioned(
-                  bottom: navHeight + 8,
-                  left: 8,
-                  right: 8,
-                  child: const MiniPlayer(),
-                ),
-            ],
+        // Détermine si le mini-player doit être visible
+        // On le cache si on est sur le PlayerScreen (overlay)
+        final bool showMiniPlayer =
+            state.currentTrack != null && state.currentOverlay == null;
+
+        final canPop = state.overlayStack.isEmpty && state.currentTab == 0;
+
+        return PopScope(
+          canPop: canPop,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+
+            if (state.overlayStack.isNotEmpty) {
+              state.popOverlay();
+            } else if (state.currentTab != 0) {
+              state.setTab(0);
+            }
+          },
+          child: Scaffold(
+            body: Stack(
+              children: [
+                state.currentOverlay ?? screens[state.currentTab],
+                if (showMiniPlayer)
+                  Positioned(
+                    bottom: navHeight + 8,
+                    left: 8,
+                    right: 8,
+                    child: const MiniPlayer(),
+                  ),
+              ],
+            ),
+            bottomNavigationBar: const BottomNav(),
           ),
-          bottomNavigationBar: const BottomNav(),
         );
       },
     );

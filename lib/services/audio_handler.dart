@@ -6,13 +6,18 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   AudioPlayer get player => _player;
 
   VinlandAudioHandler(this._player) {
-    // Propagation de l'état du player vers la notification système
+    // Propagation de l'état playback vers la notification système
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
 
-    // Média en cours — recrée le MediaItem complet car copyWith n'existe pas
+    // Met à jour mediaItem quand la track change (next/previous/auto)
+    _player.currentIndexStream.listen((index) {
+      _updateMediaItemFromIndex(index);
+    });
+
+    // Met à jour la duration quand elle est connue
     _player.durationStream.listen((duration) {
       final index = _player.currentIndex;
-      if (index != null && index < queue.value.length) {
+      if (index != null && index >= 0 && index < queue.value.length) {
         final item = queue.value[index];
         mediaItem.add(MediaItem(
           id: item.id,
@@ -25,6 +30,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
         ));
       }
     });
+  }
+
+  void _updateMediaItemFromIndex(int? index) {
+    if (index == null || index < 0 || index >= queue.value.length) return;
+    final item = queue.value[index];
+    mediaItem.add(item);
   }
 
   @override
@@ -42,9 +53,20 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> skipToPrevious() => _player.seekToPrevious();
 
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    await super.stop();
+  }
+
   /// Charge une liste de tracks et démarre la lecture
   Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
     queue.add(items);
+
+    // Initialise immédiatement le mediaItem pour que la notification apparaisse
+    if (startIndex >= 0 && startIndex < items.length) {
+      mediaItem.add(items[startIndex]);
+    }
 
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
