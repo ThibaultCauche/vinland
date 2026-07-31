@@ -264,7 +264,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                         onTap: () {
                           state.playTrack(track);
                           if (_controller.text.isNotEmpty) {
-                            state.addSearchQuery(_controller.text);
+                            state.setSearchQuery(_controller.text);
                           }
                           _controller.clear();
                           state.clearSearch();

@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_service/audio_service.dart';
 import '../models/track.dart';
 import '../services/music_service.dart';
 import '../services/auth_service.dart';
-import 'package:just_audio/just_audio.dart';
+import '../services/audio_handler.dart';
 import '../models/album.dart';
 import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
-import '../services/api_service.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
   final AuthService _auth = AuthService();
-  final AudioPlayer _player = AudioPlayer();
-  final ApiService _api = ApiService();
+  final VinlandAudioHandler _audioHandler;
 
   // Player state
   Track? currentTrack;
@@ -28,7 +28,7 @@ class AppState extends ChangeNotifier {
   bool showSearchResults = false;
 
   // Getters
-  List<Track> get allTracks => _api.useLocal ? _music.allTracks : [];
+  List<Track> get allTracks => _music.allTracks;
   List<Track> get likedTracks => _music.likedTracks;
   List<Track> get searchResults {
     if (searchQuery.isEmpty) return [];
@@ -41,13 +41,31 @@ class AppState extends ChangeNotifier {
   String? get userEmail => _auth.userEmail;
   List<Album> get albums => _music.albums;
   MusicService get musicService => _music;
-  bool get isLocalMode => _api.useLocal;
+  bool get isLocalMode => true;
 
   // Overlay navigation
   final List<Widget> _overlayStack = [];
   List<Widget> get overlayStack => List.unmodifiable(_overlayStack);
   Widget? get currentOverlay =>
       _overlayStack.isNotEmpty ? _overlayStack.last : null;
+
+  AppState({required VinlandAudioHandler audioHandler})
+      : _audioHandler = audioHandler {
+    _audioHandler.player.positionStream.listen((pos) {
+      position = pos;
+      notifyListeners();
+    });
+    _audioHandler.player.durationStream.listen((dur) {
+      if (dur != null) {
+        duration = dur;
+        notifyListeners();
+      }
+    });
+    _audioHandler.player.playerStateStream.listen((state) {
+      isPlaying = state.playing;
+      notifyListeners();
+    });
+  }
 
   void pushOverlay(Widget screen) {
     if (_overlayStack.isNotEmpty) {
@@ -62,31 +80,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void switchMode(bool local) {
-    _api.useLocal = local;
-    notifyListeners();
-  }
-
-  Future<void> importTracks(List<String> filePaths) async {
-    for (final path in filePaths) {
-      final ext = p.extension(path).toLowerCase();
-      if (ext == '.mp3' ||
-          ext == '.flac' ||
-          ext == '.m4a' ||
-          ext == '.ogg' ||
-          ext == '.wav') {
-        final track = await _music.parseFile(path);
-        if (!_music.allTracks.any((t) => t.id == track.id)) {
-          // Track déjà géré dans MusicService via parseFile + rebuildAlbums
-        }
-      }
-    }
-    _music.rebuildAlbums();
-    notifyListeners();
-  }
-
-  void rebuildAlbums() => _music.rebuildAlbums();
-
   void popOverlay() {
     if (_overlayStack.isNotEmpty) {
       _overlayStack.removeLast();
@@ -94,31 +87,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  AppState() {
-    _player.positionStream.listen((pos) {
-      position = pos;
-      notifyListeners();
-    });
-    _player.durationStream.listen((dur) {
-      if (dur != null) {
-        duration = dur;
-        notifyListeners();
+  void clearOverlays() {
+    _overlayStack.clear();
+    notifyListeners();
+  }
+
+  Future<void> importTracks(List<String> filePaths) async {
+    for (final path in filePaths) {
+      final ext = p.extension(path).toLowerCase();
+      if (['.mp3', '.flac', '.m4a', '.ogg', '.wav'].contains(ext)) {
+        final track = await _music.parseFile(path);
+        if (!_music.allTracks.any((t) => t.id == track.id)) {
+          _music.addTrack(track);
+        }
       }
-    });
-    _player.playerStateStream.listen((state) {
-      isPlaying = state.playing;
-      notifyListeners();
-    });
-  }
-
-  void addSearchQuery(String query) {
-    if (query.isNotEmpty) {
-      _music.addSearchQuery(query);
-      notifyListeners();
     }
+    _music.rebuildAlbums();
+    await _music.saveToCache();
+    notifyListeners();
   }
 
-  Future initialize() async {
+  void rebuildAlbums() => _music.rebuildAlbums();
+
+  Future<void> initialize() async {
     await _auth.initialize();
     await _music.initialize();
     notifyListeners();
@@ -148,6 +139,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await _audioHandler.stop();
     await _auth.logout();
     currentTrack = null;
     isPlaying = false;
@@ -159,18 +151,20 @@ class AppState extends ChangeNotifier {
     queue = trackList ?? [track];
     currentIndex = queue.indexWhere((t) => t.id == track.id);
 
-    try {
-      if (track.filePath != null && track.filePath!.startsWith('assets/')) {
-        await _player.setAudioSource(AudioSource.asset(track.filePath!));
-      } else if (track.filePath != null) {
-        await _player.setFilePath(track.filePath!);
-      }
-      await _player.play();
-      isPlaying = true;
-    } catch (e) {
-      print('ERREUR LECTURE: $e');
-      isPlaying = false;
-    }
+    final items = queue
+        .map((t) => MediaItem(
+              id: t.filePath!,
+              title: t.title,
+              artist: t.artist,
+              album: t.album,
+              duration: t.duration,
+              artUri: t.coverPath != null ? Uri.file(t.coverPath!) : null,
+              extras: {'isAsset': t.filePath!.startsWith('assets/')},
+            ))
+        .toList();
+
+    await _audioHandler.loadAndPlay(items, currentIndex);
+    isPlaying = true;
 
     _music.recordPlay(track.id);
     notifyListeners();
@@ -178,46 +172,38 @@ class AppState extends ChangeNotifier {
 
   void togglePlayPause() {
     if (isPlaying) {
-      _player.pause();
+      _audioHandler.pause();
     } else {
-      _player.play();
+      _audioHandler.play();
     }
     isPlaying = !isPlaying;
     notifyListeners();
   }
 
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
-  }
-
   void nextTrack() {
-    if (currentIndex < queue.length - 1) {
-      currentIndex++;
-      currentTrack = queue[currentIndex];
+    _audioHandler.skipToNext();
+    final index = _audioHandler.player.currentIndex ?? currentIndex;
+    if (index >= 0 && index < queue.length) {
+      currentIndex = index;
+      currentTrack = queue[index];
       _music.recordPlay(currentTrack!.id);
       notifyListeners();
     }
   }
 
   void previousTrack() {
-    if (currentIndex > 0) {
-      currentIndex--;
-      currentTrack = queue[currentIndex];
+    _audioHandler.skipToPrevious();
+    final index = _audioHandler.player.currentIndex ?? currentIndex;
+    if (index >= 0 && index < queue.length) {
+      currentIndex = index;
+      currentTrack = queue[index];
       _music.recordPlay(currentTrack!.id);
       notifyListeners();
     }
   }
 
   void seek(Duration pos) {
-    _player.seek(pos);
-    notifyListeners();
-  }
-
-  void updatePosition(Duration pos, Duration dur) {
-    position = pos;
-    duration = dur;
+    _audioHandler.seek(pos);
     notifyListeners();
   }
 
@@ -266,13 +252,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearOverlays() {
-    _overlayStack.clear();
+  Future<void> rescanCoversForExistingTracks() async {
+    await _music.rescanCoversForExistingTracks();
     notifyListeners();
   }
 
-  Future rescanCoversForExistingTracks() async {
-    await _music.rescanCoversForExistingTracks();
-    notifyListeners();
+  @override
+  void dispose() {
+    _audioHandler.player.dispose();
+    super.dispose();
   }
 }

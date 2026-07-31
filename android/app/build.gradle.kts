@@ -7,7 +7,7 @@ plugins {
 android {
     namespace = "com.example.vinland"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "26.3.11579264"  // ← FORCÉ: utilise le NDK valide
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

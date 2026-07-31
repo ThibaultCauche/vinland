@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:metadata_god/metadata_god.dart';
+import 'services/audio_handler.dart';
 import 'providers/app_state.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -8,20 +10,34 @@ import 'screens/library_screen.dart';
 import 'screens/friends_screen.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
+import 'package:just_audio/just_audio.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MetadataGod.initialize();
-  runApp(const VinlandApp());
+
+  final player = AudioPlayer();
+  final audioHandler = await AudioService.init(
+    builder: () => VinlandAudioHandler(player),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.vinland.audio',
+      androidNotificationChannelName: 'Vinland',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true, // ← true, pas false
+    ),
+  );
+
+  runApp(VinlandApp(audioHandler: audioHandler));
 }
 
 class VinlandApp extends StatelessWidget {
-  const VinlandApp({super.key});
+  final VinlandAudioHandler audioHandler;
+  const VinlandApp({super.key, required this.audioHandler});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AppState()..initialize(),
+      create: (_) => AppState(audioHandler: audioHandler)..initialize(),
       child: MaterialApp(
         title: 'Vinland',
         debugShowCheckedModeBanner: false,

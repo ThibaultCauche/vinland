@@ -3,6 +3,7 @@ import 'package:just_audio/just_audio.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
+  AudioPlayer get player => _player;
 
   VinlandAudioHandler(this._player) {
     // Propagation de l'état du player vers la notification système
