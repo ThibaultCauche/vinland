@@ -65,8 +65,8 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
   String _normalize(String text) {
     return text
         .toLowerCase()
-        .replaceAll(RegExp(r'[^\\w\\s]'), '')
-        .replaceAll(RegExp(r'\\s+'), ' ')
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 

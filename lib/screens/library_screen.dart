@@ -7,6 +7,9 @@ import '../providers/app_state.dart';
 import '../widgets/track_tile.dart';
 import 'import_screen.dart';
 import 'package:path/path.dart' as p;
+import 'import_review_screen.dart';
+import 'spotify_match_screen.dart';
+import '../services/spotify_import_service.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -136,6 +139,19 @@ class _LibraryScreenState extends State<LibraryScreen>
                   _pickFiles(context);
                 },
               ),
+              ListTile(
+                leading:
+                    const Icon(Icons.cloud_download, color: Color(0xFF1DB954)),
+                title: const Text('Depuis Spotify',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text(
+                    'Importer une liste de titres likés (JSON/CSV)',
+                    style: TextStyle(color: Colors.white54)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickSpotifyFile(context);
+                },
+              ),
             ],
           ),
         ),
@@ -146,7 +162,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   Future<void> _pickFiles(BuildContext context) async {
     final nav = Navigator.of(context);
 
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3', 'flac', 'm4a', 'ogg', 'wav'],
       allowMultiple: true,
@@ -156,7 +172,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       final paths = result.files.map((f) => f.path!).toList();
       nav.push(
         MaterialPageRoute(
-          builder: (_) => ImportScreen(filePaths: paths),
+          builder: (_) => ImportReviewScreen(filePaths: paths),
         ),
       );
     }
@@ -186,7 +202,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       return;
     }
 
-    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    final selectedDirectory = await FilePicker.platform.getDirectoryPath();
 
     if (selectedDirectory != null) {
       final files = <String>[];
@@ -202,13 +218,13 @@ class _LibraryScreenState extends State<LibraryScreen>
           }
         }
       } catch (e) {
-        print('ERREUR LECTURE DOSSIER: $e');
+        print('ERREUR LECTURE DOSSIER: \$e');
       }
 
       if (files.isNotEmpty) {
         nav.push(
           MaterialPageRoute(
-            builder: (_) => ImportScreen(filePaths: files),
+            builder: (_) => ImportReviewScreen(filePaths: files),
           ),
         );
       } else {
@@ -398,5 +414,53 @@ class _LibraryScreenState extends State<LibraryScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _pickSpotifyFile(BuildContext context) async {
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'csv'],
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      final path = result.files.first.path!;
+      final ext = p.extension(path).toLowerCase();
+
+      List<Map<String, String>> spotifyTracks;
+      try {
+        if (ext == '.json') {
+          spotifyTracks = SpotifyImportService.parseJson(path);
+        } else {
+          spotifyTracks = SpotifyImportService.parseCsv(path);
+        }
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Erreur de lecture du fichier: \$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (spotifyTracks.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Aucun titre trouvé dans le fichier'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => SpotifyMatchScreen(spotifyTracks: spotifyTracks),
+        ),
+      );
+    }
   }
 }

@@ -156,7 +156,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'suspicious titre(s) ont un artiste suspect (identique à l album ou nom de dossier). Vérifiez avant d importer.',
+              '$suspicious titre(s) ont un artiste suspect (identique à l\'album ou nom de dossier). Vérifiez avant d\'importer.',
               style: const TextStyle(color: Colors.orange, fontSize: 12),
             ),
           ),
