@@ -1,17 +1,17 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 class Track {
   final String id;
-  final String title;
-  final String artist;
-  final String album;
-  final Duration duration;
-  final String? filePath;
-  final String? coverPath; // ← chemin fichier, pas Uint8List
+  String title;
+  String artist;
+  String album;
+  Duration duration;
+  String? filePath;
+  String? coverPath;
   bool isLiked;
   int playCount;
   DateTime? lastPlayed;
+  DateTime? dateAdded;
 
   Track({
     required this.id,
@@ -24,6 +24,7 @@ class Track {
     this.isLiked = false,
     this.playCount = 0,
     this.lastPlayed,
+    this.dateAdded,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,12 +32,13 @@ class Track {
         'title': title,
         'artist': artist,
         'album': album,
-        'duration': duration.inSeconds,
+        'duration': duration.inMilliseconds,
         'filePath': filePath,
         'coverPath': coverPath,
         'isLiked': isLiked,
         'playCount': playCount,
         'lastPlayed': lastPlayed?.toIso8601String(),
+        'dateAdded': dateAdded?.toIso8601String(),
       };
 
   factory Track.fromJson(Map<String, dynamic> json) => Track(
@@ -44,13 +46,16 @@ class Track {
         title: json['title'],
         artist: json['artist'],
         album: json['album'],
-        duration: Duration(seconds: json['duration']),
+        duration: Duration(milliseconds: json['duration']),
         filePath: json['filePath'],
         coverPath: json['coverPath'],
         isLiked: json['isLiked'] ?? false,
         playCount: json['playCount'] ?? 0,
         lastPlayed: json['lastPlayed'] != null
             ? DateTime.parse(json['lastPlayed'])
+            : null,
+        dateAdded: json['dateAdded'] != null
+            ? DateTime.parse(json['dateAdded'])
             : null,
       );
 }

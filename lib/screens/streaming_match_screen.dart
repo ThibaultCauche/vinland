@@ -1,21 +1,22 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 
-class SpotifyMatchScreen extends StatefulWidget {
-  final List<Map<String, String>> spotifyTracks;
+class StreamingMatchScreen extends StatefulWidget {
+  final List<Map<String, String>> tracks;
 
-  const SpotifyMatchScreen({super.key, required this.spotifyTracks});
+  const StreamingMatchScreen({super.key, required this.tracks});
 
   @override
-  State<SpotifyMatchScreen> createState() => _SpotifyMatchScreenState();
+  State<StreamingMatchScreen> createState() => _StreamingMatchScreenState();
 }
 
-class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
+class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   List<_MatchResult> _matches = [];
   bool _isLoading = true;
+  bool _showMissingOnly = false;
 
   @override
   void initState() {
@@ -28,18 +29,39 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
     final localTracks = state.allTracks;
     final results = <_MatchResult>[];
 
-    for (final spotify in widget.spotifyTracks) {
-      final spotifyTitle = _normalize(spotify['title'] ?? '');
-      final spotifyArtist = _normalize(spotify['artist'] ?? '');
+    for (final trackData in widget.tracks) {
+      final title = _normalize(trackData['title'] ?? '');
+      final artist = _normalize(trackData['artist'] ?? '');
 
       Track? bestMatch;
       double bestScore = 0;
 
       for (final local in localTracks) {
-        final titleScore = _similarity(spotifyTitle, _normalize(local.title));
-        final artistScore =
-            _similarity(spotifyArtist, _normalize(local.artist));
-        final score = (titleScore * 0.7) + (artistScore * 0.3);
+        final localTitle = _normalize(local.title);
+        final localArtist = _normalize(local.artist);
+
+        // Plusieurs strategies de matching
+        final exactTitle = title == localTitle;
+        final exactArtist = artist == localArtist;
+        final titleContains =
+            localTitle.contains(title) || title.contains(localTitle);
+        final artistContains =
+            localArtist.contains(artist) || artist.contains(localArtist);
+
+        double score = 0;
+        if (exactTitle && exactArtist) {
+          score = 1.0;
+        } else if (exactTitle && (artist.isEmpty || artistContains)) {
+          score = 0.95;
+        } else if (titleContains && (artist.isEmpty || artistContains)) {
+          score = 0.85;
+        } else {
+          // Distance de Levenshtein pour les fautes de frappe
+          final titleSim = _similarity(title, localTitle);
+          final artistSim =
+              artist.isEmpty ? 1.0 : _similarity(artist, localArtist);
+          score = (titleSim * 0.7) + (artistSim * 0.3);
+        }
 
         if (score > bestScore && score > 0.6) {
           bestScore = score;
@@ -48,9 +70,10 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
       }
 
       results.add(_MatchResult(
-        spotifyTitle: spotify['title']!,
-        spotifyArtist: spotify['artist']!,
-        spotifyAlbum: spotify['album']!,
+        title: trackData['title']!,
+        artist: trackData['artist']!,
+        album: trackData['album']!,
+        dateAdded: _parseDate(trackData['dateAdded']),
         matchedTrack: bestMatch,
         confidence: bestScore,
       ));
@@ -60,6 +83,15 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
       _matches = results;
       _isLoading = false;
     });
+  }
+
+  DateTime? _parseDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    try {
+      return DateTime.parse(dateStr);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _normalize(String text) {
@@ -102,6 +134,13 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
     return matrix[a.length][b.length];
   }
 
+  List<_MatchResult> get _filteredMatches {
+    if (_showMissingOnly) {
+      return _matches.where((m) => m.matchedTrack == null).toList();
+    }
+    return _matches;
+  }
+
   @override
   Widget build(BuildContext context) {
     final matched = _matches.where((m) => m.matchedTrack != null).length;
@@ -112,7 +151,7 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF121212),
         elevation: 0,
-        title: const Text('Matching Spotify',
+        title: const Text('Correspondances',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -120,7 +159,7 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
             TextButton(
               onPressed: _likeMatched,
               child: Text(
-                'Liker $matched titres',
+                'Liker $matched',
                 style: const TextStyle(
                   color: Color(0xFF1DB954),
                   fontWeight: FontWeight.bold,
@@ -146,12 +185,22 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
           : Column(
               children: [
                 _buildSummary(matched, unmatched),
+                _buildFilterBar(matched, unmatched),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: _matches.length,
-                    itemBuilder: (context, index) =>
-                        _buildMatchTile(_matches[index]),
-                  ),
+                  child: _filteredMatches.isEmpty
+                      ? Center(
+                          child: Text(
+                            _showMissingOnly
+                                ? 'Aucun titre manquant'
+                                : 'Aucun resultat',
+                            style: const TextStyle(color: Colors.white38),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _filteredMatches.length,
+                          itemBuilder: (context, index) =>
+                              _buildMatchTile(_filteredMatches[index]),
+                        ),
                 ),
               ],
             ),
@@ -166,23 +215,94 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
         color: const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(12),
       ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildStat(
+                  Icons.check_circle,
+                  const Color(0xFF1DB954),
+                  'Correspondances',
+                  matched,
+                ),
+              ),
+              Container(width: 1, height: 40, color: const Color(0xFF2A2A2A)),
+              Expanded(
+                child: _buildStat(
+                  Icons.help_outline,
+                  Colors.orange,
+                  'Non trouves',
+                  unmatched,
+                ),
+              ),
+            ],
+          ),
+          if (unmatched > 0) ...[
+            const SizedBox(height: 12),
+            Text(
+              '$unmatched titre(s) non trouve(s) dans votre bibliotheque locale. '
+              'Importez ces fichiers pour les liker.',
+              style: const TextStyle(color: Colors.white38, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar(int matched, int unmatched) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Expanded(
-            child: _buildStat(
-              Icons.check_circle,
-              const Color(0xFF1DB954),
-              'Correspondances',
-              matched,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _showMissingOnly = false),
+              icon: Icon(
+                Icons.list,
+                color: !_showMissingOnly
+                    ? const Color(0xFF1DB954)
+                    : Colors.white38,
+                size: 18,
+              ),
+              label: Text(
+                'Tous (${_matches.length})',
+                style: TextStyle(
+                  color: !_showMissingOnly
+                      ? const Color(0xFF1DB954)
+                      : Colors.white38,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ),
-          Container(width: 1, height: 40, color: const Color(0xFF2A2A2A)),
           Expanded(
-            child: _buildStat(
-              Icons.help_outline,
-              Colors.orange,
-              'Non trouvés',
-              unmatched,
+            child: TextButton.icon(
+              onPressed: unmatched > 0
+                  ? () => setState(() => _showMissingOnly = true)
+                  : null,
+              icon: Icon(
+                Icons.warning_amber,
+                color: _showMissingOnly
+                    ? Colors.orange
+                    : unmatched > 0
+                        ? Colors.white54
+                        : Colors.white24,
+                size: 18,
+              ),
+              label: Text(
+                'Manquants ($unmatched)',
+                style: TextStyle(
+                  color: _showMissingOnly
+                      ? Colors.orange
+                      : unmatched > 0
+                          ? Colors.white54
+                          : Colors.white24,
+                  fontSize: 13,
+                ),
+              ),
             ),
           ),
         ],
@@ -214,6 +334,9 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
   Widget _buildMatchTile(_MatchResult match) {
     final isMatched = match.matchedTrack != null;
     final confidence = (match.confidence * 100).toInt();
+    final dateStr = match.dateAdded != null
+        ? DateFormat('dd/MM/yyyy').format(match.dateAdded!)
+        : null;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -248,7 +371,7 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  match.spotifyTitle,
+                  match.title,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -259,11 +382,21 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${match.spotifyArtist} • ${match.spotifyAlbum}',
+                  '${match.artist} • ${match.album}',
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (dateStr != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Ajoute le $dateStr',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
                 if (isMatched) ...[
                   const SizedBox(height: 6),
                   Container(
@@ -298,15 +431,24 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
 
     for (final match in _matches) {
       if (match.matchedTrack != null && !match.matchedTrack!.isLiked) {
+        if (match.dateAdded != null) {
+          final index =
+              state.allTracks.indexWhere((t) => t.id == match.matchedTrack!.id);
+          if (index != -1) {
+            state.allTracks[index].dateAdded = match.dateAdded;
+          }
+        }
         state.toggleLike(match.matchedTrack!.id);
         liked++;
       }
     }
 
+    state.musicService.saveToCache();
+
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$liked titre(s) liké(s) depuis Spotify'),
+        content: Text('$liked titre(s) like(s)'),
         backgroundColor: const Color(0xFF1DB954),
       ),
     );
@@ -314,16 +456,18 @@ class _SpotifyMatchScreenState extends State<SpotifyMatchScreen> {
 }
 
 class _MatchResult {
-  final String spotifyTitle;
-  final String spotifyArtist;
-  final String spotifyAlbum;
+  final String title;
+  final String artist;
+  final String album;
+  final DateTime? dateAdded;
   final Track? matchedTrack;
   final double confidence;
 
   _MatchResult({
-    required this.spotifyTitle,
-    required this.spotifyArtist,
-    required this.spotifyAlbum,
+    required this.title,
+    required this.artist,
+    required this.album,
+    this.dateAdded,
     this.matchedTrack,
     required this.confidence,
   });

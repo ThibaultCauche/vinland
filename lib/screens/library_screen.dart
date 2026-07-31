@@ -5,11 +5,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/app_state.dart';
 import '../widgets/track_tile.dart';
-import 'import_screen.dart';
 import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
-import 'spotify_match_screen.dart';
-import '../services/spotify_import_service.dart';
+import 'streaming_import_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -46,7 +44,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 child: Row(
                   children: [
                     const Text(
-                      'Bibliothèque',
+                      'Bibliotheque',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -72,7 +70,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 indicatorColor: Colors.white,
                 indicatorWeight: 2,
                 tabs: const [
-                  Tab(text: 'Titres likés'),
+                  Tab(text: 'Titres likes'),
                   Tab(text: 'Albums'),
                   Tab(text: 'Playlists'),
                 ],
@@ -132,7 +130,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 leading: const Icon(Icons.audio_file, color: Color(0xFF1DB954)),
                 title: const Text('Fichiers individuels',
                     style: TextStyle(color: Colors.white)),
-                subtitle: const Text('Sélectionner des fichiers un par un',
+                subtitle: const Text('Selectionner des fichiers un par un',
                     style: TextStyle(color: Colors.white54)),
                 onTap: () {
                   Navigator.pop(context);
@@ -142,14 +140,18 @@ class _LibraryScreenState extends State<LibraryScreen>
               ListTile(
                 leading:
                     const Icon(Icons.cloud_download, color: Color(0xFF1DB954)),
-                title: const Text('Depuis Spotify',
+                title: const Text('Depuis un service de streaming',
                     style: TextStyle(color: Colors.white)),
                 subtitle: const Text(
-                    'Importer une liste de titres likés (JSON/CSV)',
+                    'Spotify, YouTube Music, Deezer, Tidal, Apple Music...',
                     style: TextStyle(color: Colors.white54)),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickSpotifyFile(context);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const StreamingImportScreen(),
+                    ),
+                  );
                 },
               ),
             ],
@@ -195,7 +197,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (!status.isGranted) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Permission de stockage refusée'),
+          content: Text('Permission de stockage refusee'),
           backgroundColor: Colors.red,
         ),
       );
@@ -218,7 +220,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           }
         }
       } catch (e) {
-        print('ERREUR LECTURE DOSSIER: \$e');
+        print('ERREUR LECTURE DOSSIER: $e');
       }
 
       if (files.isNotEmpty) {
@@ -230,7 +232,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       } else {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Aucun fichier musical trouvé dans ce dossier'),
+            content: Text('Aucun fichier musical trouve dans ce dossier'),
             backgroundColor: Colors.red,
           ),
         );
@@ -238,18 +240,9 @@ class _LibraryScreenState extends State<LibraryScreen>
     }
   }
 
-  void _navigateToImport(BuildContext context, List<String> paths) {
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ImportScreen(filePaths: paths),
-      ),
-    );
-  }
-
   Widget _buildLikedTracks(AppState state) {
     if (state.likedTracks.isEmpty) {
-      return _buildEmpty('Aucun titre liké');
+      return _buildEmpty('Aucun titre like');
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100),
@@ -286,7 +279,6 @@ class _LibraryScreenState extends State<LibraryScreen>
         return GestureDetector(
           onTap: () {
             final appState = context.read<AppState>();
-
             appState.pushOverlay(
               Scaffold(
                 backgroundColor: const Color(0xFF121212),
@@ -392,7 +384,8 @@ class _LibraryScreenState extends State<LibraryScreen>
             hintText: 'Nom de la playlist',
             hintStyle: TextStyle(color: Colors.white38),
             border: UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFF2A2A2A))),
+              borderSide: BorderSide(color: Color(0xFF2A2A2A)),
+            ),
           ),
         ),
         actions: [
@@ -409,58 +402,10 @@ class _LibraryScreenState extends State<LibraryScreen>
               }
             },
             child:
-                const Text('Créer', style: TextStyle(color: Color(0xFF1DB954))),
+                const Text('Creer', style: TextStyle(color: Color(0xFF1DB954))),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _pickSpotifyFile(BuildContext context) async {
-    final nav = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json', 'csv'],
-    );
-
-    if (result != null && result.files.isNotEmpty) {
-      final path = result.files.first.path!;
-      final ext = p.extension(path).toLowerCase();
-
-      List<Map<String, String>> spotifyTracks;
-      try {
-        if (ext == '.json') {
-          spotifyTracks = SpotifyImportService.parseJson(path);
-        } else {
-          spotifyTracks = SpotifyImportService.parseCsv(path);
-        }
-      } catch (e) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Erreur de lecture du fichier: \$e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      if (spotifyTracks.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Aucun titre trouvé dans le fichier'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      nav.push(
-        MaterialPageRoute(
-          builder: (_) => SpotifyMatchScreen(spotifyTracks: spotifyTracks),
-        ),
-      );
-    }
   }
 }
