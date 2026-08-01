@@ -77,11 +77,10 @@ class AppShell extends StatelessWidget {
           const FriendsScreen(),
         ];
 
-        // ← On récupère juste le padding système (gesture nav bar)
+        // ← La bottom nav fait exactement kBottomNavigationBarHeight + padding
+        // car on a mis le padding dans le Container de BottomNav
         final bottomSafePadding = MediaQuery.of(context).padding.bottom;
-
-        // Hauteur de la bottom nav Flutter (56px) + padding système
-        final totalNavHeight = kBottomNavigationBarHeight + bottomSafePadding;
+        final navHeight = kBottomNavigationBarHeight + bottomSafePadding;
 
         final bool showMiniPlayer =
             state.currentTrack != null && state.currentOverlay == null;
@@ -92,7 +91,6 @@ class AppShell extends StatelessWidget {
           canPop: canPop,
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) return;
-
             if (state.overlayStack.isNotEmpty) {
               state.popOverlay();
             } else if (state.currentTab != 0) {
@@ -100,25 +98,22 @@ class AppShell extends StatelessWidget {
             }
           },
           child: Scaffold(
-            // ← Pas de resizeToAvoidBottomInset, on gère nous-mêmes
             resizeToAvoidBottomInset: false,
             body: Stack(
               children: [
-                // ← Le contenu principal prend TOUT l'écran, y compris sous la nav
                 Positioned.fill(
                   child: state.currentOverlay ?? screens[state.currentTab],
                 ),
-                // ← Mini-player collé AU-DESSUS de la bottom nav
+                // ← Mini-player collé DIRECTEMENT au-dessus de la nav
                 if (showMiniPlayer)
                   Positioned(
-                    bottom: totalNavHeight,
+                    bottom: navHeight,
                     left: 0,
                     right: 0,
                     child: const MiniPlayer(),
                   ),
               ],
             ),
-            // ← Bottom nav sans container extérieur, on gère le padding dans le widget
             bottomNavigationBar: const BottomNav(),
           ),
         );
