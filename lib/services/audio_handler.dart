@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   AudioPlayer get player => _player;
+
+  final _customActionController = StreamController<String>.broadcast();
+  Stream<String> get customActionStream => _customActionController.stream;
 
   VinlandAudioHandler(this._player) {
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
@@ -52,10 +56,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
-    // Tu peux écouter cet event depuis AppState si besoin
-    if (name == 'like') {
-      // Propager l'info vers AppState via un callback ou un stream si tu veux
-    }
+    _customActionController.add(name);
   }
 
   Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
@@ -84,13 +85,13 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   PlaybackState _transformEvent(PlaybackEvent event) {
     return PlaybackState(
       controls: [
-        MediaControl.skipToPrevious,
         MediaControl(
-          androidIcon: 'drawable/ic_notification_like',
-          label: 'Like',
+          androidIcon: 'drawable/ic_notification_add',
+          label: 'Ajouter aux favoris',
           action: MediaAction.custom,
-          customAction: CustomMediaAction(name: 'like'),
+          customAction: CustomMediaAction(name: 'add_to_likes'),
         ),
+        MediaControl.skipToPrevious,
         if (_player.playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
       ],
@@ -99,7 +100,11 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekForward,
         MediaAction.seekBackward,
       },
-      androidCompactActionIndices: const [0, 2, 3],
+      androidCompactActionIndices: const [
+        1,
+        2,
+        3
+      ], // prev, play, next en compact
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,
         ProcessingState.loading: AudioProcessingState.loading,

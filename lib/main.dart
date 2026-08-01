@@ -22,6 +22,7 @@ Future<void> main() async {
     systemNavigationBarIconBrightness: Brightness.light,
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
+    systemNavigationBarContrastEnforced: false,
   ));
 
   final player = AudioPlayer();
@@ -93,8 +94,7 @@ class AppShell extends StatelessWidget {
             ],
           ),
           bottomNavigationBar: SafeArea(
-            bottom:
-                false, // ← garde le padding système, le widget passe sous les boutons
+            bottom: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -104,7 +104,21 @@ class AppShell extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
                     child: MiniPlayer(),
                   ),
-                const BottomNav(),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.0),
+                        Colors.black.withOpacity(0.85),
+                        Colors.black.withOpacity(1.0),
+                      ],
+                      stops: const [0.0, 0.3, 1.0],
+                    ),
+                  ),
+                  child: const BottomNav(),
+                ),
               ],
             ),
           ),

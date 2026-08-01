@@ -58,6 +58,16 @@ class AppState extends ChangeNotifier {
 
   AppState({required VinlandAudioHandler audioHandler})
       : _audioHandler = audioHandler {
+    _audioHandler.customActionStream.listen((action) {
+      if (action == 'add_to_likes' && currentTrack != null) {
+        toggleLike(currentTrack!.id);
+      }
+    });
+
+    _audioHandler.player.positionStream.listen((pos) {
+      position = pos;
+      notifyListeners();
+    });
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
       notifyListeners();
