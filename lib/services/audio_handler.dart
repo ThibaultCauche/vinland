@@ -6,15 +6,15 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   AudioPlayer get player => _player;
 
   VinlandAudioHandler(this._player) {
-    // Propagation de l'état playback vers la notification système
+    // Écoute les changements de playbackEvent et les propage vers la notification
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
 
-    // Met à jour mediaItem quand la track change (next/previous/auto)
+    // Quand la track change (next/previous/auto), met à jour mediaItem
     _player.currentIndexStream.listen((index) {
       _updateMediaItemFromIndex(index);
     });
 
-    // Met à jour la duration quand elle est connue
+    // Quand la duration est connue, met à jour mediaItem avec la vraie durée
     _player.durationStream.listen((duration) {
       final index = _player.currentIndex;
       if (index != null && index >= 0 && index < queue.value.length) {
@@ -61,13 +61,15 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Charge une liste de tracks et démarre la lecture
   Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
+    // 1. Met à jour la queue AVANT tout
     queue.add(items);
 
-    // Initialise immédiatement le mediaItem pour que la notification apparaisse
+    // 2. Initialise immédiatement le mediaItem pour la notification
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
     }
 
+    // 3. Prépare les sources audio
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
@@ -81,6 +83,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     }).toList();
 
+    // 4. Stoppe l'ancienne source proprement (évite les fuites)
+    try {
+      await _player.stop();
+    } catch (_) {}
+
+    // 5. Charge la nouvelle source et joue
     await _player.setAudioSource(
       ConcatenatingAudioSource(children: sources),
       initialIndex: startIndex,

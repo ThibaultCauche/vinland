@@ -16,10 +16,11 @@ class MiniPlayer extends StatelessWidget {
         return GestureDetector(
           onTap: () => state.pushOverlay(const PlayerScreen()),
           child: Container(
-            height: 64,
+            height: 56,
+            margin: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
               color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.3),
@@ -28,51 +29,100 @@ class MiniPlayer extends StatelessWidget {
                 ),
               ],
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const SizedBox(width: 8),
-                _MiniCover(coverPath: state.currentTrack!.coverPath),
-                const SizedBox(width: 12),
+                // Contenu principal
                 Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Row(
                     children: [
-                      Text(
-                        state.currentTrack!.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                      const SizedBox(width: 8),
+                      _MiniCover(coverPath: state.currentTrack!.coverPath),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              state.currentTrack!.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              state.currentTrack!.artist,
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 11),
+                            ),
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        state.currentTrack!.artist,
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 11),
+                      IconButton(
+                        icon: Icon(
+                          state.isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                        onPressed: () => state.togglePlayPause(),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next,
+                            color: Colors.white, size: 28),
+                        onPressed: () => state.nextTrack(),
+                      ),
+                      const SizedBox(width: 8),
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: Icon(
-                    state.isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                  ),
-                  onPressed: () => state.togglePlayPause(),
+                // Barre de progression fine (style Spotify)
+                _MiniProgressBar(
+                  position: state.position,
+                  duration: state.duration,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.skip_next, color: Colors.white),
-                  onPressed: () => state.nextTrack(),
-                ),
-                const SizedBox(width: 8),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _MiniProgressBar extends StatelessWidget {
+  final Duration position;
+  final Duration duration;
+
+  const _MiniProgressBar({required this.position, required this.duration});
+
+  @override
+  Widget build(BuildContext context) {
+    final double progress = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+
+    return Container(
+      height: 2,
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(1),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: progress.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1DB954), // Vert Spotify
+            borderRadius: BorderRadius.circular(1),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -114,8 +164,8 @@ class _MiniCoverState extends State<_MiniCover> {
   Widget build(BuildContext context) {
     if (_exists == true) {
       return Container(
-        width: 48,
-        height: 48,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
@@ -126,13 +176,13 @@ class _MiniCoverState extends State<_MiniCover> {
       );
     }
     return Container(
-      width: 48,
-      height: 48,
+      width: 40,
+      height: 40,
       decoration: BoxDecoration(
         color: const Color(0xFF3E3E3E),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: const Icon(Icons.music_note, color: Colors.white54),
+      child: const Icon(Icons.music_note, color: Colors.white54, size: 20),
     );
   }
 }
