@@ -16,23 +16,21 @@ class MiniPlayer extends StatelessWidget {
         return GestureDetector(
           onTap: () => state.pushOverlay(const PlayerScreen()),
           child: Container(
-            height: 56,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
+            height: 64,
             decoration: BoxDecoration(
               color: const Color(0xFF1E1E1E),
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Contenu principal
                 Expanded(
                   child: Row(
                     children: [
@@ -57,10 +55,27 @@ class MiniPlayer extends StatelessWidget {
                             Text(
                               state.currentTrack!.artist,
                               style: const TextStyle(
-                                  color: Colors.white54, fontSize: 11),
+                                color: Colors.white54,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          state.isCurrentTrackLiked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          color: state.isCurrentTrackLiked
+                              ? const Color(0xFF1DB954)
+                              : Colors.white,
+                          size: 22,
+                        ),
+                        onPressed: () =>
+                            state.toggleLike(state.currentTrack!.id),
                       ),
                       IconButton(
                         icon: Icon(
@@ -75,11 +90,10 @@ class MiniPlayer extends StatelessWidget {
                             color: Colors.white, size: 28),
                         onPressed: () => state.nextTrack(),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
                     ],
                   ),
                 ),
-                // Barre de progression fine (style Spotify)
                 _MiniProgressBar(
                   position: state.position,
                   duration: state.duration,
@@ -96,7 +110,6 @@ class MiniPlayer extends StatelessWidget {
 class _MiniProgressBar extends StatelessWidget {
   final Duration position;
   final Duration duration;
-
   const _MiniProgressBar({required this.position, required this.duration});
 
   @override
@@ -118,7 +131,7 @@ class _MiniProgressBar extends StatelessWidget {
         widthFactor: progress.clamp(0.0, 1.0),
         child: Container(
           decoration: BoxDecoration(
-            color: const Color(0xFF1DB954), // Vert Spotify
+            color: const Color(0xFF1DB954),
             borderRadius: BorderRadius.circular(1),
           ),
         ),

@@ -15,6 +15,7 @@ class HomeScreen extends StatelessWidget {
     return Consumer<AppState>(
       builder: (context, state, child) {
         return SafeArea(
+          bottom: false,
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(

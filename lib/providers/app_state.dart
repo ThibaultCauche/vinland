@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import '../models/track.dart';
 import '../services/music_service.dart';
@@ -26,6 +25,9 @@ class AppState extends ChangeNotifier {
   int currentTab = 0;
   String searchQuery = '';
   bool showSearchResults = false;
+  bool get isCurrentTrackLiked =>
+      currentTrack != null &&
+      _music.likedTracks.any((t) => t.id == currentTrack!.id);
 
   // Missing tracks from streaming import
   List<Map<String, String>> _missingTracks = [];

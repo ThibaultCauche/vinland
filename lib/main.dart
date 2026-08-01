@@ -1,30 +1,28 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
-import 'package:audio_service/audio_service.dart';
-import 'package:metadata_god/metadata_god.dart';
-import 'services/audio_handler.dart';
 import 'providers/app_state.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/friends_screen.dart';
+import 'services/audio_handler.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
-import 'package:just_audio/just_audio.dart';
+import 'widgets/player_screen.dart'; // ← AJOUT
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MetadataGod.initialize();
 
-  // ← Rend la barre de navigation Android transparente
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.light,
-      statusBarColor: Colors.transparent,
-    ),
-  );
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.light,
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+  ));
 
   final player = AudioPlayer();
   final audioHandler = await AudioService.init(
@@ -33,7 +31,8 @@ void main() async {
       androidNotificationChannelId: 'com.vinland.audio',
       androidNotificationChannelName: 'Vinland',
       androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      androidNotificationIcon: 'drawable/ic_notification',
+      androidShowNotificationBadge: true,
     ),
   );
 
@@ -46,15 +45,23 @@ class VinlandApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AppState(audioHandler: audioHandler)..initialize(),
-      child: MaterialApp(
-        title: 'Vinland',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: const Color(0xFF121212),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+      ),
+      child: ChangeNotifierProvider(
+        create: (_) => AppState(audioHandler: audioHandler)..initialize(),
+        child: MaterialApp(
+          title: 'Vinland',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: const Color(0xFF121212),
+          ),
+          home: const AppShell(),
         ),
-        home: const AppShell(),
       ),
     );
   }
@@ -67,9 +74,7 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, state, child) {
-        if (!state.isLoggedIn) {
-          return const LoginScreen();
-        }
+        if (!state.isLoggedIn) return const LoginScreen();
 
         final screens = [
           const HomeScreen(),
@@ -77,44 +82,31 @@ class AppShell extends StatelessWidget {
           const FriendsScreen(),
         ];
 
-        // ← La bottom nav fait exactement kBottomNavigationBarHeight + padding
-        // car on a mis le padding dans le Container de BottomNav
-        final bottomSafePadding = MediaQuery.of(context).padding.bottom;
-        final navHeight = kBottomNavigationBarHeight + bottomSafePadding;
-
-        final bool showMiniPlayer =
-            state.currentTrack != null && state.currentOverlay == null;
-
-        final canPop = state.overlayStack.isEmpty && state.currentTab == 0;
-
-        return PopScope(
-          canPop: canPop,
-          onPopInvokedWithResult: (didPop, result) {
-            if (didPop) return;
-            if (state.overlayStack.isNotEmpty) {
-              state.popOverlay();
-            } else if (state.currentTab != 0) {
-              state.setTab(0);
-            }
-          },
-          child: Scaffold(
-            resizeToAvoidBottomInset: false,
-            body: Stack(
+        return Scaffold(
+          extendBody: true,
+          extendBodyBehindAppBar: true,
+          body: Stack(
+            children: [
+              screens[state.currentTab],
+              if (state.currentOverlay != null)
+                Positioned.fill(child: state.currentOverlay!),
+            ],
+          ),
+          bottomNavigationBar: SafeArea(
+            bottom:
+                false, // ← garde le padding système, le widget passe sous les boutons
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Positioned.fill(
-                  child: state.currentOverlay ?? screens[state.currentTab],
-                ),
-                // ← Mini-player collé DIRECTEMENT au-dessus de la nav
-                if (showMiniPlayer)
-                  Positioned(
-                    bottom: navHeight,
-                    left: 0,
-                    right: 0,
-                    child: const MiniPlayer(),
+                if (state.currentTrack != null &&
+                    state.currentOverlay is! PlayerScreen)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: MiniPlayer(),
                   ),
+                const BottomNav(),
               ],
             ),
-            bottomNavigationBar: const BottomNav(),
           ),
         );
       },

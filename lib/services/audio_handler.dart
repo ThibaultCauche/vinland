@@ -6,15 +6,10 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   AudioPlayer get player => _player;
 
   VinlandAudioHandler(this._player) {
-    // Écoute les changements de playbackEvent et les propage vers la notification
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
-
-    // Quand la track change (next/previous/auto), met à jour mediaItem
     _player.currentIndexStream.listen((index) {
       _updateMediaItemFromIndex(index);
     });
-
-    // Quand la duration est connue, met à jour mediaItem avec la vraie durée
     _player.durationStream.listen((duration) {
       final index = _player.currentIndex;
       if (index != null && index >= 0 && index < queue.value.length) {
@@ -40,16 +35,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() => _player.play();
-
   @override
   Future<void> pause() => _player.pause();
-
   @override
   Future<void> seek(Duration position) => _player.seek(position);
-
   @override
   Future<void> skipToNext() => _player.seekToNext();
-
   @override
   Future<void> skipToPrevious() => _player.seekToPrevious();
 
@@ -59,36 +50,30 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     await super.stop();
   }
 
-  /// Charge une liste de tracks et démarre la lecture
-  Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
-    // 1. Met à jour la queue AVANT tout
-    queue.add(items);
+  @override
+  Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
+    // Tu peux écouter cet event depuis AppState si besoin
+    if (name == 'like') {
+      // Propager l'info vers AppState via un callback ou un stream si tu veux
+    }
+  }
 
-    // 2. Initialise immédiatement le mediaItem pour la notification
+  Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
+    queue.add(items);
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
     }
-
-    // 3. Prépare les sources audio
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
-
-      if (isAsset) {
-        return AudioSource.asset(item.id);
-      } else if (isRemote) {
-        return AudioSource.uri(Uri.parse(item.id));
-      } else {
-        return AudioSource.file(item.id);
-      }
+      if (isAsset) return AudioSource.asset(item.id);
+      if (isRemote) return AudioSource.uri(Uri.parse(item.id));
+      return AudioSource.file(item.id);
     }).toList();
 
-    // 4. Stoppe l'ancienne source proprement (évite les fuites)
     try {
       await _player.stop();
     } catch (_) {}
-
-    // 5. Charge la nouvelle source et joue
     await _player.setAudioSource(
       ConcatenatingAudioSource(children: sources),
       initialIndex: startIndex,
@@ -100,6 +85,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     return PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
+        MediaControl(
+          androidIcon: 'drawable/ic_notification_like',
+          label: 'Like',
+          action: MediaAction.custom,
+          customAction: CustomMediaAction(name: 'like'),
+        ),
         if (_player.playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
       ],
@@ -108,7 +99,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekForward,
         MediaAction.seekBackward,
       },
-      androidCompactActionIndices: const [0, 1, 2],
+      androidCompactActionIndices: const [0, 2, 3],
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,
         ProcessingState.loading: AudioProcessingState.loading,
