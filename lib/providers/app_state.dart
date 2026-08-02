@@ -7,6 +7,8 @@ import '../services/audio_handler.dart';
 import '../models/album.dart';
 import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
+import 'dart:io';
+import 'package:palette_generator/palette_generator.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -20,6 +22,7 @@ class AppState extends ChangeNotifier {
   Duration duration = Duration.zero;
   List<Track> queue = [];
   int currentIndex = -1;
+  int _lastColorRequest = 0;
 
   // UI state
   int currentTab = 0;
@@ -49,6 +52,7 @@ class AppState extends ChangeNotifier {
   List<Album> get albums => _music.albums;
   MusicService get musicService => _music;
   bool get isLocalMode => true;
+  Color? dominantColor;
 
   // Overlay navigation
   final List<Widget> _overlayStack = [];
@@ -64,10 +68,6 @@ class AppState extends ChangeNotifier {
       }
     });
 
-    _audioHandler.player.positionStream.listen((pos) {
-      position = pos;
-      notifyListeners();
-    });
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
       notifyListeners();
@@ -192,9 +192,11 @@ class AppState extends ChangeNotifier {
 
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
-
     await _music.recordPlay(track.id);
     notifyListeners();
+
+    // Extraction couleur en background, non-bloquant
+    _updateDominantColor(track.coverPath);
   }
 
   void togglePlayPause() {
@@ -213,6 +215,7 @@ class AppState extends ChangeNotifier {
     if (index >= 0 && index < queue.length) {
       currentIndex = index;
       currentTrack = queue[index];
+      _updateDominantColor(currentTrack!.coverPath);
       _music.recordPlay(currentTrack!.id);
       notifyListeners();
     }
@@ -224,6 +227,7 @@ class AppState extends ChangeNotifier {
     if (index >= 0 && index < queue.length) {
       currentIndex = index;
       currentTrack = queue[index];
+      _updateDominantColor(currentTrack!.coverPath);
       _music.recordPlay(currentTrack!.id);
       notifyListeners();
     }
@@ -292,5 +296,28 @@ class AppState extends ChangeNotifier {
   void clearMissingTracks() {
     _missingTracks = [];
     notifyListeners();
+  }
+
+  Future<Color?> _extractDominantColor(String? coverPath) async {
+    if (coverPath == null) return null;
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        FileImage(File(coverPath)),
+        size: const Size(100, 100),
+      );
+      return palette.dominantColor?.color;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _updateDominantColor(String? coverPath) {
+    final requestId = ++_lastColorRequest;
+    _extractDominantColor(coverPath).then((color) {
+      if (requestId == _lastColorRequest) {
+        dominantColor = color;
+        notifyListeners();
+      }
+    });
   }
 }

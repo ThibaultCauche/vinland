@@ -14,9 +14,11 @@ class PlayerScreen extends StatelessWidget {
         if (track == null) return const SizedBox.shrink();
 
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: Colors.transparent,
+            backgroundColor: state.dominantColor != null
+                ? Color.lerp(state.dominantColor!, Colors.black, 0.4)
+                : const Color(0xFF121212),
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.expand_more, color: Colors.white),
@@ -29,129 +31,144 @@ class PlayerScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  const Spacer(flex: 2),
-                  _PlayerCover(coverPath: track.coverPath),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              track.artist,
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          track.isLiked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color: track.isLiked
-                              ? const Color(0xFF1DB954)
-                              : Colors.white,
-                        ),
-                        onPressed: () => state.toggleLike(track.id),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: Colors.white,
-                      inactiveTrackColor: Colors.white24,
-                      thumbColor: Colors.white,
-                      trackHeight: 4,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    ),
-                    child: Slider(
-                      value: state.position.inSeconds.toDouble(),
-                      max: state.duration.inSeconds.toDouble().clamp(1, 99999),
-                      onChanged: (value) {
-                        state.seek(Duration(seconds: value.toInt()));
-                      },
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        _formatDuration(state.position),
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
-                      ),
-                      Text(
-                        _formatDuration(state.duration),
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.shuffle,
-                            color: Colors.white54, size: 28),
-                        onPressed: () {},
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_previous,
-                            color: Colors.white, size: 36),
-                        onPressed: () => state.previousTrack(),
-                      ),
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: Icon(
-                            state.isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.black,
-                            size: 32,
-                          ),
-                          onPressed: () => state.togglePlayPause(),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_next,
-                            color: Colors.white, size: 36),
-                        onPressed: () => state.nextTrack(),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.repeat,
-                            color: Colors.white54, size: 28),
-                        onPressed: () {},
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  state.dominantColor != null
+                      ? Color.lerp(state.dominantColor!, Colors.black, 0.4)!
+                      : const Color(0xFF121212),
+                  const Color(0xFF121212),
                 ],
+              ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const Spacer(flex: 2),
+                    _PlayerCover(coverPath: track.coverPath),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                track.title,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                track.artist,
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            track.isLiked
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: track.isLiked
+                                ? const Color(0xFF1DB954)
+                                : Colors.white,
+                          ),
+                          onPressed: () => state.toggleLike(track.id),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: Colors.white,
+                        inactiveTrackColor: Colors.white24,
+                        thumbColor: Colors.white,
+                        trackHeight: 4,
+                        thumbShape:
+                            const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      ),
+                      child: Slider(
+                        value: state.position.inSeconds.toDouble(),
+                        max:
+                            state.duration.inSeconds.toDouble().clamp(1, 99999),
+                        onChanged: (value) {
+                          state.seek(Duration(seconds: value.toInt()));
+                        },
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(state.position),
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12),
+                        ),
+                        Text(
+                          _formatDuration(state.duration),
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.shuffle,
+                              color: Colors.white54, size: 28),
+                          onPressed: () {},
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.skip_previous,
+                              color: Colors.white, size: 36),
+                          onPressed: () => state.previousTrack(),
+                        ),
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: Icon(
+                              state.isPlaying ? Icons.pause : Icons.play_arrow,
+                              color: Colors.black,
+                              size: 32,
+                            ),
+                            onPressed: () => state.togglePlayPause(),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.skip_next,
+                              color: Colors.white, size: 36),
+                          onPressed: () => state.nextTrack(),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.repeat,
+                              color: Colors.white54, size: 28),
+                          onPressed: () {},
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                  ],
+                ),
               ),
             ),
           ),

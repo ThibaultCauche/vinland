@@ -18,7 +18,17 @@ class MiniPlayer extends StatelessWidget {
           child: Container(
             height: 64,
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  state.dominantColor != null
+                      ? Color.lerp(
+                          state.dominantColor!, const Color(0xFF1E1E1E), 0.5)!
+                      : const Color(0xFF1E1E1E),
+                  const Color(0xFF1E1E1E),
+                ],
+              ),
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(

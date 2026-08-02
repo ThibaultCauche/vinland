@@ -11,7 +11,7 @@ import 'screens/friends_screen.dart';
 import 'services/audio_handler.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
-import 'widgets/player_screen.dart'; // ← AJOUT
+import 'widgets/player_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -83,43 +83,55 @@ class AppShell extends StatelessWidget {
           const FriendsScreen(),
         ];
 
-        return Scaffold(
-          extendBody: true,
-          extendBodyBehindAppBar: true,
-          body: Stack(
-            children: [
-              screens[state.currentTab],
-              if (state.currentOverlay != null)
-                Positioned.fill(child: state.currentOverlay!),
-            ],
-          ),
-          bottomNavigationBar: SafeArea(
-            bottom: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+        return PopScope(
+          canPop: state.overlayStack.isEmpty && state.currentTab == 0,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) {
+              if (state.overlayStack.isNotEmpty) {
+                state.popOverlay();
+              } else if (state.currentTab != 0) {
+                state.setTab(0);
+              }
+            }
+          },
+          child: Scaffold(
+            extendBody: true,
+            extendBodyBehindAppBar: true,
+            body: Stack(
               children: [
-                if (state.currentTrack != null &&
-                    state.currentOverlay is! PlayerScreen)
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
-                    child: MiniPlayer(),
-                  ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.0),
-                        Colors.black.withOpacity(0.85),
-                        Colors.black.withOpacity(1.0),
-                      ],
-                      stops: const [0.0, 0.3, 1.0],
-                    ),
-                  ),
-                  child: const BottomNav(),
-                ),
+                screens[state.currentTab],
+                if (state.currentOverlay != null)
+                  Positioned.fill(child: state.currentOverlay!),
               ],
+            ),
+            bottomNavigationBar: SafeArea(
+              bottom: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (state.currentTrack != null &&
+                      state.currentOverlay is! PlayerScreen)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      child: MiniPlayer(),
+                    ),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.0),
+                          Colors.black.withOpacity(0.85),
+                          Colors.black.withOpacity(1.0),
+                        ],
+                        stops: const [0.0, 0.3, 1.0],
+                      ),
+                    ),
+                    child: const BottomNav(),
+                  ),
+                ],
+              ),
             ),
           ),
         );

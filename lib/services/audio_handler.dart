@@ -100,11 +100,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekForward,
         MediaAction.seekBackward,
       },
-      androidCompactActionIndices: const [
-        1,
-        2,
-        3
-      ], // prev, play, next en compact
+      androidCompactActionIndices: const [1, 2, 3],
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,
         ProcessingState.loading: AudioProcessingState.loading,
@@ -118,5 +114,16 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       speed: _player.speed,
       queueIndex: event.currentIndex,
     );
+  }
+
+  Future<void> updateNotificationColor(int color) async {
+    final current = mediaItem.value;
+    if (current == null) return;
+    mediaItem.add(current.copyWith(
+      extras: {
+        ...?current.extras,
+        'androidNotificationColor': color,
+      },
+    ));
   }
 }
