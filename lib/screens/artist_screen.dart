@@ -244,7 +244,7 @@ class _ArtistAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
-    final exists = context.read<MusicService>().coverExists(coverPath);
+    final exists = context.read<MusicService>().coverExists(path);
 
     if (exists && path != null) {
       return Container(

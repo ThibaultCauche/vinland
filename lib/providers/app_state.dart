@@ -35,8 +35,8 @@ class AppState extends ChangeNotifier {
       _music.likedTracks.any((t) => t.id == currentTrack!.id);
 
   // Missing tracks from streaming import
-  List<Map<String, String>> _missingTracks = [];
-  List<Map<String, String>> get missingTracks =>
+  List<Map<String, dynamic>> _missingTracks = [];
+  List<Map<String, dynamic>> get missingTracks =>
       List.unmodifiable(_missingTracks);
 
   // Getters
@@ -289,7 +289,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setMissingTracks(List<Map<String, String>> tracks) {
+  void setMissingTracks(List<Map<String, dynamic>> tracks) {
     _missingTracks = tracks;
     notifyListeners();
   }

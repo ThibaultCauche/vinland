@@ -365,7 +365,6 @@ class _AlbumCover extends StatelessWidget {
   const _AlbumCover({this.coverPath});
 
   @override
-  @override
   Widget build(BuildContext context) {
     final path = coverPath;
     final exists = context.read<MusicService>().coverExists(path);
