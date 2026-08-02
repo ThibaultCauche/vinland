@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -23,6 +24,7 @@ class MusicService {
 
   // Cache en mémoire des covers existantes pour éviter les existsSync()
   final Set<String> _existingCovers = {};
+  Timer? _saveDebounceTimer;
 
   List<Track> get allTracks => List.unmodifiable(_allTracks);
   List<Album> get albums => List.unmodifiable(_albums);
@@ -144,7 +146,7 @@ class MusicService {
 
       _allTracks = [...localTracks, ...loaded];
       rebuildAlbums();
-      await _saveToCache();
+      _debouncedSave();
     }
   }
 
@@ -175,7 +177,7 @@ class MusicService {
 
       _allTracks = [...assetTracks, ...scanned];
       rebuildAlbums();
-      await _saveToCache();
+      _debouncedSave();
     }
   }
 
@@ -298,7 +300,7 @@ class MusicService {
     _searchHistory.remove(query);
     _searchHistory.insert(0, query);
     if (_searchHistory.length > 20) _searchHistory.removeLast();
-    await _saveToCache();
+    _debouncedSave();
   }
 
   List<Track> get likedTracks => _allTracks.where((t) => t.isLiked).toList();
@@ -306,7 +308,7 @@ class MusicService {
   Future<void> toggleLike(String trackId) async {
     final track = _allTracks.firstWhere((t) => t.id == trackId);
     track.isLiked = !track.isLiked;
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> createPlaylist(String name) async {
@@ -314,38 +316,38 @@ class MusicService {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
     ));
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> addToPlaylist(String playlistId, String trackId) async {
     final playlist = _playlists.firstWhere((p) => p.id == playlistId);
     if (!playlist.trackIds.contains(trackId)) {
       playlist.trackIds.add(trackId);
-      await _saveToCache();
+      _debouncedSave();
     }
   }
 
   Future<void> removeFromPlaylist(String playlistId, String trackId) async {
     final playlist = _playlists.firstWhere((p) => p.id == playlistId);
     playlist.trackIds.remove(trackId);
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> recordPlay(String trackId) async {
     final track = _allTracks.firstWhere((t) => t.id == trackId);
     track.playCount++;
     track.lastPlayed = DateTime.now();
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> removeSearchQuery(String query) async {
     _searchHistory.remove(query);
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> clearSearchHistory() async {
     _searchHistory.clear();
-    await _saveToCache();
+    _debouncedSave();
   }
 
   Future<void> _saveToCache() async {
@@ -376,7 +378,10 @@ class MusicService {
     }
   }
 
-  Future<void> saveToCache() async => _saveToCache();
+  Future<void> saveToCache() async {
+    _saveDebounceTimer?.cancel();
+    await _saveToCache();
+  }
 
   Future<void> _loadFromCache() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -439,8 +444,15 @@ class MusicService {
 
     if (updated > 0) {
       rebuildAlbums();
-      await _saveToCache();
+      _debouncedSave();
     }
     print('RESCAN COVERS: $updated covers ajoutées');
+  }
+
+  void _debouncedSave() {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = Timer(const Duration(seconds: 2), () async {
+      await _saveToCache();
+    });
   }
 }

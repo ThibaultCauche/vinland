@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../models/track.dart';
+import '../services/music_service.dart';
+import '../services/audio_handler.dart';
 import 'player_screen.dart';
 
 class MiniPlayer extends StatelessWidget {
@@ -9,12 +12,16 @@ class MiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
-        if (state.currentTrack == null) return const SizedBox.shrink();
+    return Selector<AppState, (Track?, Color?, bool)>(
+      selector: (_, state) =>
+          (state.currentTrack, state.dominantColor, state.isPlaying),
+      builder: (context, data, child) {
+        final (track, dominantColor, isPlaying) = data;
+        if (track == null) return const SizedBox.shrink();
 
         return GestureDetector(
-          onTap: () => state.pushOverlay(const PlayerScreen()),
+          onTap: () =>
+              context.read<AppState>().pushOverlay(const PlayerScreen()),
           child: Container(
             height: 64,
             decoration: BoxDecoration(
@@ -22,9 +29,8 @@ class MiniPlayer extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  state.dominantColor != null
-                      ? Color.lerp(
-                          state.dominantColor!, const Color(0xFF1E1E1E), 0.5)!
+                  dominantColor != null
+                      ? Color.lerp(dominantColor, const Color(0xFF1E1E1E), 0.5)!
                       : const Color(0xFF1E1E1E),
                   const Color(0xFF1E1E1E),
                 ],
@@ -45,7 +51,7 @@ class MiniPlayer extends StatelessWidget {
                   child: Row(
                     children: [
                       const SizedBox(width: 8),
-                      _MiniCover(coverPath: state.currentTrack!.coverPath),
+                      _MiniCover(coverPath: track.coverPath),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -53,7 +59,7 @@ class MiniPlayer extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              state.currentTrack!.title,
+                              track.title,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -63,7 +69,7 @@ class MiniPlayer extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              state.currentTrack!.artist,
+                              track.artist,
                               style: const TextStyle(
                                 color: Colors.white54,
                                 fontSize: 11,
@@ -74,40 +80,26 @@ class MiniPlayer extends StatelessWidget {
                           ],
                         ),
                       ),
+                      _LikeButton(trackId: track.id),
                       IconButton(
                         icon: Icon(
-                          state.isCurrentTrackLiked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color: state.isCurrentTrackLiked
-                              ? const Color(0xFF1DB954)
-                              : Colors.white,
-                          size: 22,
-                        ),
-                        onPressed: () =>
-                            state.toggleLike(state.currentTrack!.id),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          state.isPlaying ? Icons.pause : Icons.play_arrow,
+                          isPlaying ? Icons.pause : Icons.play_arrow,
                           color: Colors.white,
                           size: 28,
                         ),
-                        onPressed: () => state.togglePlayPause(),
+                        onPressed: () =>
+                            context.read<AppState>().togglePlayPause(),
                       ),
                       IconButton(
                         icon: const Icon(Icons.skip_next,
                             color: Colors.white, size: 28),
-                        onPressed: () => state.nextTrack(),
+                        onPressed: () => context.read<AppState>().nextTrack(),
                       ),
                       const SizedBox(width: 4),
                     ],
                   ),
                 ),
-                _MiniProgressBar(
-                  position: state.position,
-                  duration: state.duration,
-                ),
+                _MiniProgressBar(),
               ],
             ),
           ),
@@ -117,82 +109,85 @@ class MiniPlayer extends StatelessWidget {
   }
 }
 
-class _MiniProgressBar extends StatelessWidget {
-  final Duration position;
-  final Duration duration;
-  const _MiniProgressBar({required this.position, required this.duration});
+class _LikeButton extends StatelessWidget {
+  final String trackId;
+  const _LikeButton({required this.trackId});
 
   @override
   Widget build(BuildContext context) {
-    final double progress = duration.inMilliseconds > 0
-        ? position.inMilliseconds / duration.inMilliseconds
-        : 0.0;
-
-    return Container(
-      height: 2,
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white12,
-        borderRadius: BorderRadius.circular(1),
-      ),
-      child: FractionallySizedBox(
-        alignment: Alignment.centerLeft,
-        widthFactor: progress.clamp(0.0, 1.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1DB954),
-            borderRadius: BorderRadius.circular(1),
-          ),
+    return Selector<AppState, bool>(
+      selector: (_, state) => state.isCurrentTrackLiked,
+      builder: (context, isLiked, _) => IconButton(
+        icon: Icon(
+          isLiked ? Icons.favorite : Icons.favorite_border,
+          color: isLiked ? const Color(0xFF1DB954) : Colors.white,
+          size: 22,
         ),
+        onPressed: () => context.read<AppState>().toggleLike(trackId),
       ),
     );
   }
 }
 
-class _MiniCover extends StatefulWidget {
+class _MiniProgressBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final player = context.read<VinlandAudioHandler>().player;
+    return StreamBuilder<Duration>(
+      stream: player.positionStream,
+      builder: (context, posSnap) {
+        return StreamBuilder<Duration?>(
+          stream: player.durationStream,
+          builder: (context, durSnap) {
+            final position = posSnap.data ?? Duration.zero;
+            final duration = durSnap.data ?? Duration.zero;
+            final double progress = duration.inMilliseconds > 0
+                ? position.inMilliseconds / duration.inMilliseconds
+                : 0.0;
+
+            return Container(
+              height: 2,
+              width: double.infinity,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white12,
+                borderRadius: BorderRadius.circular(1),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: progress.clamp(0.0, 1.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1DB954),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _MiniCover extends StatelessWidget {
   final String? coverPath;
   const _MiniCover({this.coverPath});
 
   @override
-  State<_MiniCover> createState() => _MiniCoverState();
-}
-
-class _MiniCoverState extends State<_MiniCover> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _MiniCover oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_exists == true) {
+    final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(coverPath);
+
+    if (exists && path != null) {
       return Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
-            image: FileImage(File(widget.coverPath!)),
+            image: FileImage(File(path)),
             fit: BoxFit.cover,
           ),
         ),

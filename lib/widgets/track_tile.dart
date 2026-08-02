@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/track.dart';
+import '../services/music_service.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -18,9 +20,33 @@ class TrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // FIX: utilise le cache mémoire de MusicService au lieu de File.exists()
+    final coverExists =
+        context.read<MusicService>().coverExists(track.coverPath);
+
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: _AsyncCover(coverPath: track.coverPath),
+      leading: coverExists && track.coverPath != null
+          ? Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                image: DecorationImage(
+                  image: FileImage(File(track.coverPath!)),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            )
+          : Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF3E3E3E),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Icon(Icons.music_note, color: Colors.white54),
+            ),
       title: Text(
         track.title,
         style: const TextStyle(
@@ -58,67 +84,6 @@ class TrackTile extends StatelessWidget {
         ],
       ),
       onTap: onTap,
-    );
-  }
-}
-
-/// Widget interne qui vérifie l'existence de la cover de manière asynchrone.
-class _AsyncCover extends StatefulWidget {
-  final String? coverPath;
-  const _AsyncCover({this.coverPath});
-
-  @override
-  State<_AsyncCover> createState() => _AsyncCoverState();
-}
-
-class _AsyncCoverState extends State<_AsyncCover> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _AsyncCover oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_exists == true) {
-      return Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(4),
-          image: DecorationImage(
-            image: FileImage(File(widget.coverPath!)),
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: const Color(0xFF3E3E3E),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: const Icon(Icons.music_note, color: Colors.white54),
     );
   }
 }

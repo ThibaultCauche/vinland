@@ -12,6 +12,7 @@ import 'services/audio_handler.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
+import 'services/music_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,8 +54,14 @@ class VinlandApp extends StatelessWidget {
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
       ),
-      child: ChangeNotifierProvider(
-        create: (_) => AppState(audioHandler: audioHandler)..initialize(),
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(
+            create: (_) => AppState(audioHandler: audioHandler)..initialize(),
+          ),
+          Provider<MusicService>.value(value: MusicService()),
+          Provider<VinlandAudioHandler>.value(value: audioHandler),
+        ],
         child: MaterialApp(
           title: 'Vinland',
           debugShowCheckedModeBanner: false,

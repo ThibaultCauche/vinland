@@ -2,8 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../widgets/track_tile.dart';
+import '../models/track.dart';
 import '../models/album.dart';
+import '../widgets/track_tile.dart';
+import '../services/music_service.dart';
 
 class ArtistScreen extends StatelessWidget {
   final String artistName;
@@ -12,12 +14,17 @@ class ArtistScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
-        final artistTracks =
+    return Selector<AppState, (List<Track>, List<Album>)>(
+      selector: (_, state) {
+        final tracks =
             state.allTracks.where((t) => t.artist == artistName).toList();
         final albums =
             state.albums.where((a) => a.artist == artistName).toList();
+        return (tracks, albums);
+      },
+      builder: (context, data, child) {
+        final (artistTracks, albums) = data;
+        final state = context.read<AppState>();
 
         return Scaffold(
           backgroundColor: const Color(0xFF121212),
@@ -230,49 +237,23 @@ class ArtistScreen extends StatelessWidget {
   }
 }
 
-class _ArtistAvatar extends StatefulWidget {
+class _ArtistAvatar extends StatelessWidget {
   final String? coverPath;
   const _ArtistAvatar({this.coverPath});
 
   @override
-  State<_ArtistAvatar> createState() => _ArtistAvatarState();
-}
-
-class _ArtistAvatarState extends State<_ArtistAvatar> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ArtistAvatar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_exists == true) {
+    final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(coverPath);
+
+    if (exists && path != null) {
       return Container(
         width: 80,
         height: 80,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
           image: DecorationImage(
-            image: FileImage(File(widget.coverPath!)),
+            image: FileImage(File(path)),
             fit: BoxFit.cover,
           ),
         ),
@@ -290,53 +271,27 @@ class _ArtistAvatarState extends State<_ArtistAvatar> {
   }
 }
 
-class _AlbumCover extends StatefulWidget {
+class _AlbumCover extends StatelessWidget {
   final String? coverPath;
   const _AlbumCover({this.coverPath});
 
   @override
-  State<_AlbumCover> createState() => _AlbumCoverState();
-}
-
-class _AlbumCoverState extends State<_AlbumCover> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _AlbumCover oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(path);
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(8),
-        image: _exists == true
+        image: exists && path != null
             ? DecorationImage(
-                image: FileImage(File(widget.coverPath!)),
+                image: FileImage(File(path)),
                 fit: BoxFit.cover,
               )
             : null,
       ),
-      child: _exists != true
+      child: exists != true
           ? const Center(
               child: Icon(Icons.album, color: Colors.white54, size: 48),
             )

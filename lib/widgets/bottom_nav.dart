@@ -7,11 +7,14 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
+    // FIX: Selector — on n'écoute QUE currentTab
+    return Selector<AppState, int>(
+      selector: (_, state) => state.currentTab,
+      builder: (context, currentTab, child) {
         return BottomNavigationBar(
-          currentIndex: state.currentTab,
+          currentIndex: currentTab,
           onTap: (i) {
+            final state = context.read<AppState>();
             if (state.overlayStack.isNotEmpty) state.clearOverlays();
             state.setTab(i);
           },

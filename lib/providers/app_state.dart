@@ -24,6 +24,7 @@ class AppState extends ChangeNotifier {
   int currentIndex = -1;
   int _lastColorRequest = 0;
   final Map<String, Color> _colorCache = {};
+  int _lastPositionNotify = 0;
 
   // UI state
   int currentTab = 0;
@@ -69,19 +70,26 @@ class AppState extends ChangeNotifier {
       }
     });
 
+    // FIX: throttle position — max 1 notify toutes les 500ms
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
-      notifyListeners();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastPositionNotify > 500) {
+        _lastPositionNotify = now;
+        notifyListeners();
+      }
     });
     _audioHandler.player.durationStream.listen((dur) {
-      if (dur != null) {
+      if (dur != null && dur != duration) {
         duration = dur;
         notifyListeners();
       }
     });
     _audioHandler.player.playerStateStream.listen((state) {
-      isPlaying = state.playing;
-      notifyListeners();
+      if (state.playing != isPlaying) {
+        isPlaying = state.playing;
+        notifyListeners();
+      }
     });
     _audioHandler.player.currentIndexStream.listen((index) {
       if (index != null && index >= 0 && index < queue.length) {
@@ -91,6 +99,7 @@ class AppState extends ChangeNotifier {
           currentTrack = newTrack;
           _updateDominantColor(newTrack.coverPath);
           _music.recordPlay(newTrack.id);
+          notifyListeners();
         }
       }
     });
@@ -148,7 +157,6 @@ class AppState extends ChangeNotifier {
           .any((t) => t.filePath?.startsWith('assets/') ?? false);
       if (!hasAssets) {
         await _music.scanAssetsMusic();
-        // Vérifie que le ChangeNotifier n'est pas disposed avant notify
         if (!_isDisposed) notifyListeners();
       }
     });
@@ -296,7 +304,7 @@ class AppState extends ChangeNotifier {
     try {
       final palette = await PaletteGenerator.fromImageProvider(
         FileImage(File(coverPath)),
-        size: const Size(100, 100),
+        size: const Size(50, 50), // réduit pour accélérer
       );
       return palette.dominantColor?.color;
     } catch (_) {
@@ -317,6 +325,7 @@ class AppState extends ChangeNotifier {
     }
     final requestId = ++_lastColorRequest;
     _extractDominantColor(coverPath).then((color) {
+      if (_isDisposed) return; // FIX: garde anti-crash
       if (requestId == _lastColorRequest && color != null) {
         _colorCache[coverPath] = color;
         dominantColor = color;

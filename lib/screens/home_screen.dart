@@ -2,18 +2,29 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../models/track.dart';
 import '../screens/settings_screen.dart';
 import '../screens/missing_tracks_screen.dart';
 import '../widgets/search_bar.dart';
 import '../widgets/track_tile.dart';
+import '../services/music_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
+    return Selector<AppState,
+        (List<Track>, List<Track>, String?, List<Map<String, dynamic>>)>(
+      selector: (_, state) => (
+        state.allTracks,
+        state.likedTracks,
+        state.userName,
+        state.missingTracks,
+      ),
+      builder: (context, data, child) {
+        final (allTracks, likedTracks, userName, missingTracks) = data;
+        final state = context.read<AppState>();
         return SafeArea(
           bottom: false,
           child: CustomScrollView(
@@ -30,8 +41,7 @@ class HomeScreen extends StatelessWidget {
                           radius: 18,
                           backgroundColor: const Color(0xFF3E3E3E),
                           child: Text(
-                            state.userName?.substring(0, 1).toUpperCase() ??
-                                'U',
+                            userName?.substring(0, 1).toUpperCase() ?? 'U',
                             style: const TextStyle(
                                 color: Colors.white, fontSize: 14),
                           ),
@@ -50,42 +60,38 @@ class HomeScreen extends StatelessWidget {
                 'Voir tout',
                 () => _showAllTracks(context),
               ),
-              state.allTracks.isEmpty
+              allTracks.isEmpty
                   ? _buildEmpty('Aucune musique trouvée')
                   : SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => TrackTile(
-                            track: state.allTracks[index],
-                            onTap: () =>
-                                state.playTrack(state.allTracks[index]),
-                            onLike: () =>
-                                state.toggleLike(state.allTracks[index].id),
+                            track: allTracks[index],
+                            onTap: () => state.playTrack(allTracks[index]),
+                            onLike: () => state.toggleLike(allTracks[index].id),
                           ),
-                          childCount: state.allTracks.length > 5
-                              ? 5
-                              : state.allTracks.length,
+                          childCount:
+                              allTracks.length > 5 ? 5 : allTracks.length,
                         ),
                       ),
                     ),
               _buildSectionTitle('Récemment écouté'),
               _buildRecentlyPlayed(state),
               _buildSectionTitle('Titres likés'),
-              state.likedTracks.isEmpty
+              likedTracks.isEmpty
                   ? _buildEmpty('Aucun titre liké')
                   : SliverPadding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => TrackTile(
-                            track: state.likedTracks[index],
-                            onTap: () =>
-                                state.playTrack(state.likedTracks[index]),
+                            track: likedTracks[index],
+                            onTap: () => state.playTrack(likedTracks[index]),
                             onLike: () =>
-                                state.toggleLike(state.likedTracks[index].id),
+                                state.toggleLike(likedTracks[index].id),
                           ),
-                          childCount: state.likedTracks.length,
+                          childCount: likedTracks.length,
                         ),
                       ),
                     ),
@@ -354,49 +360,24 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _AlbumCover extends StatefulWidget {
+class _AlbumCover extends StatelessWidget {
   final String? coverPath;
   const _AlbumCover({this.coverPath});
 
   @override
-  State<_AlbumCover> createState() => _AlbumCoverState();
-}
-
-class _AlbumCoverState extends State<_AlbumCover> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _AlbumCover oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_exists == true) {
+    final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(path);
+
+    if (exists && path != null) {
       return Container(
         width: 56,
         height: 56,
         decoration: BoxDecoration(
           borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
           image: DecorationImage(
-            image: FileImage(File(widget.coverPath!)),
+            image: FileImage(File(path)),
             fit: BoxFit.cover,
           ),
         ),

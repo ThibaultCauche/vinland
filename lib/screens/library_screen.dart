@@ -4,10 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../providers/app_state.dart';
+import '../models/track.dart';
+import '../models/album.dart';
 import '../widgets/track_tile.dart';
 import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
 import 'streaming_import_screen.dart';
+import '../services/music_service.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -34,8 +37,11 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
+    return Selector<AppState, (List<Track>, List<Album>)>(
+      selector: (_, state) => (state.likedTracks, state.albums),
+      builder: (context, data, child) {
+        final (likedTracks, albums) = data;
+        final state = context.read<AppState>();
         return SafeArea(
           bottom: false,
           child: Column(
@@ -243,23 +249,23 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Widget _buildLikedTracks(AppState state) {
-    if (state.likedTracks.isEmpty) {
+    final likedTracks = state.likedTracks;
+    if (likedTracks.isEmpty) {
       return _buildEmpty('Aucun titre like');
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100),
-      itemCount: state.likedTracks.length,
+      itemCount: likedTracks.length,
       itemBuilder: (context, i) => TrackTile(
-        track: state.likedTracks[i],
-        onTap: () => state.playTrack(state.likedTracks[i]),
-        onLike: () => state.toggleLike(state.likedTracks[i].id),
+        track: likedTracks[i],
+        onTap: () => state.playTrack(likedTracks[i]),
+        onLike: () => state.toggleLike(likedTracks[i].id),
       ),
     );
   }
 
   Widget _buildAlbums(AppState state) {
     final savedAlbums = state.albums;
-
     if (savedAlbums.isEmpty) {
       return _buildEmpty('Aucun album');
     }
@@ -393,53 +399,27 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 }
 
-class _AlbumCoverGrid extends StatefulWidget {
+class _AlbumCoverGrid extends StatelessWidget {
   final String? coverPath;
   const _AlbumCoverGrid({this.coverPath});
 
   @override
-  State<_AlbumCoverGrid> createState() => _AlbumCoverGridState();
-}
-
-class _AlbumCoverGridState extends State<_AlbumCoverGrid> {
-  bool? _exists;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  @override
-  void didUpdateWidget(covariant _AlbumCoverGrid oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.coverPath != widget.coverPath) _check();
-  }
-
-  void _check() async {
-    final path = widget.coverPath;
-    if (path == null) {
-      if (mounted) setState(() => _exists = false);
-      return;
-    }
-    final result = await File(path).exists();
-    if (mounted) setState(() => _exists = result);
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(path);
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(8),
-        image: _exists == true
+        image: exists && path != null
             ? DecorationImage(
-                image: FileImage(File(widget.coverPath!)),
+                image: FileImage(File(path)),
                 fit: BoxFit.cover,
               )
             : null,
       ),
-      child: _exists != true
+      child: exists != true
           ? const Center(
               child: Icon(Icons.album, color: Colors.white54, size: 48),
             )

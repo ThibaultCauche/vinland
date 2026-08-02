@@ -67,7 +67,8 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
-      if (isAsset) return AudioSource.asset(item.id);
+      if (isAsset)
+        return AudioSource.asset(item.id.replaceFirst('assets/', ''));
       if (isRemote) return AudioSource.uri(Uri.parse(item.id));
       return AudioSource.file(item.id);
     }).toList();
