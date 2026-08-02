@@ -23,6 +23,7 @@ class AppState extends ChangeNotifier {
   List<Track> queue = [];
   int currentIndex = -1;
   int _lastColorRequest = 0;
+  final Map<String, Color> _colorCache = {};
 
   // UI state
   int currentTab = 0;
@@ -81,6 +82,17 @@ class AppState extends ChangeNotifier {
     _audioHandler.player.playerStateStream.listen((state) {
       isPlaying = state.playing;
       notifyListeners();
+    });
+    _audioHandler.player.currentIndexStream.listen((index) {
+      if (index != null && index >= 0 && index < queue.length) {
+        final newTrack = queue[index];
+        if (newTrack.id != currentTrack?.id) {
+          currentIndex = index;
+          currentTrack = newTrack;
+          _updateDominantColor(newTrack.coverPath);
+          _music.recordPlay(newTrack.id);
+        }
+      }
     });
   }
 
@@ -190,13 +202,10 @@ class AppState extends ChangeNotifier {
             ))
         .toList();
 
+    _updateDominantColor(track.coverPath);
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
     await _music.recordPlay(track.id);
-    notifyListeners();
-
-    // Extraction couleur en background, non-bloquant
-    _updateDominantColor(track.coverPath);
   }
 
   void togglePlayPause() {
@@ -211,26 +220,10 @@ class AppState extends ChangeNotifier {
 
   void nextTrack() {
     _audioHandler.skipToNext();
-    final index = _audioHandler.player.currentIndex ?? currentIndex;
-    if (index >= 0 && index < queue.length) {
-      currentIndex = index;
-      currentTrack = queue[index];
-      _updateDominantColor(currentTrack!.coverPath);
-      _music.recordPlay(currentTrack!.id);
-      notifyListeners();
-    }
   }
 
   void previousTrack() {
     _audioHandler.skipToPrevious();
-    final index = _audioHandler.player.currentIndex ?? currentIndex;
-    if (index >= 0 && index < queue.length) {
-      currentIndex = index;
-      currentTrack = queue[index];
-      _updateDominantColor(currentTrack!.coverPath);
-      _music.recordPlay(currentTrack!.id);
-      notifyListeners();
-    }
   }
 
   void seek(Duration pos) {
@@ -312,9 +305,20 @@ class AppState extends ChangeNotifier {
   }
 
   void _updateDominantColor(String? coverPath) {
+    if (coverPath == null) {
+      dominantColor = null;
+      notifyListeners();
+      return;
+    }
+    if (_colorCache.containsKey(coverPath)) {
+      dominantColor = _colorCache[coverPath];
+      notifyListeners();
+      return;
+    }
     final requestId = ++_lastColorRequest;
     _extractDominantColor(coverPath).then((color) {
-      if (requestId == _lastColorRequest) {
+      if (requestId == _lastColorRequest && color != null) {
+        _colorCache[coverPath] = color;
         dominantColor = color;
         notifyListeners();
       }
