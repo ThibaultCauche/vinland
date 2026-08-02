@@ -171,8 +171,12 @@ class _PlayPauseButton extends StatelessWidget {
 }
 
 class _PlayerSlider extends StatelessWidget {
+  static int _buildCount = 0;
+
   @override
   Widget build(BuildContext context) {
+    _buildCount++;
+    if (_buildCount % 50 == 0) print('🟢 PLAYER_SLIDER: rebuild #$_buildCount');
     final player = context.read<VinlandAudioHandler>().player;
     return StreamBuilder<Duration>(
       stream: player.positionStream,

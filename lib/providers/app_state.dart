@@ -76,6 +76,7 @@ class AppState extends ChangeNotifier {
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastPositionNotify > 500) {
         _lastPositionNotify = now;
+        print('🔴 APPSTATE notifyListeners: position=$pos');
         notifyListeners();
       }
     });
@@ -314,18 +315,24 @@ class AppState extends ChangeNotifier {
 
   void _updateDominantColor(String? coverPath) {
     if (coverPath == null) {
+      print('🎨 PALETTE: coverPath null');
       dominantColor = null;
       notifyListeners();
       return;
     }
     if (_colorCache.containsKey(coverPath)) {
+      print('🎨 PALETTE: cache hit');
       dominantColor = _colorCache[coverPath];
       notifyListeners();
       return;
     }
     final requestId = ++_lastColorRequest;
+    final start = DateTime.now().millisecondsSinceEpoch;
+    print('🎨 PALETTE: start extraction');
     _extractDominantColor(coverPath).then((color) {
-      if (_isDisposed) return; // FIX: garde anti-crash
+      final elapsed = DateTime.now().millisecondsSinceEpoch - start;
+      print('🎨 PALETTE: done in ${elapsed}ms, color=$color');
+      if (_isDisposed) return;
       if (requestId == _lastColorRequest && color != null) {
         _colorCache[coverPath] = color;
         dominantColor = color;

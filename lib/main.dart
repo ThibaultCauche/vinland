@@ -13,6 +13,7 @@ import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
 import 'services/music_service.dart';
+import 'models/track.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,9 +81,18 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AppState>(
-      builder: (context, state, child) {
-        if (!state.isLoggedIn) return const LoginScreen();
+    return Selector<AppState, (bool, int, Widget?, Track?)>(
+      selector: (_, state) => (
+        state.isLoggedIn,
+        state.currentTab,
+        state.currentOverlay,
+        state.currentTrack,
+      ),
+      builder: (context, data, child) {
+        final (isLoggedIn, currentTab, currentOverlay, currentTrack) = data;
+        if (!isLoggedIn) return const LoginScreen();
+
+        final state = context.read<AppState>();
 
         final screens = [
           const HomeScreen(),
@@ -91,12 +101,12 @@ class AppShell extends StatelessWidget {
         ];
 
         return PopScope(
-          canPop: state.overlayStack.isEmpty && state.currentTab == 0,
+          canPop: currentOverlay == null && currentTab == 0,
           onPopInvokedWithResult: (didPop, result) {
             if (!didPop) {
-              if (state.overlayStack.isNotEmpty) {
+              if (currentOverlay != null) {
                 state.popOverlay();
-              } else if (state.currentTab != 0) {
+              } else if (currentTab != 0) {
                 state.setTab(0);
               }
             }
@@ -106,9 +116,9 @@ class AppShell extends StatelessWidget {
             extendBodyBehindAppBar: true,
             body: Stack(
               children: [
-                screens[state.currentTab],
-                if (state.currentOverlay != null)
-                  Positioned.fill(child: state.currentOverlay!),
+                screens[currentTab],
+                if (currentOverlay != null)
+                  Positioned.fill(child: currentOverlay!),
               ],
             ),
             bottomNavigationBar: SafeArea(
@@ -116,8 +126,7 @@ class AppShell extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (state.currentTrack != null &&
-                      state.currentOverlay is! PlayerScreen)
+                  if (currentTrack != null && currentOverlay is! PlayerScreen)
                     const Padding(
                       padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
                       child: MiniPlayer(),
