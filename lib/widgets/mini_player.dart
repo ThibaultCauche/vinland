@@ -17,7 +17,9 @@ class MiniPlayer extends StatelessWidget {
           (state.currentTrack, state.dominantColor, state.isPlaying),
       builder: (context, data, child) {
         final (track, dominantColor, isPlaying) = data;
-        if (track == null) return const SizedBox.shrink();
+        if (track == null) {
+          return const SizedBox(height: 64);
+        }
 
         return GestureDetector(
           onTap: () =>
@@ -99,7 +101,7 @@ class MiniPlayer extends StatelessWidget {
                     ],
                   ),
                 ),
-                _MiniProgressBar(),
+                const _MiniProgressBar(),
               ],
             ),
           ),
@@ -130,45 +132,42 @@ class _LikeButton extends StatelessWidget {
 }
 
 class _MiniProgressBar extends StatelessWidget {
-  static int _buildCount = 0;
+  const _MiniProgressBar();
 
   @override
   Widget build(BuildContext context) {
-    _buildCount++;
-    if (_buildCount % 50 == 0) print('🔵 MINI_SLIDER: rebuild #$_buildCount');
-    final player = context.read<VinlandAudioHandler>().player;
+    final player = context.read<AppState>().player;
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      // 200ms = 5 mises à jour/seconde max (suffisant visuellement)
+      stream: Stream.periodic(
+        const Duration(milliseconds: 200),
+        (_) => player.position,
+      ),
       builder: (context, posSnap) {
-        return StreamBuilder<Duration?>(
-          stream: player.durationStream,
-          builder: (context, durSnap) {
-            final position = posSnap.data ?? Duration.zero;
-            final duration = durSnap.data ?? Duration.zero;
-            final double progress = duration.inMilliseconds > 0
-                ? position.inMilliseconds / duration.inMilliseconds
-                : 0.0;
+        final position = posSnap.data ?? Duration.zero;
+        final duration = player.duration ?? Duration.zero;
+        final double progress = duration.inMilliseconds > 0
+            ? position.inMilliseconds / duration.inMilliseconds
+            : 0.0;
 
-            return Container(
-              height: 2,
-              width: double.infinity,
-              margin: const EdgeInsets.symmetric(horizontal: 8),
+        return Container(
+          height: 2,
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.white12,
+            borderRadius: BorderRadius.circular(1),
+          ),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: progress.clamp(0.0, 1.0),
+            child: Container(
               decoration: BoxDecoration(
-                color: Colors.white12,
+                color: const Color(0xFF1DB954),
                 borderRadius: BorderRadius.circular(1),
               ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: progress.clamp(0.0, 1.0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1DB954),
-                    borderRadius: BorderRadius.circular(1),
-                  ),
-                ),
-              ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
@@ -182,7 +181,7 @@ class _MiniCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
-    final exists = context.read<MusicService>().coverExists(coverPath);
+    final exists = context.read<AppState>().coverExists(coverPath);
 
     if (exists && path != null) {
       return Container(

@@ -126,11 +126,10 @@ class AppShell extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (currentTrack != null && currentOverlay is! PlayerScreen)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
-                      child: MiniPlayer(),
-                    ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                    child: MiniPlayer(),
+                  ),
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(

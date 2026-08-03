@@ -85,7 +85,7 @@ class PlayerScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    _PlayerSlider(),
+                    const _PlayerSlider(),
                     const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -101,7 +101,7 @@ class PlayerScreen extends StatelessWidget {
                           onPressed: () =>
                               context.read<AppState>().previousTrack(),
                         ),
-                        _PlayPauseButton(),
+                        const _PlayPauseButton(),
                         IconButton(
                           icon: const Icon(Icons.skip_next,
                               color: Colors.white, size: 36),
@@ -146,6 +146,8 @@ class _LikeButton extends StatelessWidget {
 }
 
 class _PlayPauseButton extends StatelessWidget {
+  const _PlayPauseButton();
+
   @override
   Widget build(BuildContext context) {
     return Selector<AppState, bool>(
@@ -171,64 +173,55 @@ class _PlayPauseButton extends StatelessWidget {
 }
 
 class _PlayerSlider extends StatelessWidget {
-  static int _buildCount = 0;
+  const _PlayerSlider();
 
   @override
   Widget build(BuildContext context) {
-    _buildCount++;
-    if (_buildCount % 50 == 0) print('🟢 PLAYER_SLIDER: rebuild #$_buildCount');
-    final player = context.read<VinlandAudioHandler>().player;
+    final player = context.read<AppState>().player;
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: Stream.periodic(
+        const Duration(milliseconds: 200),
+        (_) => player.position,
+      ),
       builder: (context, posSnap) {
-        return StreamBuilder<Duration?>(
-          stream: player.durationStream,
-          builder: (context, durSnap) {
-            final position = posSnap.data ?? Duration.zero;
-            final duration = durSnap.data ?? Duration.zero;
-            final max =
-                duration.inSeconds.toDouble().clamp(1, 99999).toDouble();
+        final position = posSnap.data ?? Duration.zero;
+        final duration = player.duration ?? Duration.zero;
+        final max = duration.inSeconds.toDouble().clamp(1, 99999).toDouble();
 
-            return Column(
+        return Column(
+          children: [
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: Colors.white,
+                inactiveTrackColor: Colors.white24,
+                thumbColor: Colors.white,
+                trackHeight: 4,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              ),
+              child: Slider(
+                value: position.inSeconds.toDouble().clamp(0, max).toDouble(),
+                max: max,
+                onChanged: (value) {
+                  context
+                      .read<AppState>()
+                      .seek(Duration(seconds: value.toInt()));
+                },
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    activeTrackColor: Colors.white,
-                    inactiveTrackColor: Colors.white24,
-                    thumbColor: Colors.white,
-                    trackHeight: 4,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  ),
-                  child: Slider(
-                    value:
-                        position.inSeconds.toDouble().clamp(0, max).toDouble(),
-                    max: max,
-                    onChanged: (value) {
-                      context
-                          .read<AppState>()
-                          .seek(Duration(seconds: value.toInt()));
-                    },
-                  ),
+                Text(
+                  _formatDuration(position),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _formatDuration(position),
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                    Text(
-                      _formatDuration(duration),
-                      style:
-                          const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ],
+                Text(
+                  _formatDuration(duration),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
               ],
-            );
-          },
+            ),
+          ],
         );
       },
     );
@@ -248,7 +241,7 @@ class _PlayerCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
-    final exists = context.read<MusicService>().coverExists(coverPath);
+    final exists = context.read<AppState>().coverExists(coverPath);
 
     if (exists && path != null) {
       return Container(

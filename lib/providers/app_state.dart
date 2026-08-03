@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:image/image.dart' as img;
 import '../models/track.dart';
 import '../services/music_service.dart';
 import '../services/auth_service.dart';
@@ -7,8 +12,7 @@ import '../services/audio_handler.dart';
 import '../models/album.dart';
 import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
-import 'dart:io';
-import 'package:palette_generator/palette_generator.dart';
+import 'package:just_audio/just_audio.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -62,6 +66,15 @@ class AppState extends ChangeNotifier {
   Widget? get currentOverlay =>
       _overlayStack.isNotEmpty ? _overlayStack.last : null;
 
+  // DEBOUNCE : absorbe les notify en rafale
+  Timer? _notifyDebounce;
+
+  // Expose le player pour les widgets (MiniPlayer, PlayerScreen)
+  AudioPlayer get player => _audioHandler.player;
+
+  // Délegue la vérification de cover au MusicService
+  bool coverExists(String? path) => _music.coverExists(path);
+
   AppState({required VinlandAudioHandler audioHandler})
       : _audioHandler = audioHandler {
     _audioHandler.customActionStream.listen((action) {
@@ -70,26 +83,26 @@ class AppState extends ChangeNotifier {
       }
     });
 
-    // FIX: throttle position — max 1 notify toutes les 500ms
+    // Position : throttle à 500ms + debounce global
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastPositionNotify > 500) {
         _lastPositionNotify = now;
         print('🔴 APPSTATE notifyListeners: position=$pos');
-        notifyListeners();
+        _notify();
       }
     });
     _audioHandler.player.durationStream.listen((dur) {
       if (dur != null && dur != duration) {
         duration = dur;
-        notifyListeners();
+        _notify();
       }
     });
     _audioHandler.player.playerStateStream.listen((state) {
       if (state.playing != isPlaying) {
         isPlaying = state.playing;
-        notifyListeners();
+        _notify();
       }
     });
     _audioHandler.player.currentIndexStream.listen((index) {
@@ -100,9 +113,17 @@ class AppState extends ChangeNotifier {
           currentTrack = newTrack;
           _updateDominantColor(newTrack.coverPath);
           _music.recordPlay(newTrack.id);
-          notifyListeners();
+          _notify();
         }
       }
+    });
+  }
+
+  /// Un seul notifyListeners() au bout de 50ms, même s'il y en a 10 d'affilée
+  void _notify() {
+    _notifyDebounce?.cancel();
+    _notifyDebounce = Timer(const Duration(milliseconds: 50), () {
+      if (!_isDisposed) notifyListeners();
     });
   }
 
@@ -116,19 +137,19 @@ class AppState extends ChangeNotifier {
       }
     }
     _overlayStack.add(screen);
-    notifyListeners();
+    _notify();
   }
 
   void popOverlay() {
     if (_overlayStack.isNotEmpty) {
       _overlayStack.removeLast();
-      notifyListeners();
+      _notify();
     }
   }
 
   void clearOverlays() {
     _overlayStack.clear();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> importTracks(List<String> filePaths) async {
@@ -143,7 +164,7 @@ class AppState extends ChangeNotifier {
     }
     _music.rebuildAlbums();
     await _music.saveToCache();
-    notifyListeners();
+    _notify();
   }
 
   void rebuildAlbums() => _music.rebuildAlbums();
@@ -151,14 +172,14 @@ class AppState extends ChangeNotifier {
   Future<void> initialize() async {
     await _auth.initialize();
     await _music.initialize();
-    notifyListeners();
+    _notify();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final hasAssets = _music.allTracks
           .any((t) => t.filePath?.startsWith('assets/') ?? false);
       if (!hasAssets) {
         await _music.scanAssetsMusic();
-        if (!_isDisposed) notifyListeners();
+        if (!_isDisposed) _notify();
       }
     });
   }
@@ -168,6 +189,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _notifyDebounce?.cancel();
     _audioHandler.player.dispose();
     super.dispose();
   }
@@ -178,12 +200,12 @@ class AppState extends ChangeNotifier {
     } else {
       await _music.scanDirectory(path);
     }
-    notifyListeners();
+    _notify();
   }
 
   Future<void> login(String name, String email) async {
     await _auth.login(name, email);
-    notifyListeners();
+    _notify();
   }
 
   Future<void> logout() async {
@@ -191,7 +213,7 @@ class AppState extends ChangeNotifier {
     await _auth.logout();
     currentTrack = null;
     isPlaying = false;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
@@ -211,10 +233,20 @@ class AppState extends ChangeNotifier {
             ))
         .toList();
 
+    // Lance l'extraction de couleur en arrière-plan (non-bloquant)
     _updateDominantColor(track.coverPath);
+
+    // 1. Notifier immédiatement pour que le MiniPlayer apparaisse
+    _notify();
+
+    // 2. Laisser le frame courant se terminer avant de charger l'audio
+    await Future.delayed(Duration.zero);
+
+    // 3. Charger la musique
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
     await _music.recordPlay(track.id);
+    _notify();
   }
 
   void togglePlayPause() {
@@ -224,7 +256,7 @@ class AppState extends ChangeNotifier {
       _audioHandler.play();
     }
     isPlaying = !isPlaying;
-    notifyListeners();
+    _notify();
   }
 
   void nextTrack() {
@@ -237,12 +269,12 @@ class AppState extends ChangeNotifier {
 
   void seek(Duration pos) {
     _audioHandler.seek(pos);
-    notifyListeners();
+    _notify();
   }
 
   Future<void> toggleLike(String trackId) async {
     await _music.toggleLike(trackId);
-    notifyListeners();
+    _notify();
   }
 
   void setSearchQuery(String query) {
@@ -251,92 +283,119 @@ class AppState extends ChangeNotifier {
     if (query.isNotEmpty) {
       _music.addSearchQuery(query);
     }
-    notifyListeners();
+    _notify();
   }
 
   void clearSearch() {
     searchQuery = '';
     showSearchResults = false;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> createPlaylist(String name) async {
     await _music.createPlaylist(name);
-    notifyListeners();
+    _notify();
   }
 
   Future<void> addToPlaylist(String playlistId, String trackId) async {
     await _music.addToPlaylist(playlistId, trackId);
-    notifyListeners();
+    _notify();
   }
 
   void setTab(int index) {
     currentTab = index;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> removeSearchQuery(String query) async {
     await _music.removeSearchQuery(query);
-    notifyListeners();
+    _notify();
   }
 
   Future<void> clearSearchHistory() async {
     await _music.clearSearchHistory();
-    notifyListeners();
+    _notify();
   }
 
   Future<void> rescanCoversForExistingTracks() async {
     await _music.rescanCoversForExistingTracks();
-    notifyListeners();
+    _notify();
   }
 
   void setMissingTracks(List<Map<String, dynamic>> tracks) {
     _missingTracks = tracks;
-    notifyListeners();
+    _notify();
   }
 
   void clearMissingTracks() {
     _missingTracks = [];
-    notifyListeners();
+    _notify();
   }
 
-  Future<Color?> _extractDominantColor(String? coverPath) async {
-    if (coverPath == null) return null;
+  /// Extrait la couleur dominante dans un isolate — ZERO blocage UI
+  Future<Color?> _extractDominantColorIsolate(String coverPath) async {
     try {
-      final palette = await PaletteGenerator.fromImageProvider(
-        FileImage(File(coverPath)),
-        size: const Size(50, 50), // réduit pour accélérer
-      );
-      return palette.dominantColor?.color;
+      final bytes = await File(coverPath).readAsBytes();
+      return await compute(_dominantColorFromBytes, bytes);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Cette fonction tourne dans un isolate séparé
+  static Color? _dominantColorFromBytes(Uint8List bytes) {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+
+    final w = decoded.width;
+    final h = decoded.height;
+
+    final samples = [
+      decoded.getPixel(w ~/ 2, h ~/ 2),
+      decoded.getPixel(w ~/ 4, h ~/ 4),
+      decoded.getPixel(w * 3 ~/ 4, h ~/ 4),
+      decoded.getPixel(w ~/ 4, h * 3 ~/ 4),
+      decoded.getPixel(w * 3 ~/ 4, h * 3 ~/ 4),
+    ];
+
+    int r = 0, g = 0, b = 0;
+    for (final p in samples) {
+      final pixel = p as dynamic; // ← force l'évaluation dynamique
+      r += (pixel.r as num).round(); // ← round() marche sur int ET double
+      g += (pixel.g as num).round();
+      b += (pixel.b as num).round();
+    }
+
+    return Color.fromRGBO(
+      r ~/ samples.length,
+      g ~/ samples.length,
+      b ~/ samples.length,
+      1,
+    );
   }
 
   void _updateDominantColor(String? coverPath) {
     if (coverPath == null) {
       print('🎨 PALETTE: coverPath null');
       dominantColor = null;
-      notifyListeners();
+      _notify();
       return;
     }
     if (_colorCache.containsKey(coverPath)) {
       print('🎨 PALETTE: cache hit');
       dominantColor = _colorCache[coverPath];
-      notifyListeners();
+      _notify();
       return;
     }
     final requestId = ++_lastColorRequest;
-    final start = DateTime.now().millisecondsSinceEpoch;
-    print('🎨 PALETTE: start extraction');
-    _extractDominantColor(coverPath).then((color) {
-      final elapsed = DateTime.now().millisecondsSinceEpoch - start;
-      print('🎨 PALETTE: done in ${elapsed}ms, color=$color');
+    print('🎨 PALETTE: start extraction (isolate)');
+    _extractDominantColorIsolate(coverPath).then((color) {
       if (_isDisposed) return;
+      print('🎨 PALETTE: done, color=$color');
       if (requestId == _lastColorRequest && color != null) {
         _colorCache[coverPath] = color;
         dominantColor = color;
-        notifyListeners();
+        _notify();
       }
     });
   }
