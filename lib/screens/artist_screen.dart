@@ -6,6 +6,7 @@ import '../models/track.dart';
 import '../models/album.dart';
 import '../widgets/track_tile.dart';
 import '../services/music_service.dart';
+import 'album_screen.dart';
 
 class ArtistScreen extends StatelessWidget {
   final String artistName;
@@ -183,32 +184,7 @@ class ArtistScreen extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        state.pushOverlay(
-          Scaffold(
-            backgroundColor: const Color(0xFF121212),
-            appBar: AppBar(
-              backgroundColor: const Color(0xFF121212),
-              elevation: 0,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => state.popOverlay(),
-              ),
-              title: Text(album.title,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-            body: ListView.builder(
-              padding: const EdgeInsets.only(bottom: 120),
-              itemCount: albumTracks.length,
-              itemBuilder: (context, index) => TrackTile(
-                track: albumTracks[index],
-                onTap: () =>
-                    state.playTrack(albumTracks[index], trackList: albumTracks),
-                onLike: () => state.toggleLike(albumTracks[index].id),
-              ),
-            ),
-          ),
-        );
+        state.pushOverlay(AlbumScreen(album: album));
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,7 +220,7 @@ class _ArtistAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
-    final exists = context.read<MusicService>().coverExists(path);
+    final exists = context.read<AppState>().coverExists(path);
 
     if (exists && path != null) {
       return Container(
@@ -278,7 +254,7 @@ class _AlbumCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
-    final exists = context.read<MusicService>().coverExists(path);
+    final exists = context.read<AppState>().coverExists(path);
 
     return Container(
       decoration: BoxDecoration(

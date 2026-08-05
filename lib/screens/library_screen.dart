@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
 import 'streaming_import_screen.dart';
 import '../services/music_service.dart';
+import 'album_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -287,38 +288,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         return GestureDetector(
           onTap: () {
             final appState = context.read<AppState>();
-            appState.pushOverlay(
-              Scaffold(
-                backgroundColor: const Color(0xFF121212),
-                appBar: AppBar(
-                  backgroundColor: const Color(0xFF121212),
-                  elevation: 0,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => appState.popOverlay(),
-                  ),
-                  title: Text(
-                    album.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                body: ListView.builder(
-                  padding: const EdgeInsets.only(bottom: 120),
-                  itemCount: albumTracks.length,
-                  itemBuilder: (context, index) => TrackTile(
-                    track: albumTracks[index],
-                    onTap: () => appState.playTrack(
-                      albumTracks[index],
-                      trackList: albumTracks,
-                    ),
-                    onLike: () => appState.toggleLike(albumTracks[index].id),
-                  ),
-                ),
-              ),
-            );
+            appState.pushOverlay(AlbumScreen(album: album));
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
