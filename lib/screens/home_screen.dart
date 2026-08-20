@@ -5,9 +5,9 @@ import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../screens/settings_screen.dart';
 import '../screens/missing_tracks_screen.dart';
-import '../widgets/search_bar.dart';
 import '../widgets/track_tile.dart';
 import '../services/music_service.dart';
+import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -48,8 +48,33 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
-                        child: SearchBarWidget(),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const SearchScreen()),
+                          ),
+                          child: Container(
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2A2A2A),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              children: [
+                                SizedBox(width: 12),
+                                Icon(Icons.search,
+                                    color: Colors.white54, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Rechercher des titres, artistes...',
+                                  style: TextStyle(
+                                      color: Colors.white38, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
