@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import '../models/search_history_item.dart';
 
 class SearchHistoryService {
   static final SearchHistoryService _instance =
@@ -9,10 +10,10 @@ class SearchHistoryService {
   factory SearchHistoryService() => _instance;
   SearchHistoryService._internal();
 
-  List<String> _history = [];
+  List<SearchHistoryItem> _history = [];
   bool _loaded = false;
 
-  List<String> get history => List.unmodifiable(_history);
+  List<SearchHistoryItem> get history => List.unmodifiable(_history);
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
@@ -22,43 +23,78 @@ class SearchHistoryService {
 
   Future<String> _getFilePath() async {
     final appDir = await getApplicationDocumentsDirectory();
-    return p.join(appDir.path, 'search_history.json');
+    return p.join(appDir.path, 'search_history_v2.json');
   }
 
   Future<void> _load() async {
     final path = await _getFilePath();
     final file = File(path);
     if (!await file.exists()) {
-      _history = [];
+      await _migrateFromOldFormat();
       return;
     }
     try {
       final data = jsonDecode(await file.readAsString()) as List;
-      _history = data.map((e) => e.toString()).toList();
+      _history = data
+          .map((e) => SearchHistoryItem.fromJson(e as Map<String, dynamic>))
+          .where(
+              (item) => item.type != 'query') // ignore anciennes entrées texte
+          .toList();
     } catch (e) {
       _history = [];
     }
   }
 
+  Future<void> _migrateFromOldFormat() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final oldPath = p.join(appDir.path, 'search_history.json');
+    final oldFile = File(oldPath);
+    if (await oldFile.exists()) {
+      try {
+        await oldFile.delete();
+      } catch (_) {}
+    }
+    _history = [];
+  }
+
   Future<void> _save() async {
     final path = await _getFilePath();
     final file = File(path);
-    await file.writeAsString(jsonEncode(_history));
+    await file
+        .writeAsString(jsonEncode(_history.map((e) => e.toJson()).toList()));
   }
 
-  Future<void> add(String query) async {
+  Future<void> add(SearchHistoryItem item) async {
     await ensureLoaded();
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) return;
-    _history.remove(trimmed);
-    _history.insert(0, trimmed);
-    if (_history.length > 10) _history = _history.sublist(0, 10);
+    if (item.type == 'query')
+      return; // on n'enregistre plus les requêtes brutes
+    _history.removeWhere((h) => h == item);
+    _history.insert(0, item);
+    if (_history.length > 20) _history = _history.sublist(0, 20);
     await _save();
   }
 
-  Future<void> remove(String query) async {
+  Future<void> addArtist(String name, String id,
+      {String? query, String? imageUrl}) async {
+    await add(
+        SearchHistoryItem.artist(name, id, query: query, imageUrl: imageUrl));
+  }
+
+  Future<void> addAlbum(String title, String id, String artistName,
+      {String? query, String? imageUrl}) async {
+    await add(SearchHistoryItem.album(title, id, artistName,
+        query: query, imageUrl: imageUrl));
+  }
+
+  Future<void> addTrack(String title, String id, String artistName,
+      {String? query, String? imageUrl}) async {
+    await add(SearchHistoryItem.track(title, id, artistName,
+        query: query, imageUrl: imageUrl));
+  }
+
+  Future<void> remove(SearchHistoryItem item) async {
     await ensureLoaded();
-    _history.remove(query);
+    _history.removeWhere((h) => h == item);
     await _save();
   }
 

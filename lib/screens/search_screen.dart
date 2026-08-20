@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../models/discovered_artist.dart';
 import '../models/discovered_album.dart';
 import '../models/track.dart';
+import '../models/search_history_item.dart';
 import '../services/discovery_service.dart';
 import '../services/search_history_service.dart';
 import '../screens/artist_screen.dart';
@@ -31,7 +32,7 @@ class _SearchScreenState extends State<SearchScreen>
   List<Track> _localTracks = [];
   List<DiscoveredArtist> _artists = [];
   List<DiscoveredAlbum> _albums = [];
-  List<String> _history = [];
+  List<SearchHistoryItem> _history = [];
 
   @override
   void initState() {
@@ -76,9 +77,6 @@ class _SearchScreenState extends State<SearchScreen>
       _query = query;
     });
 
-    await _historyService.add(query);
-    _history = _historyService.history;
-
     final state = context.read<AppState>();
     final local = state.musicService.searchTracks(query);
     final artistsFuture = _discovery.searchArtists(query, limit: 10);
@@ -94,6 +92,64 @@ class _SearchScreenState extends State<SearchScreen>
         _isLoading = false;
       });
     }
+  }
+
+  void _onHistoryTap(SearchHistoryItem item) {
+    switch (item.type) {
+      case 'artist':
+        if (item.name != null) {
+          Navigator.pop(context);
+          final state = context.read<AppState>();
+          state.pushOverlay(ArtistScreen(artistName: item.name!));
+        }
+        break;
+      case 'album':
+        if (item.id != null) {
+          Navigator.pop(context);
+          final state = context.read<AppState>();
+          state.pushOverlay(
+              DiscoveredAlbumScreen.fromAlbumId(int.parse(item.id!)));
+        }
+        break;
+      case 'track':
+        if (item.id != null) {
+          final state = context.read<AppState>();
+          final matches =
+              state.allTracks.where((t) => t.id == item.id).toList();
+          if (matches.isNotEmpty) {
+            state.playTrack(matches.first);
+          }
+        }
+        break;
+    }
+  }
+
+  Widget _historyLeading(SearchHistoryItem item) {
+    final isArtist = item.type == 'artist';
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: const Color(0xFF3E3E3E),
+        borderRadius: BorderRadius.circular(isArtist ? 24 : 4),
+        image: item.imageUrl != null
+            ? DecorationImage(
+                image: NetworkImage(item.imageUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: item.imageUrl == null
+          ? Icon(
+              isArtist
+                  ? Icons.person
+                  : item.type == 'album'
+                      ? Icons.album
+                      : Icons.music_note,
+              color: Colors.white54,
+            )
+          : null,
+    );
   }
 
   @override
@@ -184,7 +240,6 @@ class _SearchScreenState extends State<SearchScreen>
                 ),
               ),
             ] else if (_history.isNotEmpty) ...[
-              // ── HISTORIQUE ──
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.only(top: 8),
@@ -197,7 +252,7 @@ class _SearchScreenState extends State<SearchScreen>
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              'Recherches récentes',
+                              'Récemment consultés',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 16,
@@ -220,10 +275,21 @@ class _SearchScreenState extends State<SearchScreen>
                     return ListTile(
                       contentPadding:
                           const EdgeInsets.symmetric(horizontal: 16),
-                      leading: const Icon(Icons.history, color: Colors.white38),
-                      title: Text(item,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 14)),
+                      leading: _historyLeading(item),
+                      title: Text(
+                        item.displayName,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: item.subtitle != null
+                          ? Text(
+                              item.subtitle!,
+                              style: const TextStyle(
+                                  color: Colors.white38, fontSize: 12),
+                            )
+                          : null,
                       trailing: IconButton(
                         icon: const Icon(Icons.close,
                             color: Colors.white38, size: 18),
@@ -232,10 +298,7 @@ class _SearchScreenState extends State<SearchScreen>
                           setState(() => _history = _historyService.history);
                         },
                       ),
-                      onTap: () {
-                        _controller.text = item;
-                        _performSearch(item);
-                      },
+                      onTap: () => _onHistoryTap(item),
                     );
                   },
                 ),
@@ -274,28 +337,52 @@ class _SearchScreenState extends State<SearchScreen>
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 100),
       itemCount: _localTracks.length,
-      itemBuilder: (context, i) => ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFF3E3E3E),
-            borderRadius: BorderRadius.circular(4),
+      itemBuilder: (context, i) {
+        final track = _localTracks[i];
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          leading: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF3E3E3E),
+              borderRadius: BorderRadius.circular(4),
+              image:
+                  track.coverPath != null && track.coverPath!.startsWith('http')
+                      ? DecorationImage(
+                          image: NetworkImage(track.coverPath!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+            ),
+            child:
+                track.coverPath == null || !track.coverPath!.startsWith('http')
+                    ? const Icon(Icons.music_note, color: Colors.white54)
+                    : null,
           ),
-          child: const Icon(Icons.music_note, color: Colors.white54),
-        ),
-        title: Text(
-          _localTracks[i].title,
-          style: const TextStyle(
-              color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
-        ),
-        subtitle: Text(
-          '${_localTracks[i].artist} • ${_localTracks[i].album}',
-          style: const TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-        onTap: () => state.playTrack(_localTracks[i]),
-      ),
+          title: Text(
+            track.title,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          subtitle: Text(
+            '${track.artist} • ${track.album}',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          onTap: () async {
+            await _historyService.addTrack(
+              track.title,
+              track.id,
+              track.artist,
+              query: _query,
+              imageUrl: track.coverPath?.startsWith('http') == true
+                  ? track.coverPath
+                  : null,
+            );
+            state.playTrack(track);
+          },
+        );
+      },
     );
   }
 
@@ -334,6 +421,12 @@ class _SearchScreenState extends State<SearchScreen>
               : null,
           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
           onTap: () {
+            _historyService.addArtist(
+              artist.name,
+              artist.id.toString(),
+              query: _query,
+              imageUrl: artist.pictureUrl,
+            );
             Navigator.pop(context);
             final state = context.read<AppState>();
             state.pushOverlay(ArtistScreen(artistName: artist.name));
@@ -367,6 +460,13 @@ class _SearchScreenState extends State<SearchScreen>
           coverUrl: album.coverUrl,
           isInLibrary: album.isInLibrary,
           onTap: () {
+            _historyService.addAlbum(
+              album.title,
+              album.id.toString(),
+              album.artistName,
+              query: _query,
+              imageUrl: album.coverUrl,
+            );
             Navigator.pop(context);
             final state = context.read<AppState>();
             state.pushOverlay(DiscoveredAlbumScreen(album: album));
