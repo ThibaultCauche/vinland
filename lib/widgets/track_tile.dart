@@ -33,7 +33,9 @@ class TrackTile extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 image: DecorationImage(
-                  image: FileImage(File(track.coverPath!)),
+                  image: track.coverPath!.startsWith('http')
+                      ? NetworkImage(track.coverPath!) as ImageProvider
+                      : FileImage(File(track.coverPath!)),
                   fit: BoxFit.cover,
                 ),
               ),

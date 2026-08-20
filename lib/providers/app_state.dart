@@ -13,6 +13,7 @@ import '../models/album.dart';
 import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:just_audio/just_audio.dart';
+import '../services/navidrome_service.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -44,7 +45,7 @@ class AppState extends ChangeNotifier {
       List.unmodifiable(_missingTracks);
 
   // Getters
-  List<Track> get allTracks => _music.allTracks;
+  List<Track> get allTracks => _music.navidromeTracks;
   List<Track> get likedTracks => _music.likedTracks;
   List<Track> get searchResults {
     if (searchQuery.isEmpty) return [];
@@ -57,7 +58,7 @@ class AppState extends ChangeNotifier {
   String? get userEmail => _auth.userEmail;
   List<Album> get albums => _music.albums;
   MusicService get musicService => _music;
-  bool get isLocalMode => true;
+  bool get isLocalMode => false;
   Color? dominantColor;
 
   // Overlay navigation
@@ -74,6 +75,11 @@ class AppState extends ChangeNotifier {
 
   // Délegue la vérification de cover au MusicService
   bool coverExists(String? path) => _music.coverExists(path);
+
+  //navidrome
+  final NavidromeService _navidrome = NavidromeService();
+  bool _useNavidrome = true;
+  bool get useNavidrome => _useNavidrome;
 
   AppState({required VinlandAudioHandler audioHandler})
       : _audioHandler = audioHandler {
@@ -172,16 +178,8 @@ class AppState extends ChangeNotifier {
   Future<void> initialize() async {
     await _auth.initialize();
     await _music.initialize();
+    _useNavidrome = _music.navidromeTracks.isNotEmpty;
     _notify();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final hasAssets = _music.allTracks
-          .any((t) => t.filePath?.startsWith('assets/') ?? false);
-      if (!hasAssets) {
-        await _music.scanAssetsMusic();
-        if (!_isDisposed) _notify();
-      }
-    });
   }
 
   bool _isDisposed = false;
@@ -221,28 +219,32 @@ class AppState extends ChangeNotifier {
     queue = trackList ?? [track];
     currentIndex = queue.indexWhere((t) => t.id == track.id);
 
-    final items = queue
-        .map((t) => MediaItem(
-              id: t.filePath!,
-              title: t.title,
-              artist: t.artist,
-              album: t.album,
-              duration: t.duration,
-              artUri: t.coverPath != null ? Uri.file(t.coverPath!) : null,
-              extras: {'isAsset': t.filePath!.startsWith('assets/')},
-            ))
-        .toList();
+    final items = queue.map((t) {
+      final path = _music.getOfflinePath(t.id) ?? t.filePath!;
+      final isAsset = path.startsWith('assets/');
+      final isRemote = path.startsWith('http');
 
-    // Lance l'extraction de couleur en arrière-plan (non-bloquant)
+      Uri? artUri;
+      if (t.coverPath != null) {
+        artUri = t.coverPath!.startsWith('http')
+            ? Uri.parse(t.coverPath!)
+            : Uri.file(t.coverPath!);
+      }
+
+      return MediaItem(
+        id: path,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        duration: t.duration,
+        artUri: artUri,
+        extras: {'isAsset': isAsset, 'isRemote': isRemote},
+      );
+    }).toList();
+
     _updateDominantColor(track.coverPath);
-
-    // 1. Notifier immédiatement pour que le MiniPlayer apparaisse
     _notify();
-
-    // 2. Laisser le frame courant se terminer avant de charger l'audio
     await Future.delayed(Duration.zero);
-
-    // 3. Charger la musique
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
     await _music.recordPlay(track.id);
@@ -399,4 +401,35 @@ class AppState extends ChangeNotifier {
       }
     });
   }
+
+  Future<void> setNavidromeMode(bool enabled) async {
+    _useNavidrome = enabled;
+    if (enabled && !_navidrome.isConnected) {
+      final ok = await _navidrome.loadCredentials();
+      if (ok) await _music.syncWithNavidrome();
+    }
+    _notify();
+  }
+
+  Future<bool> configureNavidrome(String url, String user, String pass) async {
+    final ok = await _navidrome.saveCredentials(url, user, pass);
+    if (ok) {
+      await _music.syncWithNavidrome();
+      _useNavidrome = true;
+    }
+    _notify();
+    return ok;
+  }
+
+  Future<void> syncNavidrome() async {
+    await _music.syncWithNavidrome();
+    _notify();
+  }
+
+  Future<void> downloadTrackOffline(Track track) async {
+    await _music.downloadTrack(track);
+    _notify();
+  }
+
+  bool isTrackOffline(String trackId) => _music.isTrackDownloaded(trackId);
 }

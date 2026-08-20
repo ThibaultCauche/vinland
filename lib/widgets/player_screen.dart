@@ -250,7 +250,9 @@ class _PlayerCover extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           image: DecorationImage(
-            image: FileImage(File(path)),
+            image: path.startsWith('http')
+                ? NetworkImage(path) as ImageProvider
+                : FileImage(File(path)),
             fit: BoxFit.cover,
           ),
           boxShadow: [

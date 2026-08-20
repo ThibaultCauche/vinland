@@ -79,13 +79,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
     final appState = context.watch<AppState>();
 
     final albumTracks = appState.allTracks
-        .where((t) => widget.album.trackIds.contains(t.id))
+        .where((t) => t.album == widget.album.title)
         .toList()
-      ..sort((a, b) {
-        final indexA = widget.album.trackIds.indexOf(a.id);
-        final indexB = widget.album.trackIds.indexOf(b.id);
-        return indexA.compareTo(indexB);
-      });
+      ..sort((a, b) => a.title.compareTo(b.title));
 
     final topColor = _dominantColor != null
         ? Color.lerp(_dominantColor, Colors.black, 0.25)!
@@ -196,7 +192,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 ],
                 image: exists && coverPath != null
                     ? DecorationImage(
-                        image: FileImage(File(coverPath)),
+                        image: coverPath.startsWith('http')
+                            ? NetworkImage(coverPath) as ImageProvider
+                            : FileImage(File(coverPath)),
                         fit: BoxFit.cover,
                       )
                     : null,
@@ -470,7 +468,9 @@ class _SmallAvatar extends StatelessWidget {
     if (exists && path != null) {
       return CircleAvatar(
         radius: 12,
-        backgroundImage: FileImage(File(path)),
+        backgroundImage: path.startsWith('http')
+            ? NetworkImage(path) as ImageProvider
+            : FileImage(File(path)),
       );
     }
     return const CircleAvatar(
@@ -648,7 +648,9 @@ class _BottomSheetHeader extends StatelessWidget {
               color: const Color(0xFF2A2A2A),
               image: exists && path != null
                   ? DecorationImage(
-                      image: FileImage(File(path)),
+                      image: path.startsWith('http')
+                          ? NetworkImage(path) as ImageProvider
+                          : FileImage(File(path)),
                       fit: BoxFit.cover,
                     )
                   : null,

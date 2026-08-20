@@ -37,6 +37,34 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: 'Scanner un dossier de musique',
                 onTap: () => _pickFolder(context),
               ),
+              _buildSection('Serveur Navidrome'),
+              _buildTile(
+                icon: Icons.cloud,
+                title: 'Configurer Navidrome',
+                subtitle: state.useNavidrome ? 'Connecte' : 'Non configure',
+                onTap: () => _showNavidromeDialog(context),
+              ),
+              if (state.useNavidrome) ...[
+                _buildTile(
+                  icon: Icons.sync,
+                  title: 'Synchroniser la bibliotheque',
+                  subtitle: 'Mettre a jour depuis le serveur',
+                  onTap: () async {
+                    await state.syncNavidrome();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Synchronisation terminee')),
+                    );
+                  },
+                ),
+                _buildTile(
+                  icon: state.useNavidrome
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  title: 'Mode Navidrome',
+                  subtitle: state.useNavidrome ? 'Actif' : 'Inactif',
+                  onTap: () => state.setNavidromeMode(!state.useNavidrome),
+                ),
+              ],
               _buildTile(
                 icon: Icons.refresh,
                 title: 'Rescanner les covers',
@@ -160,6 +188,80 @@ class SettingsScreen extends StatelessWidget {
       value: value,
       onChanged: onChanged,
       activeColor: const Color(0xFF1DB954),
+    );
+  }
+
+  void _showNavidromeDialog(BuildContext context) {
+    final urlCtrl = TextEditingController();
+    final userCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Navidrome', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: urlCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'URL (ex: http://100.x.x.x:30043)',
+                  labelStyle: TextStyle(color: Colors.white54),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: userCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Utilisateur',
+                  labelStyle: TextStyle(color: Colors.white54),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passCtrl,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Mot de passe',
+                  labelStyle: TextStyle(color: Colors.white54),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child:
+                const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final state = context.read<AppState>();
+              final ok = await state.configureNavidrome(
+                urlCtrl.text.trim(),
+                userCtrl.text.trim(),
+                passCtrl.text.trim(),
+              );
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content:
+                      Text(ok ? 'Connecte a Navidrome' : 'Echec de connexion'),
+                ),
+              );
+            },
+            child: const Text('Connecter',
+                style: TextStyle(color: Color(0xFF1DB954))),
+          ),
+        ],
+      ),
     );
   }
 }

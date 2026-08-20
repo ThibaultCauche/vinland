@@ -384,7 +384,9 @@ class _AlbumCoverGrid extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         image: exists && path != null
             ? DecorationImage(
-                image: FileImage(File(path)),
+                image: path.startsWith('http')
+                    ? NetworkImage(path) as ImageProvider
+                    : FileImage(File(path)),
                 fit: BoxFit.cover,
               )
             : null,

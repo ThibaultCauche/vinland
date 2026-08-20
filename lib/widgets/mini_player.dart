@@ -190,7 +190,9 @@ class _MiniCover extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
-            image: FileImage(File(path)),
+            image: path.startsWith('http')
+                ? NetworkImage(path) as ImageProvider
+                : FileImage(File(path)),
             fit: BoxFit.cover,
           ),
         ),

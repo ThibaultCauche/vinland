@@ -64,9 +64,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
     }
+
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
+      print(
+          '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isAsset=$isAsset isRemote=$isRemote');
       if (isAsset)
         return AudioSource.asset(item.id.replaceFirst('assets/', ''));
       if (isRemote) return AudioSource.uri(Uri.parse(item.id));
@@ -76,11 +79,17 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       await _player.stop();
     } catch (_) {}
-    await _player.setAudioSource(
-      ConcatenatingAudioSource(children: sources),
-      initialIndex: startIndex,
-    );
-    await _player.play();
+
+    try {
+      await _player.setAudioSource(
+        ConcatenatingAudioSource(children: sources),
+        initialIndex: startIndex,
+      );
+      print('✅ AudioSource chargé, lecture...');
+      await _player.play();
+    } catch (e) {
+      print('❌ ERREUR LECTURE: $e');
+    }
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {

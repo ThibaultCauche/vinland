@@ -376,7 +376,9 @@ class _AlbumCover extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
           image: DecorationImage(
-            image: FileImage(File(path)),
+            image: path.startsWith('http')
+                ? NetworkImage(path) as ImageProvider
+                : FileImage(File(path)),
             fit: BoxFit.cover,
           ),
         ),

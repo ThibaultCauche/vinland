@@ -9,6 +9,8 @@ import 'package:metadata_god/metadata_god.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
+import 'navidrome_service.dart';
+import 'package:http/http.dart' as http;
 
 class MusicService {
   static final MusicService _instance = MusicService._internal();
@@ -26,16 +28,31 @@ class MusicService {
   final Set<String> _existingCovers = {};
   Timer? _saveDebounceTimer;
 
-  List<Track> get allTracks => List.unmodifiable(_allTracks);
+  List<Track> get allTracks => _navidromeTracks;
   List<Album> get albums => List.unmodifiable(_albums);
   List<Playlist> get playlists => List.unmodifiable(_playlists);
   List<String> get searchHistory => List.unmodifiable(_searchHistory);
+
+  final NavidromeService _navidrome = NavidromeService();
+  List<Track> _navidromeTracks = [];
+  Map<String, String> _offlineFiles = {}; // navidrome_id -> local path
+
+  List<Track> get navidromeTracks => List.unmodifiable(_navidromeTracks);
+  bool isTrackDownloaded(String trackId) => _offlineFiles.containsKey(trackId);
+  String? getOfflinePath(String trackId) => _offlineFiles[trackId];
 
   Future<void> initialize() async {
     if (_initialized) return;
     _coversDir = await _getCoversDir();
     await _loadFromCache();
     await _refreshCoverCache();
+
+    // Connexion auto à Navidrome
+    final navidromeOk = await _navidrome.loadCredentials();
+    if (navidromeOk) {
+      await syncWithNavidrome();
+    }
+
     _initialized = true;
   }
 
@@ -60,6 +77,7 @@ class MusicService {
   /// Vérifie si une cover existe (utilise le cache, pas de I/O synchrone)
   bool coverExists(String? path) {
     if (path == null) return false;
+    if (path.startsWith('http')) return true;
     return _existingCovers.contains(path);
   }
 
@@ -182,8 +200,9 @@ class MusicService {
   }
 
   void rebuildAlbums() {
+    // On ne travaille plus que sur les tracks Navidrome
     final Map<String, List<Track>> albumMap = {};
-    for (final track in _allTracks) {
+    for (final track in _navidromeTracks) {
       albumMap.putIfAbsent(track.album, () => []).add(track);
     }
 
@@ -357,7 +376,8 @@ class MusicService {
 
     final file = File(p.join(cacheDir.path, 'library.json'));
     final data = {
-      'tracks': _allTracks.map((t) => t.toJson()).toList(),
+      'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
+      'offlineFiles': _offlineFiles,
       'playlists': _playlists
           .map((pl) => {
                 'id': pl.id,
@@ -389,9 +409,25 @@ class MusicService {
     if (await file.exists()) {
       try {
         final data = jsonDecode(await file.readAsString());
-        _allTracks = (data['tracks'] as List)
-            .map((json) => Track.fromJson(json))
-            .toList();
+
+        _navidromeTracks = (data['navidromeTracks'] as List?)
+                ?.map((json) => Track.fromJson(json))
+                .toList() ??
+            [];
+
+        _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
+
+        _playlists = (data['playlists'] as List?)
+                ?.map((pl) => Playlist(
+                      id: pl['id'],
+                      name: pl['name'],
+                      trackIds: List<String>.from(pl['trackIds'] ?? []),
+                      createdAt: DateTime.parse(pl['createdAt']),
+                      isSaved: pl['isSaved'] ?? true,
+                    ))
+                .toList() ??
+            [];
+
         _searchHistory = List<String>.from(data['searchHistory'] ?? []);
 
         rebuildAlbums();
@@ -454,5 +490,40 @@ class MusicService {
     _saveDebounceTimer = Timer(const Duration(seconds: 2), () async {
       await _saveToCache();
     });
+  }
+
+  Future<void> syncWithNavidrome() async {
+    print('SYNC NAVIDROME...');
+    _navidromeTracks = await _navidrome.fetchAllTracks();
+    rebuildAlbums();
+    _debouncedSave();
+    print('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
+  }
+
+  Future<void> downloadTrack(Track track) async {
+    if (!track.filePath!.startsWith('http')) return;
+
+    final navidromeId = track.id.replaceFirst('navidrome_', '');
+    final url = _navidrome.getStreamUrl(navidromeId);
+
+    try {
+      final response =
+          await http.get(Uri.parse(url)).timeout(const Duration(minutes: 2));
+      if (response.statusCode == 200) {
+        final appDir = await getApplicationDocumentsDirectory();
+        final offlineDir = Directory('${appDir.path}/offline_music');
+        await offlineDir.create(recursive: true);
+
+        final ext = '.mp3'; // Navidrome stream souvent en MP3
+        final filePath = '${offlineDir.path}/${track.id.hashCode}$ext';
+        await File(filePath).writeAsBytes(response.bodyBytes);
+
+        _offlineFiles[track.id] = filePath;
+        _debouncedSave();
+        print('DOWNLOADED: ${track.title} -> $filePath');
+      }
+    } catch (e) {
+      print('DOWNLOAD ERROR ${track.title}: $e');
+    }
   }
 }
