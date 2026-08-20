@@ -1,25 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/app_state.dart';
-import 'register_screen.dart';
+import '../models/vinland_user.dart';
+import '../services/auth_service.dart';
+import 'pending_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
 
   @override
   void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -27,49 +33,67 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 64),
-              const SizedBox(height: 24),
               const Text(
-                'Vinland',
-                textAlign: TextAlign.center,
+                'Créer un compte',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 32,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Votre musique, votre univers',
-                textAlign: TextAlign.center,
+                'Votre demande devra être approuvée par l\'administrateur.',
                 style: TextStyle(color: Colors.white54, fontSize: 14),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
+              _buildTextField(
+                controller: _firstNameController,
+                hint: 'Prénom',
+                icon: Icons.person_outline,
+              ),
+              const SizedBox(height: 12),
+              _buildTextField(
+                controller: _lastNameController,
+                hint: 'Nom',
+                icon: Icons.person_outline,
+              ),
+              const SizedBox(height: 12),
               _buildTextField(
                 controller: _emailController,
                 hint: 'Email',
-                icon: Icons.email,
+                icon: Icons.email_outlined,
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 12),
               _buildTextField(
                 controller: _passwordController,
                 hint: 'Mot de passe',
-                icon: Icons.lock,
+                icon: Icons.lock_outline,
+                obscureText: true,
+              ),
+              const SizedBox(height: 12),
+              _buildTextField(
+                controller: _confirmPasswordController,
+                hint: 'Confirmer le mot de passe',
+                icon: Icons.lock_outline,
                 obscureText: true,
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(
                   _error!,
-                  textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.redAccent, fontSize: 13),
                 ),
               ],
@@ -77,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _login,
+                  onPressed: _isLoading ? null : _register,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1DB954),
                     foregroundColor: Colors.white,
@@ -94,19 +118,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Se connecter',
+                      : const Text('S\'inscrire',
                           style: TextStyle(fontSize: 16)),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                ),
-                child: const Text(
-                  'Créer un compte',
-                  style: TextStyle(color: Color(0xFF1DB954)),
                 ),
               ),
             ],
@@ -143,9 +156,23 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> _login() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+  Future<void> _register() async {
+    if (_firstNameController.text.isEmpty ||
+        _lastNameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _passwordController.text.isEmpty) {
       setState(() => _error = 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      setState(() => _error = 'Les mots de passe ne correspondent pas');
+      return;
+    }
+
+    if (_passwordController.text.length < 6) {
+      setState(
+          () => _error = 'Le mot de passe doit faire au moins 6 caractères');
       return;
     }
 
@@ -154,16 +181,28 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
-    final state = context.read<AppState>();
-    final success = await state.login(
-      _emailController.text,
-      _passwordController.text,
+    // On utilise le AuthService directement
+    final authService = AuthService();
+    final user = await authService.register(
+      firstName: _firstNameController.text,
+      lastName: _lastNameController.text,
+      email: _emailController.text,
+      password: _passwordController.text,
     );
 
     if (mounted) {
       setState(() => _isLoading = false);
-      if (!success) {
-        setState(() => _error = 'Email ou mot de passe incorrect');
+      if (user == null) {
+        setState(() => _error = 'Cet email est déjà utilisé');
+      } else if (user.status == UserStatus.approved) {
+        // Premier user = admin, connecté directement
+        Navigator.popUntil(context, (route) => route.isFirst);
+      } else {
+        // Redirige vers l'écran d'attente
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const PendingScreen()),
+        );
       }
     }
   }

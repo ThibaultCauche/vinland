@@ -14,6 +14,7 @@ import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:just_audio/just_audio.dart';
 import '../services/navidrome_service.dart';
+import '../models/vinland_user.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -201,14 +202,40 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> login(String name, String email) async {
-    await _auth.login(name, email);
+  Future<bool> login(String email, String password) async {
+    final success = await _auth.login(email, password);
+    if (success && _auth.currentUser != null) {
+      // Charge les données de l'utilisateur
+      _music.setCurrentUser(_auth.currentUser!.id);
+      _music.initialize();
+    }
     _notify();
+    return success;
   }
+
+  Future<VinlandUser?> register({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+  }) async {
+    final user = await _auth.register(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      password: password,
+    );
+    _notify();
+    return user;
+  }
+
+  VinlandUser? get currentUser => _auth.currentUser;
+  bool get isAdmin => _auth.isAdmin;
 
   Future<void> logout() async {
     await _audioHandler.stop();
     await _auth.logout();
+    _music.setCurrentUser(null);
     currentTrack = null;
     isPlaying = false;
     _notify();

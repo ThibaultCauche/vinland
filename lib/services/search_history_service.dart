@@ -14,6 +14,8 @@ class SearchHistoryService {
   bool _loaded = false;
 
   List<SearchHistoryItem> get history => List.unmodifiable(_history);
+  String? _currentUserId;
+  void setCurrentUser(String? userId) => _currentUserId = userId;
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
@@ -23,7 +25,10 @@ class SearchHistoryService {
 
   Future<String> _getFilePath() async {
     final appDir = await getApplicationDocumentsDirectory();
-    return p.join(appDir.path, 'search_history_v2.json');
+    final fileName = _currentUserId != null
+        ? 'search_history_$_currentUserId.json'
+        : 'search_history_v2.json';
+    return p.join(appDir.path, fileName);
   }
 
   Future<void> _load() async {

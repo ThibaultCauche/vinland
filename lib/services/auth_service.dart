@@ -1,46 +1,59 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/vinland_user.dart';
+import 'user_service.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
 
-  bool _isLoggedIn = false;
-  String? _userName;
-  String? _userEmail;
+  final _userService = UserService();
+  VinlandUser? _currentUser;
 
-  bool get isLoggedIn => _isLoggedIn;
-  String? get userName => _userName;
-  String? get userEmail => _userEmail;
+  VinlandUser? get currentUser => _currentUser;
+  bool get isLoggedIn => _currentUser != null;
+  String? get userName => _currentUser?.fullName;
+  String? get userEmail => _currentUser?.email;
+  bool get isAdmin => _currentUser?.isAdmin ?? false;
+  String? get userId => _currentUser?.id;
 
-  static const _keyIsLoggedIn = 'vinland_isLoggedIn';
-  static const _keyUserName = 'vinland_userName';
-  static const _keyUserEmail = 'vinland_userEmail';
+  static const _keyCurrentUserId = 'vinland_current_user_id';
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
-    _isLoggedIn = prefs.getBool(_keyIsLoggedIn) ?? false;
-    _userName = prefs.getString(_keyUserName);
-    _userEmail = prefs.getString(_keyUserEmail);
+    final userId = prefs.getString(_keyCurrentUserId);
+    if (userId != null) {
+      await _userService.ensureLoaded();
+      _currentUser = _userService.getUserById(userId);
+    }
   }
 
-  Future<void> login(String name, String email) async {
+  Future<bool> login(String email, String password) async {
+    final user = await _userService.login(email, password);
+    if (user == null) return false;
+    _currentUser = user;
     final prefs = await SharedPreferences.getInstance();
-    _isLoggedIn = true;
-    _userName = name;
-    _userEmail = email;
-    await prefs.setBool(_keyIsLoggedIn, true);
-    await prefs.setString(_keyUserName, name);
-    await prefs.setString(_keyUserEmail, email);
+    await prefs.setString(_keyCurrentUserId, user.id);
+    return true;
+  }
+
+  Future<VinlandUser?> register({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+  }) async {
+    return await _userService.register(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      password: password,
+    );
   }
 
   Future<void> logout() async {
+    _currentUser = null;
     final prefs = await SharedPreferences.getInstance();
-    _isLoggedIn = false;
-    _userName = null;
-    _userEmail = null;
-    await prefs.remove(_keyIsLoggedIn);
-    await prefs.remove(_keyUserName);
-    await prefs.remove(_keyUserEmail);
+    await prefs.remove(_keyCurrentUserId);
   }
 }

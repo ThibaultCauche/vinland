@@ -14,6 +14,8 @@ import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
 import 'services/music_service.dart';
 import 'models/track.dart';
+import 'models/vinland_user.dart';
+import './screens/pending_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,9 +92,16 @@ class AppShell extends StatelessWidget {
       ),
       builder: (context, data, child) {
         final (isLoggedIn, currentTab, currentOverlay, currentTrack) = data;
+
+        // ── AUTH ──
         if (!isLoggedIn) return const LoginScreen();
 
+        // Récupère state ICI, avant de l'utiliser
         final state = context.read<AppState>();
+
+        if (state.currentUser?.status == UserStatus.pending) {
+          return const PendingScreen();
+        }
 
         final screens = [
           const HomeScreen(),

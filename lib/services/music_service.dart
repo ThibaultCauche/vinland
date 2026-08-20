@@ -41,6 +41,19 @@ class MusicService {
   bool isTrackDownloaded(String trackId) => _offlineFiles.containsKey(trackId);
   String? getOfflinePath(String trackId) => _offlineFiles[trackId];
 
+  String? _currentUserId;
+
+  void setCurrentUser(String? userId) {
+    _currentUserId = userId;
+  }
+
+  String get _cacheFileName {
+    if (_currentUserId != null && _currentUserId!.isNotEmpty) {
+      return 'library_$_currentUserId.json';
+    }
+    return 'library.json';
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
     _coversDir = await _getCoversDir();
@@ -369,12 +382,15 @@ class MusicService {
     _debouncedSave();
   }
 
-  Future<void> _saveToCache() async {
+  Future _getCacheFile() async {
     final appDir = await getApplicationDocumentsDirectory();
     final cacheDir = Directory(p.join(appDir.path, 'cache'));
     await cacheDir.create(recursive: true);
+    return File(p.join(cacheDir.path, _cacheFileName));
+  }
 
-    final file = File(p.join(cacheDir.path, 'library.json'));
+  Future _saveToCache() async {
+    final file = await _getCacheFile();
     final data = {
       'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
       'offlineFiles': _offlineFiles,
@@ -403,9 +419,8 @@ class MusicService {
     await _saveToCache();
   }
 
-  Future<void> _loadFromCache() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(appDir.path, 'cache', 'library.json'));
+  Future _loadFromCache() async {
+    final file = await _getCacheFile();
     if (await file.exists()) {
       try {
         final data = jsonDecode(await file.readAsString());

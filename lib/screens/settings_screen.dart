@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../services/user_service.dart';
+import '../screens/admin_users_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -30,6 +32,15 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: state.userEmail ?? '',
                 onTap: () {},
               ),
+              if (state.isAdmin) ...[
+                _buildTile(
+                  icon: Icons.people,
+                  title: 'Gérer les utilisateurs',
+                  subtitle:
+                      '${UserService().pendingCount} en attente d\'approbation',
+                  onTap: () => state.pushOverlay(const AdminUsersScreen()),
+                ),
+              ],
               _buildSection('Bibliotheque'),
               _buildTile(
                 icon: Icons.folder,
