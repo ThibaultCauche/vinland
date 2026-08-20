@@ -11,7 +11,8 @@ import 'artist_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
   final Album album;
-  const AlbumScreen({super.key, required this.album});
+  final String? filterArtist;
+  const AlbumScreen({super.key, required this.album, this.filterArtist});
 
   @override
   State<AlbumScreen> createState() => _AlbumScreenState();
@@ -78,10 +79,23 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
-    final albumTracks = appState.allTracks
+    var albumTracks = appState.allTracks
         .where((t) => t.album == widget.album.title)
         .toList()
       ..sort((a, b) => a.title.compareTo(b.title));
+
+    if (widget.filterArtist != null) {
+      bool artistMatch(String? artistField) {
+        if (artistField == null) return false;
+        final search = widget.filterArtist!.toLowerCase();
+        final field = artistField.toLowerCase();
+        if (field == search) return true;
+        if (field.contains(search)) return true;
+        return field.split(RegExp(r'[/&,]')).any((p) => p.trim() == search);
+      }
+
+      albumTracks = albumTracks.where((t) => artistMatch(t.artist)).toList();
+    }
 
     final topColor = _dominantColor != null
         ? Color.lerp(_dominantColor, Colors.black, 0.25)!

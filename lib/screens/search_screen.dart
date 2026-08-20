@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -5,6 +6,7 @@ import '../models/discovered_artist.dart';
 import '../models/discovered_album.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
+import '../services/search_history_service.dart';
 import '../screens/artist_screen.dart';
 import '../screens/discovered_album_screen.dart';
 
@@ -19,26 +21,52 @@ class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _discovery = DiscoveryService();
+  final _historyService = SearchHistoryService();
   late TabController _tabController;
 
   bool _isLoading = false;
   String _query = '';
+  Timer? _debounce;
 
   List<Track> _localTracks = [];
   List<DiscoveredArtist> _artists = [];
   List<DiscoveredAlbum> _albums = [];
+  List<String> _history = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadHistory();
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _tabController.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadHistory() async {
+    await _historyService.ensureLoaded();
+    if (mounted) setState(() => _history = _historyService.history);
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    if (value.trim().isEmpty) {
+      setState(() {
+        _query = '';
+        _localTracks = [];
+        _artists = [];
+        _albums = [];
+      });
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _performSearch(value);
+    });
   }
 
   Future<void> _performSearch(String query) async {
@@ -48,9 +76,10 @@ class _SearchScreenState extends State<SearchScreen>
       _query = query;
     });
 
-    final state = context.read<AppState>();
+    await _historyService.add(query);
+    _history = _historyService.history;
 
-    // Recherche locale + Deezer en parallèle
+    final state = context.read<AppState>();
     final local = state.musicService.searchTracks(query);
     final artistsFuture = _discovery.searchArtists(query, limit: 10);
     final albumsFuture = _discovery.searchAlbums(query, limit: 15);
@@ -78,7 +107,6 @@ class _SearchScreenState extends State<SearchScreen>
         bottom: false,
         child: Column(
           children: [
-            // ── APP BAR AVEC SEARCH ──
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
               child: Row(
@@ -98,16 +126,7 @@ class _SearchScreenState extends State<SearchScreen>
                         controller: _controller,
                         autofocus: true,
                         onSubmitted: _performSearch,
-                        onChanged: (v) {
-                          if (v.isEmpty) {
-                            setState(() {
-                              _query = '';
-                              _localTracks = [];
-                              _artists = [];
-                              _albums = [];
-                            });
-                          }
-                        },
+                        onChanged: _onSearchChanged,
                         style:
                             const TextStyle(color: Colors.white, fontSize: 14),
                         decoration: InputDecoration(
@@ -122,12 +141,7 @@ class _SearchScreenState extends State<SearchScreen>
                                       color: Colors.white54, size: 18),
                                   onPressed: () {
                                     _controller.clear();
-                                    setState(() {
-                                      _query = '';
-                                      _localTracks = [];
-                                      _artists = [];
-                                      _albums = [];
-                                    });
+                                    _onSearchChanged('');
                                   },
                                 )
                               : null,
@@ -141,14 +155,11 @@ class _SearchScreenState extends State<SearchScreen>
                 ],
               ),
             ),
-
             if (_isLoading)
               const LinearProgressIndicator(
                 color: Color(0xFF1DB954),
                 backgroundColor: Colors.transparent,
               ),
-
-            // ── ONGLETS ──
             if (_query.isNotEmpty) ...[
               TabBar(
                 controller: _tabController,
@@ -157,23 +168,79 @@ class _SearchScreenState extends State<SearchScreen>
                 unselectedLabelColor: Colors.white38,
                 indicatorColor: const Color(0xFF1DB954),
                 tabs: [
-                  Tab(text: 'Titres (${_localTracks.length})'),
                   Tab(text: 'Artistes (${_artists.length})'),
                   Tab(text: 'Albums (${_albums.length})'),
+                  Tab(text: 'Titres (${_localTracks.length})'),
                 ],
               ),
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
                   children: [
-                    _buildLocalTracks(),
                     _buildArtists(),
                     _buildAlbums(),
+                    _buildLocalTracks(),
                   ],
                 ),
               ),
+            ] else if (_history.isNotEmpty) ...[
+              // ── HISTORIQUE ──
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(top: 8),
+                  itemCount: _history.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Recherches récentes',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () async {
+                                await _historyService.clear();
+                                setState(() => _history = []);
+                              },
+                              child: const Text('Effacer',
+                                  style: TextStyle(color: Color(0xFF1DB954))),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    final item = _history[index - 1];
+                    return ListTile(
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 16),
+                      leading: const Icon(Icons.history, color: Colors.white38),
+                      title: Text(item,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close,
+                            color: Colors.white38, size: 18),
+                        onPressed: () async {
+                          await _historyService.remove(item);
+                          setState(() => _history = _historyService.history);
+                        },
+                      ),
+                      onTap: () {
+                        _controller.text = item;
+                        _performSearch(item);
+                      },
+                    );
+                  },
+                ),
+              ),
             ] else ...[
-              // ── ÉCRAN VIDE AVANT RECHERCHE ──
               const Expanded(
                 child: Center(
                   child: Column(
@@ -196,7 +263,6 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  // ── ONGLET TITRES LOCAUX ──
   Widget _buildLocalTracks() {
     if (_localTracks.isEmpty) {
       return const Center(
@@ -233,7 +299,6 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  // ── ONGLET ARTISTES DEEZER ──
   Widget _buildArtists() {
     if (_artists.isEmpty) {
       return const Center(
@@ -269,6 +334,7 @@ class _SearchScreenState extends State<SearchScreen>
               : null,
           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
           onTap: () {
+            Navigator.pop(context);
             final state = context.read<AppState>();
             state.pushOverlay(ArtistScreen(artistName: artist.name));
           },
@@ -277,7 +343,6 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  // ── ONGLET ALBUMS DEEZER ──
   Widget _buildAlbums() {
     if (_albums.isEmpty) {
       return const Center(
@@ -302,6 +367,7 @@ class _SearchScreenState extends State<SearchScreen>
           coverUrl: album.coverUrl,
           isInLibrary: album.isInLibrary,
           onTap: () {
+            Navigator.pop(context);
             final state = context.read<AppState>();
             state.pushOverlay(DiscoveredAlbumScreen(album: album));
           },
@@ -311,7 +377,6 @@ class _SearchScreenState extends State<SearchScreen>
   }
 }
 
-// ── WIDGET CARTE ALBUM ──
 class _AlbumCard extends StatelessWidget {
   final String title;
   final String artist;

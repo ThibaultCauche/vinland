@@ -3,18 +3,24 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_track.dart';
+import '../models/track.dart';
 import '../services/discovery_service.dart';
 import 'artist_screen.dart';
 
 class DiscoveredAlbumScreen extends StatefulWidget {
   final DiscoveredAlbum? album;
   final int? albumId;
+  final String? filterArtist; // ← NOUVEAU : filtre les tracks par artiste
 
-  const DiscoveredAlbumScreen({super.key, this.album, this.albumId})
-      : assert(album != null || albumId != null);
+  const DiscoveredAlbumScreen({
+    super.key,
+    this.album,
+    this.albumId,
+    this.filterArtist,
+  }) : assert(album != null || albumId != null);
 
-  factory DiscoveredAlbumScreen.fromAlbumId(int id) {
-    return DiscoveredAlbumScreen(albumId: id);
+  factory DiscoveredAlbumScreen.fromAlbumId(int id, {String? filterArtist}) {
+    return DiscoveredAlbumScreen(albumId: id, filterArtist: filterArtist);
   }
 
   @override
@@ -49,6 +55,53 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
     }
   }
 
+  /// Vérifie si l'artiste recherché est présent dans le champ artiste
+  bool _artistContains(String? artistField, String search) {
+    if (artistField == null) return false;
+    final s = search.toLowerCase();
+    final f = artistField.toLowerCase();
+    if (f == s) return true;
+    if (f.contains(s)) return true;
+    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
+  }
+
+  /// Trouve la track locale correspondante à une track Deezer
+  Track? _findLocalTrack(DiscoveredTrack dt) {
+    final state = context.read<AppState>();
+    final localTracks = state.allTracks;
+
+    String norm(String s) => s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final dtArtist = norm(dt.artistName);
+    final dtTitle = norm(dt.title);
+    final dtAlbum = norm(dt.albumName);
+
+    for (final lt in localTracks) {
+      final ltArtist = norm(lt.artist);
+      final ltTitle = norm(lt.title);
+      final ltAlbum = norm(lt.album);
+
+      final artistMatch = ltArtist == dtArtist ||
+          ltArtist.contains(dtArtist) ||
+          dtArtist.contains(ltArtist);
+      final titleMatch = ltTitle == dtTitle ||
+          ltTitle.contains(dtTitle) ||
+          dtTitle.contains(ltTitle);
+      final albumMatch = ltAlbum == dtAlbum ||
+          ltAlbum.contains(dtAlbum) ||
+          dtAlbum.contains(ltAlbum);
+
+      if (artistMatch && titleMatch && albumMatch) {
+        return lt;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
@@ -62,6 +115,13 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
         ),
       );
     }
+
+    // Filtre les tracks si filterArtist est fourni
+    final displayTracks = widget.filterArtist != null
+        ? _tracks
+            .where((t) => _artistContains(t.artistName, widget.filterArtist!))
+            .toList()
+        : _tracks;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -152,7 +212,7 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Album • ${_tracks.length} titres',
+                    'Album • ${displayTracks.length} titres',
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
@@ -165,9 +225,17 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) => _DiscoveredTrackTile(
                   index: index,
-                  track: _tracks[index],
+                  track: displayTracks[index],
+                  onTap: () {
+                    if (displayTracks[index].isInLibrary) {
+                      final localTrack = _findLocalTrack(displayTracks[index]);
+                      if (localTrack != null) {
+                        state.playTrack(localTrack);
+                      }
+                    }
+                  },
                 ),
-                childCount: _tracks.length,
+                childCount: displayTracks.length,
               ),
             ),
           ),
@@ -181,15 +249,18 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
 class _DiscoveredTrackTile extends StatelessWidget {
   final int index;
   final DiscoveredTrack track;
+  final VoidCallback onTap;
 
   const _DiscoveredTrackTile({
     required this.index,
     required this.track,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      onTap: track.isInLibrary ? onTap : null,
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -214,7 +285,7 @@ class _DiscoveredTrackTile extends StatelessWidget {
                   Text(
                     track.title,
                     style: TextStyle(
-                      color: track.isInLibrary ? Colors.white54 : Colors.white,
+                      color: track.isInLibrary ? Colors.white : Colors.white38,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                       letterSpacing: -0.3,
@@ -225,8 +296,9 @@ class _DiscoveredTrackTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     track.artistName,
-                    style: const TextStyle(
-                      color: Colors.white54,
+                    style: TextStyle(
+                      color:
+                          track.isInLibrary ? Colors.white54 : Colors.white24,
                       fontSize: 12,
                     ),
                     maxLines: 1,
