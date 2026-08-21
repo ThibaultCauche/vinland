@@ -20,7 +20,6 @@ class MusicService {
   List<Track> _allTracks = [];
   List<Album> _albums = [];
   List<Playlist> _playlists = [];
-  List<String> _searchHistory = [];
   bool _initialized = false;
   String? _coversDir;
 
@@ -31,7 +30,6 @@ class MusicService {
   List<Track> get allTracks => _navidromeTracks;
   List<Album> get albums => List.unmodifiable(_albums);
   List<Playlist> get playlists => List.unmodifiable(_playlists);
-  List<String> get searchHistory => List.unmodifiable(_searchHistory);
 
   final NavidromeService _navidrome = NavidromeService();
   List<Track> _navidromeTracks = [];
@@ -45,6 +43,7 @@ class MusicService {
 
   void setCurrentUser(String? userId) {
     _currentUserId = userId;
+    _initialized = false;
   }
 
   String get _cacheFileName {
@@ -327,18 +326,13 @@ class MusicService {
         .toList();
   }
 
-  Future<void> addSearchQuery(String query) async {
-    if (query.isEmpty) return;
-    _searchHistory.remove(query);
-    _searchHistory.insert(0, query);
-    if (_searchHistory.length > 20) _searchHistory.removeLast();
-    _debouncedSave();
-  }
-
   List<Track> get likedTracks => _allTracks.where((t) => t.isLiked).toList();
 
-  Future<void> toggleLike(String trackId) async {
-    final track = _allTracks.firstWhere((t) => t.id == trackId);
+  Future toggleLike(String trackId) async {
+    final track = _allTracks.firstWhere(
+      (t) => t.id == trackId,
+      orElse: () => throw Exception('Track $trackId not found'),
+    );
     track.isLiked = !track.isLiked;
     _debouncedSave();
   }
@@ -372,16 +366,6 @@ class MusicService {
     _debouncedSave();
   }
 
-  Future<void> removeSearchQuery(String query) async {
-    _searchHistory.remove(query);
-    _debouncedSave();
-  }
-
-  Future<void> clearSearchHistory() async {
-    _searchHistory.clear();
-    _debouncedSave();
-  }
-
   Future _getCacheFile() async {
     final appDir = await getApplicationDocumentsDirectory();
     final cacheDir = Directory(p.join(appDir.path, 'cache'));
@@ -403,7 +387,6 @@ class MusicService {
                 'isSaved': pl.isSaved,
               })
           .toList(),
-      'searchHistory': _searchHistory,
     };
     await file.writeAsString(jsonEncode(data));
   }
@@ -429,6 +412,7 @@ class MusicService {
                 ?.map((json) => Track.fromJson(json))
                 .toList() ??
             [];
+        _allTracks = List.from(_navidromeTracks);
 
         _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
 
@@ -442,8 +426,6 @@ class MusicService {
                     ))
                 .toList() ??
             [];
-
-        _searchHistory = List<String>.from(data['searchHistory'] ?? []);
 
         rebuildAlbums();
       } catch (e) {
@@ -510,6 +492,7 @@ class MusicService {
   Future<void> syncWithNavidrome() async {
     print('SYNC NAVIDROME...');
     _navidromeTracks = await _navidrome.fetchAllTracks();
+    _allTracks = List.from(_navidromeTracks);
     rebuildAlbums();
     _debouncedSave();
     print('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');

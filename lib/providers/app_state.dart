@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 import 'package:just_audio/just_audio.dart';
 import '../services/navidrome_service.dart';
 import '../models/vinland_user.dart';
+import '../services/search_history_service.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -53,7 +54,6 @@ class AppState extends ChangeNotifier {
     return _music.searchTracks(searchQuery);
   }
 
-  List<String> get searchHistory => _music.searchHistory;
   bool get isLoggedIn => _auth.isLoggedIn;
   String? get userName => _auth.userName;
   String? get userEmail => _auth.userEmail;
@@ -178,6 +178,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> initialize() async {
     await _auth.initialize();
+    if (_auth.currentUser != null) {
+      _music.setCurrentUser(_auth.currentUser!.id);
+    }
     await _music.initialize();
     _useNavidrome = _music.navidromeTracks.isNotEmpty;
     _notify();
@@ -205,8 +208,8 @@ class AppState extends ChangeNotifier {
   Future<bool> login(String email, String password) async {
     final success = await _auth.login(email, password);
     if (success && _auth.currentUser != null) {
-      // Charge les données de l'utilisateur
       _music.setCurrentUser(_auth.currentUser!.id);
+      SearchHistoryService().setCurrentUser(_auth.currentUser!.id);
       _music.initialize();
     }
     _notify();
@@ -236,6 +239,7 @@ class AppState extends ChangeNotifier {
     await _audioHandler.stop();
     await _auth.logout();
     _music.setCurrentUser(null);
+    SearchHistoryService().setCurrentUser(null);
     currentTrack = null;
     isPlaying = false;
     _notify();
@@ -309,9 +313,6 @@ class AppState extends ChangeNotifier {
   void setSearchQuery(String query) {
     searchQuery = query;
     showSearchResults = query.isNotEmpty;
-    if (query.isNotEmpty) {
-      _music.addSearchQuery(query);
-    }
     _notify();
   }
 
@@ -333,16 +334,6 @@ class AppState extends ChangeNotifier {
 
   void setTab(int index) {
     currentTab = index;
-    _notify();
-  }
-
-  Future<void> removeSearchQuery(String query) async {
-    await _music.removeSearchQuery(query);
-    _notify();
-  }
-
-  Future<void> clearSearchHistory() async {
-    await _music.clearSearchHistory();
     _notify();
   }
 

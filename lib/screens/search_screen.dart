@@ -38,6 +38,8 @@ class _SearchScreenState extends State<SearchScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    final state = context.read<AppState>();
+    _historyService.setCurrentUser(state.currentUser?.id);
     _loadHistory();
   }
 

@@ -15,7 +15,10 @@ class SearchHistoryService {
 
   List<SearchHistoryItem> get history => List.unmodifiable(_history);
   String? _currentUserId;
-  void setCurrentUser(String? userId) => _currentUserId = userId;
+  void setCurrentUser(String? userId) {
+    _currentUserId = userId;
+    _loaded = false;
+  }
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
