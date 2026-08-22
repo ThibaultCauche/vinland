@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
-import '../services/music_service.dart';
-import '../services/audio_handler.dart';
 import 'player_screen.dart';
 
 class MiniPlayer extends StatelessWidget {

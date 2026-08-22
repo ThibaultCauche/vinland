@@ -142,43 +142,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     // Retirer "feat." / "ft." inline (tout ce qui suit)
     t = t.replaceAll(
         RegExp(r'\s+(feat\.?|ft\.?)\s+.*$', caseSensitive: false), '');
-    String _coreTitle(String title) {
-      var t = title.toLowerCase().trim();
-      // Retirer les parenthèses avec feat/ft/with/prod
-      t = t.replaceAll(
-          RegExp(r'\s*\(\s*(feat\.?|ft\.?|with|prod\.?|presents?)\s+[^)]*\)',
-              caseSensitive: false),
-          '');
-      t = t.replaceAll(
-          RegExp(r'\s*\[\s*(feat\.?|ft\.?|with|prod\.?|presents?)\s+[^\]]*\]',
-              caseSensitive: false),
-          '');
-      // Retirer les suffixes après tiret : versions, remix, etc.
-      t = t.replaceAll(
-          RegExp(
-              r'\s*[-–]\s*(.+remix|remix|edit|version|radio\s*edit|radio\s*mix|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|bonus\s*track|skit|intro|outro|interlude|theme|from\s+the|from\s+.*soundtrack|motion\s*picture|original\s*score)\s*$',
-              caseSensitive: false),
-          '');
-      // Retirer les versions entre parenthèses à la fin
-      t = t.replaceAll(
-          RegExp(
-              r'\s*\(\s*\d{4}\s*(remaster|re-master|version|edit|mix)?\s*\)\s*$',
-              caseSensitive: false),
-          '');
-      t = t.replaceAll(
-          RegExp(
-              r'\s*\(\s*(.+remix|remix|edit|version|radio|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|theme|from)\s*[^)]*\)\s*$',
-              caseSensitive: false),
-          '');
-      // Retirer "feat." / "ft." inline (tout ce qui suit)
-      t = t.replaceAll(
-          RegExp(r'\s+(feat\.?|ft\.?)\s+.*$', caseSensitive: false), '');
-      // Retirer les crochets restants
-      t = t.replaceAll(RegExp(r'\s*\[[^\]]*\]'), '');
-      // Retirer les parenthèses restantes
-      t = t.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
-      return _normalize(t);
-    }
 
     // Retirer les crochets restants
     t = t.replaceAll(RegExp(r'\s*\[[^\]]*\]'), '');
@@ -224,7 +187,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     }
 
     // Nettoyer le résultat
-    a = primary.replaceAll(RegExp(r'[&+,]'), ' ');
+    a = primary.replaceAll(RegExp(r'[&+,/]'), ' ');
     return _normalize(a);
   }
 
@@ -243,7 +206,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       byCoreTitle.putIfAbsent(_coreTitle(t.title), () => []).add(t);
     }
 
-    int pass1 = 0, pass2 = 0, pass3 = 0, pass4 = 0, pass5 = 0;
+    int pass1 = 0, pass2 = 0, pass3 = 0, pass4 = 0;
 
     for (final trackData in widget.tracks) {
       final rawTitle = trackData['title'] ?? '';
@@ -351,7 +314,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
 
               match = candidate;
               confidence = 0.85;
-              pass5++;
               break;
             }
           }
@@ -392,7 +354,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     if (a == b) return true;
     if (a.contains(b) || b.contains(a)) {
       final minLen = a.length < b.length ? a.length : b.length;
-      if (minLen >= 3) return true;
+      if (minLen >= 2) return true;
     }
     final aWords = a.split(' ').where((w) => w.length > 2).toSet();
     final bWords = b.split(' ').where((w) => w.length > 2).toSet();
@@ -408,26 +370,15 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     if (a == b) return true;
     if (a.contains(b) || b.contains(a)) {
       final minLen = a.length < b.length ? a.length : b.length;
-      if (minLen >= 4) return true;
+      if (minLen >= 2) return true;
     }
-    final aWords = a.split(' ').where((w) => w.length > 2).toSet();
-    final bWords = b.split(' ').where((w) => w.length > 2).toSet();
+    final aWords = a.split(' ').where((w) => w.length > 1).toSet();
+    final bWords = b.split(' ').where((w) => w.length > 1).toSet();
     if (aWords.isEmpty || bWords.isEmpty) return false;
     final common = aWords.intersection(bWords);
     // Au moins 70% des mots en commun
     return common.length >= aWords.length * 0.7 ||
         common.length >= bWords.length * 0.7;
-  }
-
-  double _similarity(String a, String b) {
-    if (a.isEmpty || b.isEmpty) return 0;
-    if (a == b) return 1.0;
-    // Comparer sans les mots vides
-    final aClean = _removeStopWords(a);
-    final bClean = _removeStopWords(b);
-    if (aClean.isEmpty || bClean.isEmpty) return 0;
-    if (aClean == bClean) return 1.0;
-    return _jaroWinkler(aClean, bClean);
   }
 
   double _jaroWinkler(String s1, String s2) {
@@ -478,26 +429,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     }
 
     return jaro + (prefix * 0.1 * (1 - jaro));
-  }
-
-  int _levenshtein(String a, String b) {
-    final matrix = List.generate(
-      a.length + 1,
-      (i) => List.filled(b.length + 1, 0),
-    );
-    for (var i = 0; i <= a.length; i++) matrix[i][0] = i;
-    for (var j = 0; j <= b.length; j++) matrix[0][j] = j;
-    for (var i = 1; i <= a.length; i++) {
-      for (var j = 1; j <= b.length; j++) {
-        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
-        matrix[i][j] = [
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        ].reduce((a, b) => a < b ? a : b);
-      }
-    }
-    return matrix[a.length][b.length];
   }
 
   DateTime? _parseDate(String? dateStr) {

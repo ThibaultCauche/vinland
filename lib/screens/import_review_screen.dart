@@ -348,7 +348,6 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
 
     state.musicService.rebuildAlbums();
     state.musicService.saveToCache();
-    state.notifyListeners();
 
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(

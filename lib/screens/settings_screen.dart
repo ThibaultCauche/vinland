@@ -149,9 +149,6 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _pickFolder(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    final state = context.read<AppState>();
-    // Note: FilePicker n'a pas de getDirectoryPath sur iOS, mais fonctionne sur Android/Desktop
-    // Tu peux utiliser file_picker ou permission_handler selon ta cible
     messenger.showSnackBar(
       const SnackBar(content: Text('Fonctionnalite a implementer')),
     );
