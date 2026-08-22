@@ -105,32 +105,77 @@ class NavidromeService {
     if (!isConnected) return [];
     final albums = await fetchAlbums();
     final List<Track> allTracks = [];
-    for (final album in albums) {
+    int totalSongs = 0;
+
+    for (int i = 0; i < albums.length; i++) {
+      final album = albums[i];
       final tracks = await fetchAlbumTracks(album['id'] as String);
       allTracks.addAll(tracks);
+      totalSongs += tracks.length;
+
+      if ((i + 1) % 100 == 0) {
+        print(
+            'PROGRESSION: ${i + 1}/${albums.length} albums, $totalSongs tracks');
+      }
     }
+
+    print('TOTAL TRACKS: ${allTracks.length}');
     return allTracks;
   }
 
   Future<List<Map<String, dynamic>>> fetchAlbums() async {
     if (!isConnected) return [];
-    try {
-      final response = await http
-          .get(_buildUri('getAlbumList2.view', extra: {
-            'type': 'alphabeticalByName',
-            'size': '500',
-          }))
-          .timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) {
+    final albums = <Map<String, dynamic>>[];
+    int offset = 0;
+    const int pageSize = 500;
+
+    while (true) {
+      try {
+        final response = await http
+            .get(_buildUri('getAlbumList2.view', extra: {
+              'type': 'alphabeticalByName',
+              'size': '$pageSize',
+              'offset': '$offset',
+            }))
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode != 200) {
+          print('ERREUR LISTE ALBUMS (offset=$offset): ${response.statusCode}');
+          break;
+        }
+
         final data = jsonDecode(response.body);
-        final albums =
-            data['subsonic-response']?['albumList2']?['album'] as List? ?? [];
-        return albums.cast<Map<String, dynamic>>();
+        final albumList =
+            data['subsonic-response']?['albumList2']?['album'] as List?;
+
+        if (albumList == null || albumList.isEmpty) break;
+
+        for (final album in albumList) {
+          albums.add({
+            'id': album['id'],
+            'name': album['name'],
+            'artist': album['artist'],
+            'coverArt': album['coverArt'],
+            'songCount': album['songCount'],
+            'duration': album['duration'],
+            'year': album['year'],
+            'genre': album['genre'],
+          });
+        }
+
+        print(
+            'PAGE ALBUMS: offset=$offset, count=${albumList.length}, total=${albums.length}');
+
+        if (albumList.length < pageSize) break;
+        offset += pageSize;
+      } catch (e) {
+        print('fetchAlbums error (offset=$offset): $e');
+        break;
       }
-    } catch (e) {
-      print('fetchAlbums error: $e');
     }
-    return [];
+
+    print('TOTAL ALBUMS: ${albums.length}');
+    return albums;
   }
 
   Future<List<Track>> fetchAlbumTracks(String albumId) async {
