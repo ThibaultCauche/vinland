@@ -12,7 +12,18 @@ class StreamingImportService {
     List<String>? headers;
 
     await for (final chunk in stream) {
-      buffer += utf8.decode(chunk, allowMalformed: true);
+      // Gérer le BOM UTF-8 sur le premier chunk
+      var bytes = chunk;
+      if (isFirstLine && bytes.length >= 3) {
+        if (bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+          bytes = bytes.sublist(3);
+        }
+      }
+      var decoded = utf8.decode(bytes, allowMalformed: true);
+      if (decoded.contains('�')) {
+        decoded = latin1.decode(bytes);
+      }
+      buffer += decoded;
 
       var lineEnd = buffer.indexOf('\n');
       while (lineEnd != -1) {
@@ -26,7 +37,6 @@ class StreamingImportService {
 
         if (isFirstLine) {
           headers = _parseCsvLine(line);
-          print('HEADERS PARSÉS: $headers');
           isFirstLine = false;
           lineEnd = buffer.indexOf('\n');
           continue;
@@ -80,10 +90,6 @@ class StreamingImportService {
       'timestamp',
       'dateadded'
     ]);
-
-    print(
-        'INDICES: title=$titleIdx, artist=$artistIdx, album=$albumIdx, date=$dateIdx');
-    print('LIGNE: $cols');
 
     return {
       'title':

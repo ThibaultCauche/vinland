@@ -53,9 +53,12 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         .replaceAll('ñ', 'n')
         .replaceAll('æ', 'ae')
         .replaceAll('œ', 'oe')
-        .replaceAll('ß', 'ss');
+        .replaceAll('ß', 'ss')
+        .replaceAll('ÿ', 'y');
     // Caractères spéciaux → espaces
-    normalized = normalized.replaceAll(RegExp(r'[^\w\s]'), ' ');
+    normalized = normalized.replaceAll(
+        RegExp(r'[!"#$%&()*+,\-./:;<=>?@\[\\\]^_`{|}~]'), ' ');
+    normalized = normalized.replaceAll("'", ' ');
     // Espaces multiples → un seul
     normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
     return normalized;
@@ -125,7 +128,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     // Retirer les suffixes après tiret : versions, remix, etc.
     t = t.replaceAll(
         RegExp(
-            r'\s*[-–]\s*(.+remix|remix|edit|version|radio\s*edit|radio\s*mix|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|bonus\s*track|skit|intro|outro|interlude|theme|from\s+the|from\s+.*soundtrack|motion\s*picture|original\s*score)\s*$',
+            r'\s*[-–]\s*(.+remix|remix|edit|version|radio\s*edit|radio\s*mix|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|bonus\s*track|skit|intro|outro|interlude|theme|from\s+the\s+series\s+.*|from\s+the\s+.*soundtrack|from\s+the\s+.*motion\s*picture|original\s*score)\s*$',
             caseSensitive: false),
         '');
     // Retirer les versions entre parenthèses à la fin
@@ -147,7 +150,8 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     t = t.replaceAll(RegExp(r'\s*\[[^\]]*\]'), '');
     // Retirer les parenthèses restantes
     t = t.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
-    return _normalize(t);
+    final result = _normalize(t);
+    return result;
   }
 
   /// Normalise un nom d'artiste : retire "the ", séparateurs multiples
@@ -187,8 +191,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     }
 
     // Nettoyer le résultat
-    a = primary.replaceAll(RegExp(r'[&+,/]'), ' ');
-    return _normalize(a);
+    a = primary.replaceAll(RegExp(r'[&+,/-]'), ' ');
+    final result = _normalize(a);
+    return result;
   }
 
   // ── MATCHING ──
@@ -202,11 +207,13 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     final byTitle = <String, List<Track>>{};
     final byCoreTitle = <String, List<Track>>{};
     for (final t in localTracks) {
-      byTitle.putIfAbsent(_normalize(t.title), () => []).add(t);
-      byCoreTitle.putIfAbsent(_coreTitle(t.title), () => []).add(t);
+      final nt = _normalize(t.title);
+      final ct = _coreTitle(t.title);
+      byTitle.putIfAbsent(nt, () => []).add(t);
+      byCoreTitle.putIfAbsent(ct, () => []).add(t);
     }
 
-    int pass1 = 0, pass2 = 0, pass3 = 0, pass4 = 0;
+    int pass1 = 0, pass2 = 0, pass3 = 0, pass4 = 0, pass6 = 0;
 
     for (final trackData in widget.tracks) {
       final rawTitle = trackData['title'] ?? '';
@@ -250,29 +257,31 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         }
       }
 
-      // ═══ PASS 3 : Core title seul (si titre assez long / distinctif) ═══
-      if (match == null && coreTitle.length > 8) {
+      // ═══ PASS 3 : Core title exact + artiste strict ═══
+      if (match == null && coreTitle.isNotEmpty) {
         if (byCoreTitle.containsKey(coreTitle)) {
           final candidates = byCoreTitle[coreTitle]!;
           match = candidates.cast<Track?>().firstWhere(
-                (c) =>
-                    c != null &&
-                    _artistsMatchStrict(coreArtist, _coreArtist(c.artist)),
+                (c) => c != null && _coreArtist(c.artist) == coreArtist,
                 orElse: () => null,
               );
           if (match != null) {
-            confidence = 0.90;
+            confidence = 0.92;
             pass3++;
           }
         }
       }
 
-      // ═══ PASS 4 : Similarité Jaro-Winkler (SANS STOP WORDS) ═══
+      // ═══ PASS 4 : Similarité Jaro-Winkler (pré-filtré par longueur) ═══
       if (match == null) {
         final spotClean = _removeStopWords(coreTitle);
         if (spotClean.length > 5) {
+          final spotLen = spotClean.length;
           for (final entry in byCoreTitle.entries) {
             final localClean = _removeStopWords(entry.key);
+            // Skip si longueur trop différente
+            final localLen = localClean.length;
+            if (localLen < spotLen * 0.6 || localLen > spotLen * 1.4) continue;
             if (_jaroWinkler(spotClean, localClean) > 0.95) {
               for (final candidate in entry.value) {
                 if (_artistsMatchStrict(
@@ -321,6 +330,18 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         }
       }
 
+      // ═══ PASS 6 : Fallback par titre normalisé exact (sans artiste) ═══
+      if (match == null && normTitle.isNotEmpty) {
+        if (byTitle.containsKey(normTitle)) {
+          final candidates = byTitle[normTitle]!;
+          if (candidates.length == 1) {
+            match = candidates.first;
+            confidence = 0.80;
+            pass6++;
+          }
+        }
+      }
+
       // ═══ FILTRE FINAL : pas de match si confiance trop faible ═══
       if (match != null && confidence < 0.85) {
         match = null;
@@ -344,7 +365,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       _matches = results;
       _isLoading = false;
       _debugInfo =
-          'P1 exact: $pass1 | P2 core: $pass2 | P3 core solo: $pass3 | P4 fuzzy: $pass4\n'
+          'P1 exact: $pass1 | P2 core: $pass2 | P3 core strict: $pass3 | P4 fuzzy: $pass4 | P6 title only: $pass6\n'
           'Total: ${results.length} | Match: $matched | Missing: $unmatched';
     });
   }
@@ -451,7 +472,14 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   Widget build(BuildContext context) {
     final matched = _matches.where((m) => m.matchedTrack != null).toList();
     final unmatched = _matches.where((m) => m.matchedTrack == null).toList();
-    final alreadyLiked = matched.where((m) => m.matchedTrack!.isLiked).length;
+    final appState = context.read<AppState>();
+    final alreadyLiked =
+        matched.map((m) => m.matchedTrack!.id).toSet().where((id) {
+      final t = appState.allTracks
+          .cast<Track?>()
+          .firstWhere((t) => t?.id == id, orElse: () => null);
+      return t != null && t.isLiked;
+    }).length;
     final newLikes = matched.length - alreadyLiked;
 
     return Scaffold(
@@ -467,7 +495,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             TextButton(
               onPressed: _likeMatched,
               child: Text(
-                newLikes > 0 ? 'Liker $newLikes' : 'Tout liké',
+                newLikes > 0 ? 'Liker $newLikes' : 'Tout liker',
                 style: const TextStyle(
                     color: Color(0xFF1DB954), fontWeight: FontWeight.bold),
               ),
@@ -708,30 +736,53 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     );
   }
 
-  void _likeMatched() {
+  Future<void> _likeMatched() async {
+    print('=== _likeMatched called ===');
     final state = context.read<AppState>();
+    print('tracks count: ${state.allTracks.length}');
+
+    if (state.allTracks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bibliothèque vide — impossible de liker'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     int liked = 0;
     int already = 0;
+    final Set<String> processedIds = {};
+    final List<Future<void>> toggleFutures = [];
 
     for (final match in _matches) {
-      if (match.matchedTrack != null) {
-        if (match.matchedTrack!.isLiked) {
-          already++;
-        } else {
-          if (match.dateAdded != null) {
-            final index = state.allTracks
-                .indexWhere((t) => t.id == match.matchedTrack!.id);
-            if (index != -1) {
-              state.allTracks[index].dateAdded = match.dateAdded;
-            }
-          }
-          state.toggleLike(match.matchedTrack!.id);
-          liked++;
+      print(
+          'LOOP: match=${match.matchedTrack != null}, title=${match.title}, artist=${match.artist}');
+      if (match.matchedTrack == null) continue;
+
+      final trackId = match.matchedTrack!.id;
+      if (processedIds.contains(trackId)) continue;
+      processedIds.add(trackId);
+
+      if (match.matchedTrack!.isLiked) {
+        already++;
+      } else {
+        if (match.dateAdded != null) {
+          final trackIndex =
+              state.musicService.allTracks.indexWhere((t) => t.id == trackId);
+          if (trackIndex == -1) continue;
+          state.musicService.allTracks[trackIndex].dateAdded = match.dateAdded;
         }
+        print(
+            'WILL LIKE: ${match.matchedTrack!.title} | isLiked=${match.matchedTrack!.isLiked} | id=$trackId');
+        toggleFutures.add(state.toggleLike(trackId));
+        liked++;
       }
     }
 
-    state.musicService.saveToCache();
+    await Future.wait(toggleFutures);
+    await state.musicService.saveToCache();
 
     final missing = _matches
         .where((m) => m.matchedTrack == null)
@@ -739,15 +790,15 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         .toList();
     state.setMissingTracks(missing);
 
-    Navigator.pop(context);
-
-    final msg = liked > 0
-        ? '$liked like(s) ajouté(s), $already déjà présent(s)'
-        : '$already titre(s) déjà like(s)';
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: const Color(0xFF1DB954)),
-    );
+    if (mounted) {
+      Navigator.pop(context);
+      final msg = liked > 0
+          ? '$liked like(s) ajouté(s), $already déjà présent(s)'
+          : '$already titre(s) déjà like(s)';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: const Color(0xFF1DB954)),
+      );
+    }
   }
 }
 
