@@ -130,33 +130,35 @@ class AppShell extends StatelessWidget {
                   Positioned.fill(child: currentOverlay!),
               ],
             ),
-            bottomNavigationBar: SafeArea(
-              bottom: false,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
-                    child: MiniPlayer(),
-                  ),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.0),
-                          Colors.black.withOpacity(0.85),
-                          Colors.black.withOpacity(1.0),
-                        ],
-                        stops: const [0.0, 0.3, 1.0],
-                      ),
+            bottomNavigationBar: currentOverlay is PlayerScreen
+                ? null
+                : SafeArea(
+                    bottom: false,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                          child: MiniPlayer(),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.0),
+                                Colors.black.withOpacity(0.85),
+                                Colors.black.withOpacity(1.0),
+                              ],
+                              stops: const [0.0, 0.3, 1.0],
+                            ),
+                          ),
+                          child: const BottomNav(),
+                        ),
+                      ],
                     ),
-                    child: const BottomNav(),
                   ),
-                ],
-              ),
-            ),
           ),
         );
       },

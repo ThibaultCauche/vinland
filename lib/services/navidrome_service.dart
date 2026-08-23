@@ -220,6 +220,59 @@ class NavidromeService {
               : int.tryParse(durationSec.toString()) ?? 180),
       filePath: getStreamUrl(id),
       coverPath: getCoverUrl(id),
+      isLiked: json['starred'] != null,
     );
+  }
+
+  Future<bool> starTrack(String trackId) async {
+    if (!isConnected) return false;
+    final cleanId = trackId.replaceFirst('navidrome_', '');
+    try {
+      final response = await http
+          .get(
+            _buildUri('star.view', extra: {'id': cleanId}),
+          )
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('starTrack error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> unstarTrack(String trackId) async {
+    if (!isConnected) return false;
+    final cleanId = trackId.replaceFirst('navidrome_', '');
+    try {
+      final response = await http
+          .get(
+            _buildUri('unstar.view', extra: {'id': cleanId}),
+          )
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('unstarTrack error: $e');
+      return false;
+    }
+  }
+
+  Future<Set<String>> fetchStarredTrackIds() async {
+    if (!isConnected) return {};
+    try {
+      final response = await http
+          .get(
+            _buildUri('getStarred2.view'),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final songs =
+            data['subsonic-response']?['starred2']?['song'] as List? ?? [];
+        return songs.map((s) => 'navidrome_${s['id']}').toSet();
+      }
+    } catch (e) {
+      print('fetchStarred error: $e');
+    }
+    return {};
   }
 }

@@ -22,6 +22,9 @@ class MusicService {
   List<Playlist> _playlists = [];
   bool _initialized = false;
   String? _coversDir;
+  List<Map<String, dynamic>> _missingTracks = [];
+  List<Map<String, dynamic>> get missingTracks =>
+      List.unmodifiable(_missingTracks);
 
   // Cache en mémoire des covers existantes pour éviter les existsSync()
   final Set<String> _existingCovers = {};
@@ -58,13 +61,6 @@ class MusicService {
     _coversDir = await _getCoversDir();
     await _loadFromCache();
     await _refreshCoverCache();
-
-    // Connexion auto à Navidrome
-    final navidromeOk = await _navidrome.loadCredentials();
-    if (navidromeOk) {
-      await syncWithNavidrome();
-    }
-
     _initialized = true;
   }
 
@@ -326,7 +322,18 @@ class MusicService {
         .toList();
   }
 
-  List<Track> get likedTracks => _allTracks.where((t) => t.isLiked).toList();
+  List<Track> get likedTracks {
+    final liked = _allTracks.where((t) => t.isLiked).toList();
+    liked.sort((a, b) {
+      final da = a.dateAdded ?? DateTime(2000);
+      final db = b.dateAdded ?? DateTime(2000);
+      return db.compareTo(da);
+    });
+    for (final t in liked.take(5)) {
+      print('LIKE ORDER: ${t.title} | date=${t.dateAdded}');
+    }
+    return liked;
+  }
 
   Future toggleLike(String trackId) async {
     final track = _allTracks.firstWhere(
@@ -334,6 +341,13 @@ class MusicService {
       orElse: () => throw Exception('Track $trackId not found'),
     );
     track.isLiked = !track.isLiked;
+    if (track.id.startsWith('navidrome_')) {
+      if (track.isLiked) {
+        await _navidrome.starTrack(track.id);
+      } else {
+        await _navidrome.unstarTrack(track.id);
+      }
+    }
     _debouncedSave();
   }
 
@@ -378,6 +392,7 @@ class MusicService {
     final data = {
       'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
       'offlineFiles': _offlineFiles,
+      'missingTracks': _missingTracks,
       'playlists': _playlists
           .map((pl) => {
                 'id': pl.id,
@@ -424,6 +439,10 @@ class MusicService {
                       createdAt: DateTime.parse(pl['createdAt']),
                       isSaved: pl['isSaved'] ?? true,
                     ))
+                .toList() ??
+            [];
+        _missingTracks = (data['missingTracks'] as List?)
+                ?.map((m) => Map<String, dynamic>.from(m))
                 .toList() ??
             [];
 
@@ -491,7 +510,31 @@ class MusicService {
 
   Future<void> syncWithNavidrome() async {
     print('SYNC NAVIDROME...');
-    _navidromeTracks = await _navidrome.fetchAllTracks();
+    final fresh = await _navidrome.fetchAllTracks();
+    final starredIds = await _navidrome.fetchStarredTrackIds();
+
+    final localData = <String, Map<String, dynamic>>{};
+    for (final t in _navidromeTracks) {
+      localData[t.id] = {
+        'isLiked': t.isLiked,
+        'dateAdded': t.dateAdded,
+        'playCount': t.playCount,
+        'lastPlayed': t.lastPlayed,
+      };
+    }
+
+    for (final t in fresh) {
+      if (starredIds.contains(t.id)) t.isLiked = true;
+      final local = localData[t.id];
+      if (local != null) {
+        t.isLiked = local['isLiked'] ?? t.isLiked;
+        t.dateAdded = local['dateAdded'];
+        t.playCount = local['playCount'] ?? t.playCount;
+        t.lastPlayed = local['lastPlayed'] ?? t.lastPlayed;
+      }
+    }
+
+    _navidromeTracks = fresh;
     _allTracks = List.from(_navidromeTracks);
     rebuildAlbums();
     _debouncedSave();
@@ -523,5 +566,15 @@ class MusicService {
     } catch (e) {
       print('DOWNLOAD ERROR ${track.title}: $e');
     }
+  }
+
+  void setMissingTracks(List<Map<String, dynamic>> tracks) {
+    _missingTracks = tracks;
+    _debouncedSave();
+  }
+
+  void clearMissingTracks() {
+    _missingTracks = [];
+    _debouncedSave();
   }
 }

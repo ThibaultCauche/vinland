@@ -17,6 +17,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   List<_MatchResult> _matches = [];
   bool _isLoading = true;
   bool _showMissingOnly = false;
+  bool _showDuplicatesOnly = false;
   String? _debugInfo;
 
   @override
@@ -465,6 +466,18 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     if (_showMissingOnly) {
       return _matches.where((m) => m.matchedTrack == null).toList();
     }
+    if (_showDuplicatesOnly) {
+      final idCounts = <String, int>{};
+      for (final m in _matches.where((m) => m.matchedTrack != null)) {
+        idCounts[m.matchedTrack!.id] = (idCounts[m.matchedTrack!.id] ?? 0) + 1;
+      }
+      final dupIds =
+          idCounts.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
+      return _matches
+          .where((m) =>
+              m.matchedTrack != null && dupIds.contains(m.matchedTrack!.id))
+          .toList();
+    }
     return _matches;
   }
 
@@ -472,15 +485,26 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   Widget build(BuildContext context) {
     final matched = _matches.where((m) => m.matchedTrack != null).toList();
     final unmatched = _matches.where((m) => m.matchedTrack == null).toList();
+
+    final idCounts = <String, int>{};
+    for (final m in matched) {
+      idCounts[m.matchedTrack!.id] = (idCounts[m.matchedTrack!.id] ?? 0) + 1;
+    }
+    final duplicateIds =
+        idCounts.entries.where((e) => e.value > 1).map((e) => e.key).toSet();
+    final duplicates = matched
+        .where((m) => duplicateIds.contains(m.matchedTrack!.id))
+        .toList();
+
     final appState = context.read<AppState>();
-    final alreadyLiked =
-        matched.map((m) => m.matchedTrack!.id).toSet().where((id) {
+    final uniqueMatchedIds = matched.map((m) => m.matchedTrack!.id).toSet();
+    final alreadyLiked = uniqueMatchedIds.where((id) {
       final t = appState.allTracks
           .cast<Track?>()
           .firstWhere((t) => t?.id == id, orElse: () => null);
       return t != null && t.isLiked;
     }).length;
-    final newLikes = matched.length - alreadyLiked;
+    final newLikes = uniqueMatchedIds.length - alreadyLiked;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -534,22 +558,28 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                           fontFamily: 'monospace'),
                     ),
                   ),
-                _buildSummary(matched.length, unmatched.length, alreadyLiked),
-                _buildFilterBar(matched.length, unmatched.length),
+                _buildSummary(matched.length, unmatched.length, alreadyLiked,
+                    duplicates.length),
+                _buildFilterBar(
+                    matched.length, unmatched.length, duplicates.length),
                 Expanded(
                   child: _filteredMatches.isEmpty
                       ? Center(
                           child: Text(
                             _showMissingOnly
                                 ? 'Aucun titre manquant'
-                                : 'Aucune correspondance',
+                                : _showDuplicatesOnly
+                                    ? 'Aucun doublon'
+                                    : 'Aucune correspondance',
                             style: const TextStyle(color: Colors.white38),
                           ),
                         )
                       : ListView.builder(
                           itemCount: _filteredMatches.length,
-                          itemBuilder: (context, index) =>
-                              _buildMatchTile(_filteredMatches[index]),
+                          itemBuilder: (context, index) => _buildMatchTile(
+                              _filteredMatches[index],
+                              duplicateIds.contains(
+                                  _filteredMatches[index].matchedTrack?.id)),
                         ),
                 ),
               ],
@@ -557,7 +587,8 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     );
   }
 
-  Widget _buildSummary(int matched, int unmatched, int alreadyLiked) {
+  Widget _buildSummary(
+      int matched, int unmatched, int alreadyLiked, int duplicatesCount) {
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -578,6 +609,11 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                 child: _buildStat(Icons.help_outline, Colors.orange,
                     'Non trouvés', unmatched),
               ),
+              Container(width: 1, height: 40, color: const Color(0xFF2A2A2A)),
+              Expanded(
+                child: _buildStat(Icons.content_copy, Colors.blue, 'Doublons',
+                    duplicatesCount),
+              ),
             ],
           ),
           if (alreadyLiked > 0) ...[
@@ -593,31 +629,37 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     );
   }
 
-  Widget _buildFilterBar(int matched, int unmatched) {
+  Widget _buildFilterBar(int matched, int unmatched, int duplicatesCount) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Expanded(
             child: TextButton.icon(
-              onPressed: () => setState(() => _showMissingOnly = false),
+              onPressed: () => setState(() {
+                _showMissingOnly = false;
+                _showDuplicatesOnly = false;
+              }),
               icon: Icon(Icons.check_circle,
-                  color: !_showMissingOnly
+                  color: !_showMissingOnly && !_showDuplicatesOnly
                       ? const Color(0xFF1DB954)
                       : Colors.white38,
                   size: 18),
               label: Text('Trouvés ($matched)',
                   style: TextStyle(
-                      color: !_showMissingOnly
+                      color: !_showMissingOnly && !_showDuplicatesOnly
                           ? const Color(0xFF1DB954)
                           : Colors.white38,
-                      fontSize: 13)),
+                      fontSize: 12)),
             ),
           ),
           Expanded(
             child: TextButton.icon(
               onPressed: unmatched > 0
-                  ? () => setState(() => _showMissingOnly = true)
+                  ? () => setState(() {
+                        _showMissingOnly = true;
+                        _showDuplicatesOnly = false;
+                      })
                   : null,
               icon: Icon(Icons.warning_amber,
                   color: _showMissingOnly
@@ -633,7 +675,32 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                           : unmatched > 0
                               ? Colors.white54
                               : Colors.white24,
-                      fontSize: 13)),
+                      fontSize: 12)),
+            ),
+          ),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: duplicatesCount > 0
+                  ? () => setState(() {
+                        _showMissingOnly = false;
+                        _showDuplicatesOnly = true;
+                      })
+                  : null,
+              icon: Icon(Icons.content_copy,
+                  color: _showDuplicatesOnly
+                      ? Colors.blue
+                      : duplicatesCount > 0
+                          ? Colors.white54
+                          : Colors.white24,
+                  size: 18),
+              label: Text('Doublons ($duplicatesCount)',
+                  style: TextStyle(
+                      color: _showDuplicatesOnly
+                          ? Colors.blue
+                          : duplicatesCount > 0
+                              ? Colors.white54
+                              : Colors.white24,
+                      fontSize: 12)),
             ),
           ),
         ],
@@ -655,7 +722,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     );
   }
 
-  Widget _buildMatchTile(_MatchResult match) {
+  Widget _buildMatchTile(_MatchResult match, bool isDuplicate) {
     final isMatched = match.matchedTrack != null;
     final confidence = (match.confidence * 100).toInt();
     final dateStr = match.dateAdded != null
@@ -669,7 +736,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         color: isMatched ? const Color(0xFF1E1E1E) : const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(8),
         border: isMatched
-            ? Border.all(color: const Color(0xFF1DB954).withOpacity(0.3))
+            ? isDuplicate
+                ? Border.all(color: Colors.blue.withOpacity(0.3))
+                : Border.all(color: const Color(0xFF1DB954).withOpacity(0.3))
             : Border.all(color: Colors.orange.withOpacity(0.2)),
       ),
       child: Row(
@@ -679,12 +748,23 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             height: 40,
             decoration: BoxDecoration(
               color: isMatched
-                  ? const Color(0xFF1DB954).withOpacity(0.1)
+                  ? isDuplicate
+                      ? Colors.blue.withOpacity(0.1)
+                      : const Color(0xFF1DB954).withOpacity(0.1)
                   : Colors.orange.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(isMatched ? Icons.check : Icons.close,
-                color: isMatched ? const Color(0xFF1DB954) : Colors.orange,
+            child: Icon(
+                isMatched
+                    ? isDuplicate
+                        ? Icons.content_copy
+                        : Icons.check
+                    : Icons.close,
+                color: isMatched
+                    ? isDuplicate
+                        ? Colors.blue
+                        : const Color(0xFF1DB954)
+                    : Colors.orange,
                 size: 20),
           ),
           const SizedBox(width: 12),
@@ -716,13 +796,18 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1DB954).withOpacity(0.1),
+                      color: isDuplicate
+                          ? Colors.blue.withOpacity(0.1)
+                          : const Color(0xFF1DB954).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       '→ ${match.matchedTrack!.title} (${match.matchedTrack!.artist}) • $confidence%',
-                      style: const TextStyle(
-                          color: Color(0xFF1DB954), fontSize: 11),
+                      style: TextStyle(
+                          color: isDuplicate
+                              ? Colors.blue
+                              : const Color(0xFF1DB954),
+                          fontSize: 11),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -753,16 +838,18 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
 
     int liked = 0;
     int already = 0;
+    int duplicates = 0;
     final Set<String> processedIds = {};
     final List<Future<void>> toggleFutures = [];
 
     for (final match in _matches) {
-      print(
-          'LOOP: match=${match.matchedTrack != null}, title=${match.title}, artist=${match.artist}');
       if (match.matchedTrack == null) continue;
 
       final trackId = match.matchedTrack!.id;
-      if (processedIds.contains(trackId)) continue;
+      if (processedIds.contains(trackId)) {
+        duplicates++;
+        continue;
+      }
       processedIds.add(trackId);
 
       if (match.matchedTrack!.isLiked) {
@@ -774,8 +861,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
           if (trackIndex == -1) continue;
           state.musicService.allTracks[trackIndex].dateAdded = match.dateAdded;
         }
-        print(
-            'WILL LIKE: ${match.matchedTrack!.title} | isLiked=${match.matchedTrack!.isLiked} | id=$trackId');
         toggleFutures.add(state.toggleLike(trackId));
         liked++;
       }
@@ -791,10 +876,12 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     state.setMissingTracks(missing);
 
     if (mounted) {
-      Navigator.pop(context);
+      final appState = context.read<AppState>();
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      appState.setTab(1);
       final msg = liked > 0
-          ? '$liked like(s) ajouté(s), $already déjà présent(s)'
-          : '$already titre(s) déjà like(s)';
+          ? '$liked like(s) ajouté(s), $already déjà présent(s), $duplicates doublon(s)'
+          : '$already titre(s) déjà like(s), $duplicates doublon(s)';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), backgroundColor: const Color(0xFF1DB954)),
       );

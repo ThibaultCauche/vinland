@@ -16,6 +16,7 @@ import 'package:just_audio/just_audio.dart';
 import '../services/navidrome_service.dart';
 import '../models/vinland_user.dart';
 import '../services/search_history_service.dart';
+import 'package:http/http.dart' as http;
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
@@ -40,11 +41,6 @@ class AppState extends ChangeNotifier {
   bool get isCurrentTrackLiked =>
       currentTrack != null &&
       _music.likedTracks.any((t) => t.id == currentTrack!.id);
-
-  // Missing tracks from streaming import
-  List<Map<String, dynamic>> _missingTracks = [];
-  List<Map<String, dynamic>> get missingTracks =>
-      List.unmodifiable(_missingTracks);
 
   // Getters
   List<Track> get allTracks => _music.navidromeTracks;
@@ -184,6 +180,14 @@ class AppState extends ChangeNotifier {
     await _music.initialize();
     _useNavidrome = _music.navidromeTracks.isNotEmpty;
     _notify();
+
+    final navidromeOk = await _navidrome.loadCredentials();
+    if (navidromeOk) {
+      _music.syncWithNavidrome().then((_) {
+        _useNavidrome = _music.navidromeTracks.isNotEmpty;
+        _notify();
+      });
+    }
   }
 
   bool _isDisposed = false;
@@ -342,20 +346,29 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
+  List<Map<String, dynamic>> get missingTracks => _music.missingTracks;
+
   void setMissingTracks(List<Map<String, dynamic>> tracks) {
-    _missingTracks = tracks;
+    _music.setMissingTracks(tracks);
     _notify();
   }
 
   void clearMissingTracks() {
-    _missingTracks = [];
+    _music.clearMissingTracks();
     _notify();
   }
 
   /// Extrait la couleur dominante dans un isolate — ZERO blocage UI
   Future<Color?> _extractDominantColorIsolate(String coverPath) async {
     try {
-      final bytes = await File(coverPath).readAsBytes();
+      Uint8List bytes;
+      if (coverPath.startsWith('http')) {
+        final response = await http.get(Uri.parse(coverPath));
+        if (response.statusCode != 200) return null;
+        bytes = response.bodyBytes;
+      } else {
+        bytes = await File(coverPath).readAsBytes();
+      }
       return await compute(_dominantColorFromBytes, bytes);
     } catch (_) {
       return null;
