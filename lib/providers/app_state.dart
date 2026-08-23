@@ -6,10 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:image/image.dart' as img;
 import '../models/track.dart';
+import '../models/album.dart';
+import '../models/playlist.dart';
 import '../services/music_service.dart';
 import '../services/auth_service.dart';
 import '../services/audio_handler.dart';
-import '../models/album.dart';
 import '../screens/artist_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:just_audio/just_audio.dart';
@@ -70,7 +71,7 @@ class AppState extends ChangeNotifier {
   // Expose le player pour les widgets (MiniPlayer, PlayerScreen)
   AudioPlayer get player => _audioHandler.player;
 
-  // Délegue la vérification de cover au MusicService
+  // Delegue la verification de cover au MusicService
   bool coverExists(String? path) => _music.coverExists(path);
 
   //navidrome
@@ -86,13 +87,13 @@ class AppState extends ChangeNotifier {
       }
     });
 
-    // Position : throttle à 500ms + debounce global
+    // Position : throttle a 500ms + debounce global
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastPositionNotify > 500) {
         _lastPositionNotify = now;
-        print('🔴 APPSTATE notifyListeners: position=$pos');
+        print('APPSTATE notifyListeners: position=$pos');
         _notify();
       }
     });
@@ -122,7 +123,7 @@ class AppState extends ChangeNotifier {
     });
   }
 
-  /// Un seul notifyListeners() au bout de 50ms, même s'il y en a 10 d'affilée
+  /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee
   void _notify() {
     _notifyDebounce?.cancel();
     _notifyDebounce = Timer(const Duration(milliseconds: 50), () {
@@ -358,6 +359,14 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
+  List<Album> get likedAlbums => _music.likedAlbums;
+  List<Playlist> get playlists => _music.playlists;
+
+  Future<void> toggleLikeAlbum(String albumId) async {
+    await _music.toggleLikeAlbum(albumId);
+    _notify();
+  }
+
   /// Extrait la couleur dominante dans un isolate — ZERO blocage UI
   Future<Color?> _extractDominantColorIsolate(String coverPath) async {
     try {
@@ -375,7 +384,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Cette fonction tourne dans un isolate séparé
+  /// Cette fonction tourne dans un isolate separe
   static Color? _dominantColorFromBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
@@ -393,8 +402,8 @@ class AppState extends ChangeNotifier {
 
     int r = 0, g = 0, b = 0;
     for (final p in samples) {
-      final pixel = p as dynamic; // ← force l'évaluation dynamique
-      r += (pixel.r as num).round(); // ← round() marche sur int ET double
+      final pixel = p as dynamic;
+      r += (pixel.r as num).round();
       g += (pixel.g as num).round();
       b += (pixel.b as num).round();
     }
@@ -409,22 +418,22 @@ class AppState extends ChangeNotifier {
 
   void _updateDominantColor(String? coverPath) {
     if (coverPath == null) {
-      print('🎨 PALETTE: coverPath null');
+      print('PALETTE: coverPath null');
       dominantColor = null;
       _notify();
       return;
     }
     if (_colorCache.containsKey(coverPath)) {
-      print('🎨 PALETTE: cache hit');
+      print('PALETTE: cache hit');
       dominantColor = _colorCache[coverPath];
       _notify();
       return;
     }
     final requestId = ++_lastColorRequest;
-    print('🎨 PALETTE: start extraction (isolate)');
+    print('PALETTE: start extraction (isolate)');
     _extractDominantColorIsolate(coverPath).then((color) {
       if (_isDisposed) return;
-      print('🎨 PALETTE: done, color=$color');
+      print('PALETTE: done, color=$color');
       if (requestId == _lastColorRequest && color != null) {
         _colorCache[coverPath] = color;
         dominantColor = color;

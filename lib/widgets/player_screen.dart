@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../models/album.dart';
+import '../screens/artist_screen.dart';
+import '../screens/album_screen.dart';
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
@@ -29,7 +32,7 @@ class PlayerScreen extends StatelessWidget {
             actions: [
               IconButton(
                 icon: const Icon(Icons.more_vert, color: Colors.white),
-                onPressed: () {},
+                onPressed: () => _showPlayerOptions(context),
               ),
             ],
           ),
@@ -120,6 +123,269 @@ class PlayerScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  void _showPlayerOptions(BuildContext context) {
+    final state = context.read<AppState>();
+    final track = state.currentTrack;
+    if (track == null) return;
+
+    final coverExists = state.coverExists(track.coverPath);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(4),
+                      color: const Color(0xFF2A2A2A),
+                      image: coverExists && track.coverPath != null
+                          ? DecorationImage(
+                              image: track.coverPath!.startsWith('http')
+                                  ? NetworkImage(track.coverPath!)
+                                      as ImageProvider
+                                  : FileImage(File(track.coverPath!)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: !coverExists || track.coverPath == null
+                        ? const Icon(Icons.album,
+                            color: Colors.white54, size: 24)
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.title,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          track.artist,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline,
+                  color: Colors.white, size: 26),
+              title: const Text('Ajouter a la playlist',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAddToPlaylistDialog(context, track);
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            ListTile(
+              leading: Icon(
+                track.isLiked ? Icons.favorite : Icons.favorite_border,
+                color: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
+                size: 26,
+              ),
+              title: Text(
+                track.isLiked
+                    ? 'Retirer des titres likes'
+                    : 'Ajouter aux titres likes',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                state.toggleLike(track.id);
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            ListTile(
+              leading: const Icon(Icons.album_outlined,
+                  color: Colors.white, size: 26),
+              title: const Text("Acceder a l'album",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              onTap: () {
+                Navigator.pop(ctx);
+                final album = state.likedAlbums.firstWhere(
+                  (a) => a.title == track.album,
+                  orElse: () => Album(
+                    id: track.album.hashCode.toString(),
+                    title: track.album,
+                    artist: track.artist,
+                    trackIds: [],
+                  ),
+                );
+                state.pushOverlay(AlbumScreen(album: album));
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline,
+                  color: Colors.white, size: 26),
+              title: const Text("Acceder a l'artiste",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showArtistPicker(context, track.artist);
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showArtistPicker(BuildContext context, String artistsField) {
+    final artists = artistsField
+        .split(RegExp(r'[/&,]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    if (artists.length <= 1) {
+      context
+          .read<AppState>()
+          .pushOverlay(ArtistScreen(artistName: artistsField));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Selectionner un artiste',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            ...artists.map((artist) => ListTile(
+                  leading: const Icon(Icons.person, color: Colors.white),
+                  title:
+                      Text(artist, style: const TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context
+                        .read<AppState>()
+                        .pushOverlay(ArtistScreen(artistName: artist));
+                  },
+                )),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddToPlaylistDialog(BuildContext context, Track track) {
+    final state = context.read<AppState>();
+    final playlists = state.playlists;
+
+    if (playlists.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Aucune playlist. Creez-en une d'abord."),
+          backgroundColor: Color(0xFF2A2A2A),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Ajouter a une playlist',
+            style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: playlists.length,
+            itemBuilder: (_, i) => ListTile(
+              title: Text(playlists[i].name,
+                  style: const TextStyle(color: Colors.white)),
+              onTap: () {
+                state.addToPlaylist(playlists[i].id, track.id);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ajoute a ${playlists[i].name}'),
+                    backgroundColor: const Color(0xFF2A2A2A),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child:
+                const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
     );
   }
 }

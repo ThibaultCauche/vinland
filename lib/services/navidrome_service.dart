@@ -26,7 +26,6 @@ class NavidromeService {
     _username = creds['username'];
     _password = creds['password'];
 
-    // Fallback sur le fichier credentials (non versionné)
     if (_baseUrl == null || _username == null || _password == null) {
       _baseUrl = kNavidromeUrl;
       _username = kNavidromeUser;
@@ -109,7 +108,10 @@ class NavidromeService {
 
     for (int i = 0; i < albums.length; i++) {
       final album = albums[i];
-      final tracks = await fetchAlbumTracks(album['id'] as String);
+      final tracks = await fetchAlbumTracks(
+        album['id'] as String,
+        albumArtist: album['artist']?.toString(),
+      );
       allTracks.addAll(tracks);
       totalSongs += tracks.length;
 
@@ -178,7 +180,8 @@ class NavidromeService {
     return albums;
   }
 
-  Future<List<Track>> fetchAlbumTracks(String albumId) async {
+  Future<List<Track>> fetchAlbumTracks(String albumId,
+      {String? albumArtist}) async {
     if (!isConnected) return [];
     try {
       final response = await http
@@ -188,7 +191,9 @@ class NavidromeService {
         final data = jsonDecode(response.body);
         final songs =
             data['subsonic-response']?['album']?['song'] as List? ?? [];
-        return songs.map((json) => _mapSubsonicTrack(json)).toList();
+        return songs
+            .map((json) => _mapSubsonicTrack(json, albumArtist: albumArtist))
+            .toList();
       }
     } catch (e) {
       print('fetchAlbumTracks error: $e');
@@ -206,7 +211,7 @@ class NavidromeService {
     return '$_baseUrl/rest/getCoverArt.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland';
   }
 
-  Track _mapSubsonicTrack(dynamic json) {
+  Track _mapSubsonicTrack(dynamic json, {String? albumArtist}) {
     final id = json['id']?.toString() ?? '';
     final durationSec = json['duration'] ?? 180;
     return Track(
@@ -221,6 +226,8 @@ class NavidromeService {
       filePath: getStreamUrl(id),
       coverPath: getCoverUrl(id),
       isLiked: json['starred'] != null,
+      albumId: json['parent']?.toString(),
+      albumArtist: albumArtist ?? json['albumArtist']?.toString(),
     );
   }
 
@@ -272,6 +279,50 @@ class NavidromeService {
       }
     } catch (e) {
       print('fetchStarred error: $e');
+    }
+    return {};
+  }
+
+  Future<bool> starAlbum(String albumId) async {
+    if (!isConnected) return false;
+    try {
+      final response = await http
+          .get(_buildUri('star.view', extra: {'albumId': albumId}))
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('starAlbum error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> unstarAlbum(String albumId) async {
+    if (!isConnected) return false;
+    try {
+      final response = await http
+          .get(_buildUri('unstar.view', extra: {'albumId': albumId}))
+          .timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      print('unstarAlbum error: $e');
+      return false;
+    }
+  }
+
+  Future<Set<String>> fetchStarredAlbumIds() async {
+    if (!isConnected) return {};
+    try {
+      final response = await http
+          .get(_buildUri('getStarred2.view'))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final albums =
+            data['subsonic-response']?['starred2']?['album'] as List? ?? [];
+        return albums.map((a) => 'navidrome_${a['id']}').toSet();
+      }
+    } catch (e) {
+      print('fetchStarredAlbumIds error: $e');
     }
     return {};
   }

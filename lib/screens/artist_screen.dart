@@ -124,7 +124,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     if (mounted) setState(() => _deepMatching = false);
   }
 
-  /// Vérifie si l'artiste recherché est présent dans le champ artiste (principal ou featuring)
+  /// Verifie si l'artiste recherche est present dans le champ artiste (principal ou featuring)
   bool _artistContains(String? artistField, String search) {
     if (artistField == null) return false;
     final s = search.toLowerCase();
@@ -134,7 +134,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
   }
 
-  /// Trouve la track locale correspondant à une track Deezer
+  /// Trouve la track locale correspondant a une track Deezer
   Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
     final dtTitle = _normalize(dt.title);
     for (final t in candidates) {
@@ -143,6 +143,14 @@ class _ArtistScreenState extends State<ArtistScreen> {
       if (ltTitle.contains(dtTitle) || dtTitle.contains(ltTitle)) return t;
     }
     return null;
+  }
+
+  Track? _findTrackById(List<Track> tracks, String id) {
+    try {
+      return tracks.firstWhere((t) => t.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _normalize(String text) {
@@ -169,8 +177,17 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
         final tracks =
             state.allTracks.where((t) => artistMatch(t.artist)).toList();
-        final albums =
-            state.albums.where((a) => artistMatch(a.artist)).toList();
+
+        // Inclut les albums dont l'artiste d'album correspond
+        // OU dont au moins une track correspond
+        final albums = state.albums.where((a) {
+          if (artistMatch(a.artist)) return true;
+          return a.trackIds.any((id) {
+            final track = _findTrackById(state.allTracks, id);
+            return track != null && artistMatch(track.artist);
+          });
+        }).toList();
+
         return (tracks, albums);
       },
       builder: (context, data, child) {
@@ -206,7 +223,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
           ),
           body: CustomScrollView(
             slivers: [
-              // ── HEADER ──
+              // HEADER
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -246,7 +263,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 ),
               ),
 
-              // ── ACTIONS ──
+              // ACTIONS
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -286,7 +303,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 ),
               ),
 
-              // ── TITRES POPULAIRES (depuis Deezer) ──
+              // TITRES POPULAIRES (depuis Deezer)
               if (popularTracks.isNotEmpty) ...[
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -320,7 +337,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 ),
               ],
 
-              // ── ALBUMS ──
+              // ALBUMS
               if (totalAlbumCount > 0) ...[
                 SliverToBoxAdapter(
                   child: Padding(
@@ -400,7 +417,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                 ),
               ],
 
-              // ── TOUS LES TITRES ──
+              // TOUS LES TITRES
               if (allArtistTracks.isNotEmpty) ...[
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -447,7 +464,7 @@ class _PopularTrack {
   const _PopularTrack({required this.discovered, this.local});
 }
 
-// ── TITRE POPULAIRE ──
+// TITRE POPULAIRE
 class _PopularTrackTile extends StatelessWidget {
   final int index;
   final _PopularTrack track;
@@ -470,7 +487,6 @@ class _PopularTrackTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            // Cover miniature
             Container(
               width: 48,
               height: 48,
@@ -529,7 +545,7 @@ class _PopularTrackTile extends StatelessWidget {
   }
 }
 
-// ── CARTE ALBUM LOCAL ──
+// CARTE ALBUM LOCAL
 class _LocalAlbumCard extends StatelessWidget {
   final Album album;
   final AppState state;
@@ -573,7 +589,7 @@ class _LocalAlbumCard extends StatelessWidget {
   }
 }
 
-// ── CARTE ALBUM DÉCOUVERT (GRISÉ) ──
+// CARTE ALBUM DECOUVERT (GRISE)
 class _DiscoveredAlbumCard extends StatelessWidget {
   final DiscoveredAlbum album;
   final AppState state;
@@ -644,7 +660,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
   }
 }
 
-// ── WIDGETS RÉUTILISABLES ──
+// WIDGETS REUTILISABLES
 
 class _ArtistAvatar extends StatelessWidget {
   final String? url;

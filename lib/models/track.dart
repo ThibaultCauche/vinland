@@ -9,7 +9,9 @@ class Track {
   bool isLiked;
   int playCount;
   DateTime? lastPlayed;
-  DateTime? dateAdded; // ← AJOUTÉ
+  DateTime? dateAdded;
+  final String? albumId;
+  final String? albumArtist;
 
   Track({
     required this.id,
@@ -22,7 +24,9 @@ class Track {
     this.isLiked = false,
     this.playCount = 0,
     this.lastPlayed,
-    this.dateAdded, // ← AJOUTÉ
+    this.dateAdded,
+    this.albumId,
+    this.albumArtist,
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,7 +40,9 @@ class Track {
         'isLiked': isLiked,
         'playCount': playCount,
         'lastPlayed': lastPlayed?.toIso8601String(),
-        'dateAdded': dateAdded?.toIso8601String(), // ← AJOUTÉ
+        'dateAdded': dateAdded?.toIso8601String(),
+        'albumId': albumId,
+        'albumArtist': albumArtist,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -72,6 +78,8 @@ class Track {
       playCount: (json['playCount'] as num?)?.toInt() ?? 0,
       lastPlayed: parseDate('lastPlayed'),
       dateAdded: parseDate('dateAdded'),
+      albumId: json['albumId']?.toString(),
+      albumArtist: json['albumArtist']?.toString(),
     );
   }
 }

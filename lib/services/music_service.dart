@@ -26,7 +26,7 @@ class MusicService {
   List<Map<String, dynamic>> get missingTracks =>
       List.unmodifiable(_missingTracks);
 
-  // Cache en mémoire des covers existantes pour éviter les existsSync()
+  // Cache en memoire des covers existantes pour eviter les existsSync()
   final Set<String> _existingCovers = {};
   Timer? _saveDebounceTimer;
 
@@ -71,7 +71,7 @@ class MusicService {
     return dir.path;
   }
 
-  /// Rafraîchit le cache des covers existantes (appelé une fois au démarrage)
+  /// Rafraichit le cache des covers existantes (appele une fois au demarrage)
   Future<void> _refreshCoverCache() async {
     _existingCovers.clear();
     if (_coversDir == null) return;
@@ -82,7 +82,7 @@ class MusicService {
     }
   }
 
-  /// Vérifie si une cover existe (utilise le cache, pas de I/O synchrone)
+  /// Verifie si une cover existe (utilise le cache, pas de I/O synchrone)
   bool coverExists(String? path) {
     if (path == null) return false;
     if (path.startsWith('http')) return true;
@@ -127,7 +127,7 @@ class MusicService {
         final byteData = await rootBundle.load(assetPath);
         final fileName = p.basenameWithoutExtension(assetPath);
         String title = fileName;
-        final numberMatch = RegExp(r'^\\d+\\.\\s*').firstMatch(fileName);
+        final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
         if (numberMatch != null) {
           title = fileName.substring(numberMatch.end).trim();
         }
@@ -177,7 +177,7 @@ class MusicService {
   }
 
   Future<void> scanDirectory(String dirPath) async {
-    final normalizedPath = dirPath.replaceAll(r'\\\\', r'\\');
+    final normalizedPath = dirPath.replaceAll(r'\\', r'\');
     final dir = Directory(normalizedPath);
 
     if (!await dir.exists()) {
@@ -208,14 +208,20 @@ class MusicService {
   }
 
   void rebuildAlbums() {
-    // On ne travaille plus que sur les tracks Navidrome
+    // Préserver les albums existants par ID (isSaved, artist)
+    final existingAlbums = <String, Album>{};
+    for (final a in _albums) {
+      existingAlbums[a.id] = a;
+    }
+
     final Map<String, List<Track>> albumMap = {};
     for (final track in _navidromeTracks) {
       albumMap.putIfAbsent(track.album, () => []).add(track);
     }
 
-    _albums = albumMap.entries.map((e) {
-      final tracks = e.value;
+    final newAlbums = <Album>[];
+    for (final entry in albumMap.entries) {
+      final tracks = entry.value;
       String? albumCover;
       for (final track in tracks) {
         if (track.coverPath != null) {
@@ -224,15 +230,28 @@ class MusicService {
         }
       }
 
-      return Album(
-        id: e.key.hashCode.toString(),
-        title: e.key,
-        artist: e.value.first.artist,
-        trackIds: e.value.map((t) => t.id).toList(),
-        isSaved: true,
+      final firstTrack = tracks.first;
+      final navidromeId = firstTrack.albumId;
+      final id = navidromeId != null
+          ? 'navidrome_$navidromeId'
+          : entry.key.hashCode.toString();
+
+      // Préserver l'artiste et isSaved de l'album existant
+      final existing = existingAlbums[id];
+      final artist =
+          existing?.artist ?? firstTrack.albumArtist ?? firstTrack.artist;
+
+      newAlbums.add(Album(
+        id: id,
+        title: entry.key,
+        artist: artist,
+        trackIds: tracks.map((t) => t.id).toList(),
+        isSaved: existing?.isSaved ?? false,
         coverPath: albumCover,
-      );
-    }).toList();
+      ));
+    }
+
+    _albums = newAlbums;
   }
 
   Future<Track> parseFile(String filePath) async {
@@ -278,7 +297,7 @@ class MusicService {
 
   String _extractTitleFromFileName(String fileName) {
     String title = fileName;
-    final numberMatch = RegExp(r'^\\d+\\.\\s*').firstMatch(fileName);
+    final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
     if (numberMatch != null) {
       title = fileName.substring(numberMatch.end).trim();
     }
@@ -289,7 +308,7 @@ class MusicService {
     if (albumName.contains(':')) {
       final parts = albumName.split(':');
       final first = parts[0].trim();
-      if (RegExp(r'^Vol\\.?\\s*\\d+', caseSensitive: false).hasMatch(first)) {
+      if (RegExp(r'^Vol\.?\s*\d+', caseSensitive: false).hasMatch(first)) {
         return parts.sublist(1).join(':').trim();
       }
       return first;
@@ -333,6 +352,26 @@ class MusicService {
       print('LIKE ORDER: ${t.title} | date=${t.dateAdded}');
     }
     return liked;
+  }
+
+  List<Album> get likedAlbums => _albums.where((a) => a.isSaved).toList();
+
+  Future<void> toggleLikeAlbum(String albumId) async {
+    final album = _albums.firstWhere(
+      (a) => a.id == albumId,
+      orElse: () => throw Exception('Album $albumId not found'),
+    );
+    album.isSaved = !album.isSaved;
+
+    if (album.id.startsWith('navidrome_')) {
+      final cleanId = album.id.replaceFirst('navidrome_', '');
+      if (album.isSaved) {
+        await _navidrome.starAlbum(cleanId);
+      } else {
+        await _navidrome.unstarAlbum(cleanId);
+      }
+    }
+    _debouncedSave();
   }
 
   Future toggleLike(String trackId) async {
@@ -402,6 +441,7 @@ class MusicService {
                 'isSaved': pl.isSaved,
               })
           .toList(),
+      'albums': _albums.map((a) => a.toJson()).toList(),
     };
     await file.writeAsString(jsonEncode(data));
   }
@@ -445,8 +485,15 @@ class MusicService {
                 ?.map((m) => Map<String, dynamic>.from(m))
                 .toList() ??
             [];
+        _albums = (data['albums'] as List?)
+                ?.map((json) => Album.fromJson(json))
+                .toList() ??
+            [];
 
-        rebuildAlbums();
+        // Ne rebuild que si pas d'albums en cache (premier chargement)
+        if (_albums.isEmpty) {
+          rebuildAlbums();
+        }
       } catch (e) {
         print('ERREUR CHARGEMENT CACHE: $e');
       }
@@ -498,7 +545,7 @@ class MusicService {
       rebuildAlbums();
       _debouncedSave();
     }
-    print('RESCAN COVERS: $updated covers ajoutées');
+    print('RESCAN COVERS: $updated covers ajoutees');
   }
 
   void _debouncedSave() {
@@ -512,6 +559,7 @@ class MusicService {
     print('SYNC NAVIDROME...');
     final fresh = await _navidrome.fetchAllTracks();
     final starredIds = await _navidrome.fetchStarredTrackIds();
+    final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
     final localData = <String, Map<String, dynamic>>{};
     for (final t in _navidromeTracks) {
@@ -537,6 +585,17 @@ class MusicService {
     _navidromeTracks = fresh;
     _allTracks = List.from(_navidromeTracks);
     rebuildAlbums();
+
+    // Reset isSaved sur tous les albums puis reapplique les starred
+    for (final album in _albums) {
+      album.isSaved = false;
+    }
+    for (final album in _albums) {
+      if (starredAlbumIds.contains(album.id)) {
+        album.isSaved = true;
+      }
+    }
+
     _debouncedSave();
     print('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
   }
