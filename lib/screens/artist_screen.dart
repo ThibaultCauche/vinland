@@ -29,6 +29,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
   List<DiscoveredTrack> _topTracks = [];
   bool _loadingDeezer = true;
   bool _deepMatching = false;
+  bool _loadingTopTracks = true;
   int _deepMatchProgress = 0;
   int _deepMatchTotal = 0;
 
@@ -57,7 +58,11 @@ class _ArtistScreenState extends State<ArtistScreen> {
       _topTracks = results[1] as List<DiscoveredTrack>;
     }
 
-    if (mounted) setState(() => _loadingDeezer = false);
+    if (mounted)
+      setState(() {
+        _loadingDeezer = false;
+        _loadingTopTracks = false; // ← ici, APRÈS le Future.wait
+      });
     _deepMatchAlbums();
   }
 
@@ -304,18 +309,35 @@ class _ArtistScreenState extends State<ArtistScreen> {
               ),
 
               // TITRES POPULAIRES (depuis Deezer)
-              if (popularTracks.isNotEmpty) ...[
+              if (_loadingTopTracks) ...[
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
-                    child: Text(
-                      'Titres populaires',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Text('Titres populaires',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _SkeletonPopularTile(index: index),
+                      childCount: 5,
                     ),
+                  ),
+                ),
+              ] else if (popularTracks.isNotEmpty) ...[
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    child: Text('Titres populaires',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600)),
                   ),
                 ),
                 SliverPadding(
@@ -747,6 +769,64 @@ class _AlbumCover extends StatelessWidget {
               child: Icon(Icons.album, color: Colors.white54, size: 48),
             )
           : null,
+    );
+  }
+}
+
+class _SkeletonPopularTile extends StatelessWidget {
+  final int index;
+  const _SkeletonPopularTile({required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Text(
+              '${index + 1}',
+              style: const TextStyle(color: Colors.white24, fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: 120,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

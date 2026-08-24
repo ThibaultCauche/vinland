@@ -9,7 +9,9 @@ import '../models/search_history_item.dart';
 import '../services/discovery_service.dart';
 import '../services/search_history_service.dart';
 import '../screens/artist_screen.dart';
+import '../screens/album_screen.dart';
 import '../screens/discovered_album_screen.dart';
+import '../models/album.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -471,7 +473,22 @@ class _SearchScreenState extends State<SearchScreen>
             );
             Navigator.pop(context);
             final state = context.read<AppState>();
-            state.pushOverlay(DiscoveredAlbumScreen(album: album));
+            Album? localAlbum;
+            try {
+              localAlbum = state.albums.firstWhere(
+                (a) =>
+                    a.title.toLowerCase().trim() ==
+                    album.title.toLowerCase().trim(),
+              );
+            } catch (_) {
+              localAlbum = null;
+            }
+
+            if (localAlbum != null) {
+              state.pushOverlay(AlbumScreen(album: localAlbum));
+            } else {
+              state.pushOverlay(DiscoveredAlbumScreen(album: album));
+            }
           },
         );
       },

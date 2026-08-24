@@ -239,7 +239,7 @@ class MusicService {
       // Préserver l'artiste et isSaved de l'album existant
       final existing = existingAlbums[id];
       final artist =
-          existing?.artist ?? firstTrack.albumArtist ?? firstTrack.artist;
+          firstTrack.albumArtist ?? existing?.artist ?? firstTrack.artist;
 
       newAlbums.add(Album(
         id: id,
@@ -346,6 +346,9 @@ class MusicService {
     liked.sort((a, b) {
       final da = a.dateAdded ?? DateTime(2000);
       final db = b.dateAdded ?? DateTime(2000);
+      if (da == db) {
+        return _allTracks.indexOf(a).compareTo(_allTracks.indexOf(b));
+      }
       return db.compareTo(da);
     });
     for (final t in liked.take(5)) {
@@ -380,6 +383,9 @@ class MusicService {
       orElse: () => throw Exception('Track $trackId not found'),
     );
     track.isLiked = !track.isLiked;
+    if (track.isLiked && track.dateAdded == null) {
+      track.dateAdded = DateTime.now();
+    }
     if (track.id.startsWith('navidrome_')) {
       if (track.isLiked) {
         await _navidrome.starTrack(track.id);

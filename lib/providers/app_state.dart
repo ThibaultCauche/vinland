@@ -93,7 +93,6 @@ class AppState extends ChangeNotifier {
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastPositionNotify > 500) {
         _lastPositionNotify = now;
-        print('APPSTATE notifyListeners: position=$pos');
         _notify();
       }
     });
