@@ -263,19 +263,22 @@ class NavidromeService {
     }
   }
 
-  Future<Set<String>> fetchStarredTrackIds() async {
+  Future<Map<String, DateTime?>> fetchStarredTrackIds() async {
     if (!isConnected) return {};
     try {
       final response = await http
-          .get(
-            _buildUri('getStarred2.view'),
-          )
+          .get(_buildUri('getStarred2.view'))
           .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final songs =
             data['subsonic-response']?['starred2']?['song'] as List? ?? [];
-        return songs.map((s) => 'navidrome_${s['id']}').toSet();
+        return {
+          for (var s in songs)
+            'navidrome_${s['id']}': s['starred'] != null
+                ? DateTime.tryParse(s['starred'].toString())
+                : null
+        };
       }
     } catch (e) {
       print('fetchStarred error: $e');

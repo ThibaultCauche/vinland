@@ -573,7 +573,8 @@ class MusicService {
   Future<void> syncWithNavidrome() async {
     print('SYNC NAVIDROME...');
     final fresh = await _navidrome.fetchAllTracks();
-    final starredIds = await _navidrome.fetchStarredTrackIds();
+    final starredMap =
+        await _navidrome.fetchStarredTrackIds(); // Map<String, DateTime?>
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
     final localData = <String, Map<String, dynamic>>{};
@@ -587,7 +588,10 @@ class MusicService {
     }
 
     for (final t in fresh) {
-      if (starredIds.contains(t.id)) t.isLiked = true;
+      if (starredMap.containsKey(t.id)) {
+        t.isLiked = true;
+        t.dateAdded = starredMap[t.id] ?? t.dateAdded;
+      }
       final local = localData[t.id];
       if (local != null) {
         t.isLiked = local['isLiked'] ?? t.isLiked;

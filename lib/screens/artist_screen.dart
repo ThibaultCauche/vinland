@@ -12,6 +12,18 @@ import '../widgets/track_tile.dart';
 import 'album_screen.dart';
 import 'discovered_album_screen.dart';
 
+class _ArtistCache {
+  final DiscoveredArtist? artist;
+  final List<DiscoveredAlbum> albums;
+  final List<DiscoveredTrack> topTracks;
+  final bool deepMatched;
+  _ArtistCache(
+      {this.artist,
+      required this.albums,
+      required this.topTracks,
+      this.deepMatched = false});
+}
+
 class ArtistScreen extends StatefulWidget {
   final String artistName;
 
@@ -22,6 +34,7 @@ class ArtistScreen extends StatefulWidget {
 }
 
 class _ArtistScreenState extends State<ArtistScreen> {
+  static final Map<String, _ArtistCache> _deezerCache = {};
   final _discovery = DiscoveryService();
 
   DiscoveredArtist? _discoveredArtist;
@@ -36,7 +49,17 @@ class _ArtistScreenState extends State<ArtistScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDeezerData();
+    final cached = _deezerCache[_normalize(widget.artistName)];
+    if (cached != null) {
+      _discoveredArtist = cached.artist;
+      _discoveredAlbums = cached.albums;
+      _topTracks = cached.topTracks;
+      _loadingDeezer = false;
+      _loadingTopTracks = false;
+      if (!cached.deepMatched) _deepMatchAlbums();
+    } else {
+      _loadDeezerData();
+    }
   }
 
   Future<void> _loadDeezerData() async {
@@ -63,6 +86,11 @@ class _ArtistScreenState extends State<ArtistScreen> {
         _loadingDeezer = false;
         _loadingTopTracks = false; // ← ici, APRÈS le Future.wait
       });
+    _deezerCache[_normalize(widget.artistName)] = _ArtistCache(
+      artist: _discoveredArtist,
+      albums: _discoveredAlbums,
+      topTracks: _topTracks,
+    );
     _deepMatchAlbums();
   }
 
@@ -114,19 +142,29 @@ class _ArtistScreenState extends State<ArtistScreen> {
           final threshold = deezerTracks.length <= 5 ? 0.20 : 0.10;
 
           if (ratio >= threshold) {
-            if (mounted) setState(() => album.isInLibrary = true);
+            album.isInLibrary = true;
             break;
           }
         }
       } catch (e) {
         print('Deep match error for album ${album.title}: $e');
       }
-
-      if (mounted) setState(() => _deepMatchProgress++);
-      await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    if (mounted) setState(() => _deepMatching = false);
+    if (mounted) {
+      setState(() {
+        _deepMatching = false;
+        final key = _normalize(widget.artistName);
+        if (_deezerCache.containsKey(key)) {
+          _deezerCache[key] = _ArtistCache(
+            artist: _discoveredArtist,
+            albums: _discoveredAlbums,
+            topTracks: _topTracks,
+            deepMatched: true,
+          );
+        }
+      });
+    }
   }
 
   /// Verifie si l'artiste recherche est present dans le champ artiste (principal ou featuring)
@@ -374,23 +412,6 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (_deepMatching) ...[
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFF1DB954),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '$_deepMatchProgress/$_deepMatchTotal',
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 12),
-                          ),
-                        ],
                       ],
                     ),
                   ),

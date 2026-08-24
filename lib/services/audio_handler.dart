@@ -136,4 +136,16 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       },
     ));
   }
+
+  Future<void> toggleShuffle() async {
+    await _player.setShuffleModeEnabled(!_player.shuffleModeEnabled);
+  }
+
+  bool get isShuffled => _player.shuffleModeEnabled;
+
+  Future<void> setLoopMode(LoopMode mode) async {
+    await _player.setLoopMode(mode);
+  }
+
+  LoopMode get loopMode => _player.loopMode;
 }

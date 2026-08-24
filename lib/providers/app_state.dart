@@ -79,6 +79,10 @@ class AppState extends ChangeNotifier {
   bool _useNavidrome = true;
   bool get useNavidrome => _useNavidrome;
 
+  //lecture aléatoire
+  bool get isShuffled => _audioHandler.isShuffled;
+  LoopMode get loopMode => _audioHandler.loopMode;
+
   AppState({required VinlandAudioHandler audioHandler})
       : _audioHandler = audioHandler {
     _audioHandler.customActionStream.listen((action) {
@@ -471,4 +475,19 @@ class AppState extends ChangeNotifier {
   }
 
   bool isTrackOffline(String trackId) => _music.isTrackDownloaded(trackId);
+
+  void toggleShuffle() {
+    _audioHandler.toggleShuffle();
+    _notify();
+  }
+
+  void toggleLoopMode() {
+    final next = {
+      LoopMode.off: LoopMode.all,
+      LoopMode.all: LoopMode.one,
+      LoopMode.one: LoopMode.off,
+    }[_audioHandler.loopMode]!;
+    _audioHandler.setLoopMode(next);
+    _notify();
+  }
 }

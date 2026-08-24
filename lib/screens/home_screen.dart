@@ -112,7 +112,8 @@ class HomeScreen extends StatelessWidget {
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => TrackTile(
                             track: likedTracks[index],
-                            onTap: () => state.playTrack(likedTracks[index]),
+                            onTap: () => state.playTrack(likedTracks[index],
+                                trackList: likedTracks),
                             onLike: () =>
                                 state.toggleLike(likedTracks[index].id),
                           ),

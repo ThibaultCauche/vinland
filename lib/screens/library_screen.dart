@@ -188,7 +188,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         itemCount: filtered.length,
         itemBuilder: (context, i) => TrackTile(
           track: filtered[i],
-          onTap: () => state.playTrack(filtered[i]),
+          onTap: () => state.playTrack(filtered[i], trackList: filtered),
           onLike: () => state.toggleLike(filtered[i].id),
           onMore: () => _showTrackOptions(context, filtered[i]),
         ),
