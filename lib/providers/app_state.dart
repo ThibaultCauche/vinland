@@ -45,7 +45,17 @@ class AppState extends ChangeNotifier {
 
   // Getters
   List<Track> get allTracks => _music.navidromeTracks;
-  List<Track> get likedTracks => _music.likedTracks;
+  List<Track> get likedTracks {
+    final tracks = List<Track>.from(_music.likedTracks);
+    tracks.sort((a, b) {
+      if (a.dateAdded == null && b.dateAdded == null) return 0;
+      if (a.dateAdded == null) return 1;
+      if (b.dateAdded == null) return -1;
+      return b.dateAdded!.compareTo(a.dateAdded!);
+    });
+    return tracks;
+  }
+
   List<Track> get searchResults {
     if (searchQuery.isEmpty) return [];
     return _music.searchTracks(searchQuery);

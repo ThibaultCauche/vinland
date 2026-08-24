@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/user_service.dart';
 import '../screens/admin_users_screen.dart';
+import 'streaming_import_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -47,6 +48,16 @@ class SettingsScreen extends StatelessWidget {
                 title: 'Importer un dossier',
                 subtitle: 'Scanner un dossier de musique',
                 onTap: () => _pickFolder(context),
+              ),
+              _buildTile(
+                icon: Icons.upload_file,
+                title: 'Importer likes (CSV / JSON)',
+                subtitle: 'Spotify, YouTube Music, etc.',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const StreamingImportScreen()),
+                ),
               ),
               _buildSection('Serveur Navidrome'),
               _buildTile(
