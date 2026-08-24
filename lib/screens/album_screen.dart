@@ -147,7 +147,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
         return field.split(RegExp(r'[/&,]')).any((p) => p.trim() == search);
       }
 
-      albumTracks = albumTracks.where((t) => artistMatch(t.artist)).toList();
+      albumTracks = albumTracks
+          .where((t) => artistMatch(t.artist) || artistMatch(t.albumArtist))
+          .toList();
     }
 
     final items = _buildTrackList(albumTracks);

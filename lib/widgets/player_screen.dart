@@ -247,13 +247,17 @@ class PlayerScreen extends StatelessWidget {
                       fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(ctx);
-                final album = state.likedAlbums.firstWhere(
+                final album = state.albums.firstWhere(
                   (a) => a.title == track.album,
                   orElse: () => Album(
                     id: track.album.hashCode.toString(),
                     title: track.album,
-                    artist: track.artist,
-                    trackIds: [],
+                    artist: track.albumArtist ?? track.artist,
+                    trackIds: state.allTracks
+                        .where((t) => t.album == track.album)
+                        .map((t) => t.id)
+                        .toList(),
+                    coverPath: track.coverPath,
                   ),
                 );
                 state.pushOverlay(AlbumScreen(album: album));

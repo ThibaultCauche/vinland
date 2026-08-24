@@ -383,24 +383,21 @@ class _LibraryScreenState extends State<LibraryScreen>
               label: "Acceder a l'album",
               onTap: () {
                 Navigator.pop(ctx);
-                final album = state.likedAlbums.firstWhere(
+                // Cherche dans TOUS les albums, pas seulement les likés
+                final album = state.albums.firstWhere(
                   (a) => a.title == track.album,
                   orElse: () => Album(
                     id: track.album.hashCode.toString(),
                     title: track.album,
-                    artist: track.artist,
-                    trackIds: [],
+                    artist: track.albumArtist ?? track.artist,
+                    trackIds: state.allTracks
+                        .where((t) => t.album == track.album)
+                        .map((t) => t.id)
+                        .toList(),
+                    coverPath: track.coverPath,
                   ),
                 );
                 state.pushOverlay(AlbumScreen(album: album));
-              },
-            ),
-            _SheetTile(
-              icon: Icons.person_outline,
-              label: "Acceder a l'artiste",
-              onTap: () {
-                Navigator.pop(ctx);
-                _showArtistPicker(context, track.artist);
               },
             ),
             const SizedBox(height: 8),
