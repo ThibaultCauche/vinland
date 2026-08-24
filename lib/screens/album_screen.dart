@@ -133,7 +133,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     final appState = context.watch<AppState>();
 
     var albumTracks = appState.allTracks
-        .where((t) => t.album == widget.album.title)
+        .where((t) => _normalize(t.album) == _normalize(widget.album.title))
         .toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 

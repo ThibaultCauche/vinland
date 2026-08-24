@@ -59,9 +59,21 @@ class MusicService {
   Future<void> initialize() async {
     if (_initialized) return;
     _coversDir = await _getCoversDir();
+
+    // TEMPORAIRE : décommente cette ligne, lance l'app 1 fois, puis re-commente
+    // await _deleteCacheFile();
+
     await _loadFromCache();
     await _refreshCoverCache();
     _initialized = true;
+  }
+
+  Future<void> _deleteCacheFile() async {
+    final file = await _getCacheFile();
+    if (await file.exists()) {
+      await file.delete();
+      print('CACHE SUPPRIME');
+    }
   }
 
   Future<String> _getCoversDir() async {
@@ -351,9 +363,6 @@ class MusicService {
       }
       return db.compareTo(da);
     });
-    for (final t in liked.take(5)) {
-      print('LIKE ORDER: ${t.title} | date=${t.dateAdded}');
-    }
     return liked;
   }
 
