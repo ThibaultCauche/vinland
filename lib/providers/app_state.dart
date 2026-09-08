@@ -500,4 +500,9 @@ class AppState extends ChangeNotifier {
     _audioHandler.setLoopMode(next);
     _notify();
   }
+
+  Future<void> clearAllLikes() async {
+    await _music.clearAllLikes();
+    _notify();
+  }
 }

@@ -59,6 +59,12 @@ class SettingsScreen extends StatelessWidget {
                       builder: (_) => const StreamingImportScreen()),
                 ),
               ),
+              _buildTile(
+                icon: Icons.delete_sweep,
+                title: 'Reinitialiser les titres likes',
+                subtitle: 'Vide la liste des likes locale',
+                onTap: () => _confirmClearLikes(context),
+              ),
               _buildSection('Serveur Navidrome'),
               _buildTile(
                 icon: Icons.cloud,
@@ -278,6 +284,41 @@ class SettingsScreen extends StatelessWidget {
             },
             child: const Text('Connecter',
                 style: TextStyle(color: Color(0xFF1DB954))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClearLikes(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Reinitialiser les likes',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Tous vos titres likes seront retires localement. Une synchro Navidrome les remettra si ils sont likes sur le serveur.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child:
+                const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await context.read<AppState>().clearAllLikes();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Titres likes reinitialises')),
+                );
+              }
+            },
+            child: const Text('Reinitialiser',
+                style: TextStyle(color: Colors.red)),
           ),
         ],
       ),

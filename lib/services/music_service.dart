@@ -655,4 +655,12 @@ class MusicService {
     _missingTracks = [];
     _debouncedSave();
   }
+
+  Future<void> clearAllLikes() async {
+    for (final track in _allTracks) {
+      track.isLiked = false;
+      track.dateAdded = null;
+    }
+    _debouncedSave();
+  }
 }
