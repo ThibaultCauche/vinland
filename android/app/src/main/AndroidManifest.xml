@@ -1,9 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Bluetooth : detecter la connexion d'un casque/enceinte de confiance
+         pour reprendre la lecture automatiquement (voir BluetoothConnectReceiver).
+         BLUETOOTH_CONNECT est necessaire a partir d'Android 12 (API 31) pour lire
+         le nom/l'adresse d'un appareil et pour lister les appareils appaires ;
+         BLUETOOTH/BLUETOOTH_ADMIN couvrent les versions anterieures. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <application
         android:label="vinland"
         android:name="${applicationName}"
@@ -18,13 +28,32 @@
             </intent-filter>
         </service>
 
-        <receiver 
+        <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </receiver>
+
+        <!-- Declaree statiquement (pas via Context.registerReceiver) : c'est
+             ce qui permet de recevoir ACL_CONNECTED meme si l'app n'a jamais
+             ete lancee depuis le dernier redemarrage du telephone. Cette
+             action fait partie des exceptions Android aux restrictions de
+             broadcasts en arriere-plan (Android 8+), donc pas besoin d'un
+             foreground service deja actif pour la recevoir. -->
+        <receiver
+            android:name=".BluetoothConnectReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".ResumePlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="false" />
         <activity
             android:name="com.ryanheise.audioservice.AudioServiceActivity"
             android:exported="true"

@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
+import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/download_button.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
 import '../models/album.dart';
@@ -12,7 +14,12 @@ import '../models/album.dart';
 class PlaylistScreen extends StatelessWidget {
   final Playlist playlist;
 
-  const PlaylistScreen({super.key, required this.playlist});
+  /// Vrai pour la playlist d'un ami consultee depuis son profil : aucune
+  /// action de modification (supprimer, retirer un titre, rendre publique)
+  /// n'est proposee, seule la lecture et le like des titres restent possibles.
+  final bool readOnly;
+
+  const PlaylistScreen({super.key, required this.playlist, this.readOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +31,17 @@ class PlaylistScreen extends StatelessWidget {
       },
       builder: (context, tracks, child) {
         final state = context.read<AppState>();
+
+        void recordRecent() {
+          state.recordRecentPlay(RecentPlay(
+            type: RecentPlayType.playlist,
+            id: playlist.id,
+            title: playlist.name,
+            subtitle:
+                '${playlist.trackIds.length} titre${playlist.trackIds.length > 1 ? 's' : ''}',
+            playedAt: DateTime.now(),
+          ));
+        }
 
         return Scaffold(
           backgroundColor: const Color(0xFF121212),
@@ -37,12 +55,14 @@ class PlaylistScreen extends StatelessWidget {
             title: Text(playlist.name,
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.more_vert, color: Colors.white),
-                onPressed: () => _showPlaylistOptions(context, playlist),
-              ),
-            ],
+            actions: readOnly
+                ? null
+                : [
+                    IconButton(
+                      icon: const Icon(Icons.more_vert, color: Colors.white),
+                      onPressed: () => _showPlaylistOptions(context, playlist),
+                    ),
+                  ],
           ),
           body: Column(
             children: [
@@ -91,8 +111,11 @@ class PlaylistScreen extends StatelessWidget {
                   children: [
                     ElevatedButton.icon(
                       onPressed: tracks.isNotEmpty
-                          ? () =>
-                              state.playTrack(tracks.first, trackList: tracks)
+                          ? () {
+                              recordRecent();
+                              state.playTrack(tracks.first,
+                                  trackList: tracks);
+                            }
                           : null,
                       icon: const Icon(Icons.play_arrow),
                       label: const Text('Lecture'),
@@ -109,11 +132,18 @@ class PlaylistScreen extends StatelessWidget {
                       icon: const Icon(Icons.shuffle, color: Colors.white),
                       onPressed: tracks.isNotEmpty
                           ? () {
+                              recordRecent();
                               final shuffled = List.of(tracks)..shuffle();
                               state.playTrack(shuffled.first,
                                   trackList: shuffled);
                             }
                           : null,
+                    ),
+                    const SizedBox(width: 4),
+                    DownloadButton(
+                      tracks: tracks,
+                      confirmDeleteMessage:
+                          'Cette playlist ne sera plus disponible hors connexion.',
                     ),
                   ],
                 ),
@@ -129,10 +159,13 @@ class PlaylistScreen extends StatelessWidget {
                         itemCount: tracks.length,
                         itemBuilder: (context, i) => TrackTile(
                           track: tracks[i],
-                          onTap: () =>
-                              state.playTrack(tracks[i], trackList: tracks),
+                          onTap: () {
+                            recordRecent();
+                            state.playTrack(tracks[i], trackList: tracks);
+                          },
                           onLike: () => state.toggleLike(tracks[i].id),
-                          onMore: () => _showTrackOptions(context, tracks[i]),
+                          onMore: () =>
+                              _showTrackOptions(context, tracks[i], readOnly: readOnly),
                         ),
                       ),
               ),
@@ -197,6 +230,28 @@ class PlaylistScreen extends StatelessWidget {
             ),
             const Divider(color: Color(0xFF2A2A2A), height: 1),
             ListTile(
+              leading: Icon(
+                  playlist.isPublic ? Icons.public : Icons.public_off,
+                  color: Colors.white,
+                  size: 26),
+              title: Text(
+                  playlist.isPublic
+                      ? 'Rendre privee'
+                      : 'Rendre publique (visible par les amis)',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              onTap: () {
+                Navigator.pop(ctx);
+                context
+                    .read<AppState>()
+                    .setPlaylistPublic(playlist.id, !playlist.isPublic);
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline,
                   color: Colors.white, size: 26),
               title: const Text('Supprimer la playlist',
@@ -206,7 +261,9 @@ class PlaylistScreen extends StatelessWidget {
                       fontWeight: FontWeight.w500)),
               onTap: () {
                 Navigator.pop(ctx);
-                // TODO: ajouter deletePlaylist dans MusicService + AppState
+                final state = context.read<AppState>();
+                state.deletePlaylist(playlist.id);
+                state.popOverlay();
               },
               minLeadingWidth: 24,
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -218,7 +275,7 @@ class PlaylistScreen extends StatelessWidget {
     );
   }
 
-  void _showTrackOptions(BuildContext context, Track track) {
+  void _showTrackOptions(BuildContext context, Track track, {bool readOnly = false}) {
     final state = context.read<AppState>();
     showModalBottomSheet(
       context: context,
@@ -236,15 +293,16 @@ class PlaylistScreen extends StatelessWidget {
               subtitle: track.artist,
             ),
             const Divider(color: Color(0xFF2A2A2A), height: 1),
-            _SheetTile(
-              icon: Icons.remove_circle_outline,
-              label: 'Retirer de la playlist',
-              onTap: () {
-                Navigator.pop(ctx);
-                state.musicService.removeFromPlaylist(playlist.id, track.id);
-                state.notifyListeners();
-              },
-            ),
+            if (!readOnly)
+              _SheetTile(
+                icon: Icons.remove_circle_outline,
+                label: 'Retirer de la playlist',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.musicService.removeFromPlaylist(playlist.id, track.id);
+                  state.notifyListeners();
+                },
+              ),
             _SheetTile(
               icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
               label: track.isLiked

@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
-import '../services/user_service.dart';
-import '../screens/admin_users_screen.dart';
 import 'streaming_import_screen.dart';
+import 'bluetooth_trusted_devices_screen.dart';
+import 'feedback_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -17,7 +19,18 @@ class SettingsScreen extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => context.read<AppState>().popOverlay(),
+          // Sur mobile cet ecran est pousse comme overlay AppState (pas de
+          // route Navigator) ; sur desktop il est pousse via un vrai
+          // Navigator.push. On gere les deux : on ferme la vraie route si
+          // il y en a une, sinon on retombe sur l'overlay.
+          onPressed: () {
+            final navigator = Navigator.of(context);
+            if (navigator.canPop()) {
+              navigator.pop();
+            } else {
+              context.read<AppState>().popOverlay();
+            }
+          },
         ),
         title: const Text('Parametres',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -30,18 +43,9 @@ class SettingsScreen extends StatelessWidget {
               _buildTile(
                 icon: Icons.person,
                 title: state.userName ?? 'Utilisateur',
-                subtitle: state.userEmail ?? '',
+                subtitle: state.navidromeUrl ?? '',
                 onTap: () {},
               ),
-              if (state.isAdmin) ...[
-                _buildTile(
-                  icon: Icons.people,
-                  title: 'Gérer les utilisateurs',
-                  subtitle:
-                      '${UserService().pendingCount} en attente d\'approbation',
-                  onTap: () => state.pushOverlay(const AdminUsersScreen()),
-                ),
-              ],
               _buildSection('Bibliotheque'),
               _buildTile(
                 icon: Icons.folder,
@@ -69,18 +73,25 @@ class SettingsScreen extends StatelessWidget {
               _buildTile(
                 icon: Icons.cloud,
                 title: 'Configurer Navidrome',
-                subtitle: state.useNavidrome ? 'Connecte' : 'Non configure',
+                subtitle: state.isLoggedIn ? 'Connecte' : 'Non configure',
                 onTap: () => _showNavidromeDialog(context),
               ),
-              if (state.useNavidrome) ...[
+              if (state.isLoggedIn) ...[
                 _buildTile(
                   icon: Icons.sync,
                   title: 'Synchroniser la bibliotheque',
                   subtitle: 'Mettre a jour depuis le serveur',
                   onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     await state.syncNavidrome();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Synchronisation terminee')),
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Synchronisation terminee : '
+                          '${state.allTracks.length} titres, '
+                          '${state.albums.length} albums',
+                        ),
+                      ),
                     );
                   },
                 ),
@@ -116,14 +127,46 @@ class SettingsScreen extends StatelessWidget {
               _buildSwitchTile(
                 icon: Icons.shuffle,
                 title: 'Lecture aleatoire',
-                value: false,
-                onChanged: (v) {},
+                value: state.isShuffled,
+                onChanged: (v) => state.toggleShuffle(),
               ),
               _buildSwitchTile(
                 icon: Icons.repeat,
                 title: 'Repetition',
-                value: false,
-                onChanged: (v) {},
+                value: state.isRepeatEnabled,
+                onChanged: (v) => state.toggleLoopMode(),
+              ),
+              _buildSection('Amis'),
+              _buildSwitchTile(
+                icon: Icons.people_outline,
+                title: 'Partager mes titres likes',
+                subtitle:
+                    'Visibles par les autres comptes de ce serveur, sur leur profil',
+                value: state.shareLikesWithFriends,
+                onChanged: (v) => state.setShareLikesWithFriends(v),
+              ),
+              if (defaultTargetPlatform == TargetPlatform.android) ...[
+                _buildSection('Bluetooth'),
+                _buildTile(
+                  icon: Icons.bluetooth,
+                  title: 'Reprise automatique',
+                  subtitle:
+                      "Relance la derniere lecture quand un casque de confiance se connecte",
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const BluetoothTrustedDevicesScreen()),
+                  ),
+                ),
+              ],
+              _buildSection('Telechargements'),
+              _buildSwitchTile(
+                icon: Icons.download_for_offline,
+                title: 'Telecharger automatiquement les likes',
+                subtitle:
+                    'Titres, albums et playlists likes disponibles hors connexion',
+                value: state.autoDownloadLikes,
+                onChanged: (v) => state.setAutoDownloadLikes(v),
               ),
               _buildSection('Qualite'),
               _buildTile(
@@ -132,12 +175,40 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: 'Haute qualite (320kbps)',
                 onTap: () {},
               ),
-              _buildSection('A propos'),
+              _buildSection('Aide'),
               _buildTile(
-                icon: Icons.info,
-                title: 'Vinland v1.0.0',
-                subtitle: 'Application de musique locale',
-                onTap: () {},
+                icon: Icons.feedback_outlined,
+                title: 'Un avis, un bug ?',
+                subtitle: 'Envoie-le directement sur le Discord',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+                ),
+              ),
+              _buildSection('A propos'),
+              FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snapshot) {
+                  final version = snapshot.data?.version ?? '...';
+                  final update = state.updateInfo;
+                  return _buildTile(
+                    icon: Icons.info,
+                    title: 'Vinland v$version',
+                    subtitle: update != null
+                        ? 'Nouvelle version disponible sur la page d\'accueil'
+                        : 'A jour -- toucher pour verifier',
+                    onTap: () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await state.checkForUpdate();
+                      if (state.updateInfo == null) {
+                        messenger.showSnackBar(
+                          const SnackBar(
+                              content: Text('Tu as deja la derniere version')),
+                        );
+                      }
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 24),
               Padding(
@@ -191,9 +262,10 @@ class SettingsScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    Color? iconColor,
   }) {
     return ListTile(
-      leading: Icon(icon, color: Colors.white54),
+      leading: Icon(icon, color: iconColor ?? Colors.white54),
       title: Text(title, style: const TextStyle(color: Colors.white)),
       subtitle: Text(subtitle, style: const TextStyle(color: Colors.white54)),
       trailing: const Icon(Icons.chevron_right, color: Colors.white38),
@@ -206,10 +278,14 @@ class SettingsScreen extends StatelessWidget {
     required String title,
     required bool value,
     required ValueChanged<bool> onChanged,
+    String? subtitle,
   }) {
     return SwitchListTile(
       secondary: Icon(icon, color: Colors.white54),
       title: Text(title, style: const TextStyle(color: Colors.white)),
+      subtitle: subtitle != null
+          ? Text(subtitle, style: const TextStyle(color: Colors.white54))
+          : null,
       value: value,
       onChanged: onChanged,
       activeColor: const Color(0xFF1DB954),

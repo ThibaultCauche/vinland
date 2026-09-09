@@ -1,22 +1,42 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
-import 'package:just_audio/just_audio.dart';
+import 'player_engine.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
-  final AudioPlayer _player;
-  AudioPlayer get player => _player;
+  final PlayerEngine _engine;
+  PlayerEngine get player => _engine;
 
   final _customActionController = StreamController<String>.broadcast();
   Stream<String> get customActionStream => _customActionController.stream;
 
-  VinlandAudioHandler(this._player) {
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
-    _player.currentIndexStream.listen((index) {
+  VinlandAudioHandler(this._engine) {
+    // Le PlaybackState remonte a audio_service (notification/lock screen
+    // Android) est recalcule a chaque changement pertinent -- generique,
+    // ne depend plus du backend (just_audio ou media_kit).
+    _engine.positionStream.listen(
+      (_) => _pushState(),
+      onError: (Object e, StackTrace st) {
+        // Une erreur reseau/decodage ponctuelle ne doit pas remonter
+        // non-geree et faire planter l'app : on la journalise seulement.
+        print('PLAYBACK EVENT ERROR: $e');
+      },
+    );
+    _engine.playingStream.listen((_) => _pushState());
+    _engine.currentIndexStream.listen((index) {
       _updateMediaItemFromIndex(index);
+      _pushState();
     });
-    _player.durationStream.listen((duration) {
-      final index = _player.currentIndex;
-      if (index != null && index >= 0 && index < queue.value.length) {
+
+    _engine.errorMessages.listen((msg) {
+      print('AUDIO ERROR: $msg');
+    });
+
+    _engine.durationStream.listen((duration) {
+      final index = _engine.currentIndex;
+      if (duration != null &&
+          index != null &&
+          index >= 0 &&
+          index < queue.value.length) {
         final item = queue.value[index];
         mediaItem.add(MediaItem(
           id: item.id,
@@ -31,6 +51,14 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     });
   }
 
+  void _pushState() {
+    try {
+      playbackState.add(_transformState());
+    } catch (e) {
+      print('PLAYBACK STATE PUSH ERROR: $e');
+    }
+  }
+
   void _updateMediaItemFromIndex(int? index) {
     if (index == null || index < 0 || index >= queue.value.length) return;
     final item = queue.value[index];
@@ -38,19 +66,19 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() => _engine.play();
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() => _engine.pause();
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) => _engine.seek(position);
   @override
-  Future<void> skipToNext() => _player.seekToNext();
+  Future<void> skipToNext() => _engine.seekToNext();
   @override
-  Future<void> skipToPrevious() => _player.seekToPrevious();
+  Future<void> skipToPrevious() => _engine.seekToPrevious();
 
   @override
   Future<void> stop() async {
-    await _player.stop();
+    await _engine.stop();
     await super.stop();
   }
 
@@ -70,29 +98,19 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       final isRemote = item.id.startsWith('http');
       print(
           '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isAsset=$isAsset isRemote=$isRemote');
-      if (isAsset)
-        return AudioSource.asset(item.id.replaceFirst('assets/', ''));
-      if (isRemote) return AudioSource.uri(Uri.parse(item.id));
-      return AudioSource.file(item.id);
+      return PlayerQueueItem(path: item.id, isAsset: isAsset, isRemote: isRemote);
     }).toList();
 
     try {
-      await _player.stop();
-    } catch (_) {}
-
-    try {
-      await _player.setAudioSource(
-        ConcatenatingAudioSource(children: sources),
-        initialIndex: startIndex,
-      );
+      await _engine.setAudioSources(sources, initialIndex: startIndex);
       print('✅ AudioSource chargé, lecture...');
-      await _player.play();
+      await _engine.play();
     } catch (e) {
       print('❌ ERREUR LECTURE: $e');
     }
   }
 
-  PlaybackState _transformEvent(PlaybackEvent event) {
+  PlaybackState _transformState() {
     return PlaybackState(
       controls: [
         MediaControl(
@@ -102,7 +120,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
           customAction: CustomMediaAction(name: 'add_to_likes'),
         ),
         MediaControl.skipToPrevious,
-        if (_player.playing) MediaControl.pause else MediaControl.play,
+        if (_engine.playing) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
       ],
       systemActions: const {
@@ -111,18 +129,12 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
         MediaAction.seekBackward,
       },
       androidCompactActionIndices: const [1, 2, 3],
-      processingState: const {
-        ProcessingState.idle: AudioProcessingState.idle,
-        ProcessingState.loading: AudioProcessingState.loading,
-        ProcessingState.buffering: AudioProcessingState.buffering,
-        ProcessingState.ready: AudioProcessingState.ready,
-        ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
-      playing: _player.playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
-      speed: _player.speed,
-      queueIndex: event.currentIndex,
+      processingState: _engine.processingState,
+      playing: _engine.playing,
+      updatePosition: _engine.position,
+      bufferedPosition: _engine.bufferedPosition,
+      speed: _engine.speed,
+      queueIndex: _engine.currentIndex,
     );
   }
 
@@ -138,14 +150,14 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> toggleShuffle() async {
-    await _player.setShuffleModeEnabled(!_player.shuffleModeEnabled);
+    await _engine.setShuffleModeEnabled(!_engine.shuffleModeEnabled);
   }
 
-  bool get isShuffled => _player.shuffleModeEnabled;
+  bool get isShuffled => _engine.shuffleModeEnabled;
 
   Future<void> setLoopMode(LoopMode mode) async {
-    await _player.setLoopMode(mode);
+    await _engine.setLoopMode(mode);
   }
 
-  LoopMode get loopMode => _player.loopMode;
+  LoopMode get loopMode => _engine.loopMode;
 }

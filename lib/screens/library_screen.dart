@@ -7,7 +7,9 @@ import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
+import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/download_button.dart';
 import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
 import 'streaming_import_screen.dart';
@@ -174,8 +176,38 @@ class _LibraryScreenState extends State<LibraryScreen>
                 t.album.toLowerCase().contains(query))
             .toList();
 
+    if (likedTracks.isEmpty) {
+      return _buildEmpty('Aucun titre like');
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+          child: Row(
+            children: [
+              Text(
+                '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              const Spacer(),
+              DownloadButton(
+                tracks: likedTracks,
+                confirmDeleteMessage:
+                    'Vos titres likés ne seront plus disponibles hors connexion.',
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: _buildLikedTracksList(state, likedTracks, filtered)),
+      ],
+    );
+  }
+
+  Widget _buildLikedTracksList(
+      AppState state, List<Track> likedTracks, List<Track> filtered) {
     if (filtered.isEmpty) {
-      return _buildEmpty(query.isEmpty ? 'Aucun titre like' : 'Aucun resultat');
+      return _buildEmpty('Aucun resultat');
     }
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
@@ -188,7 +220,17 @@ class _LibraryScreenState extends State<LibraryScreen>
         itemCount: filtered.length,
         itemBuilder: (context, i) => TrackTile(
           track: filtered[i],
-          onTap: () => state.playTrack(filtered[i], trackList: filtered),
+          onTap: () {
+            state.recordRecentPlay(RecentPlay(
+              type: RecentPlayType.playlist,
+              id: kLikedSongsRecentId,
+              title: 'Titres likés',
+              subtitle:
+                  '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
+              playedAt: DateTime.now(),
+            ));
+            state.playTrack(filtered[i], trackList: filtered);
+          },
           onLike: () => state.toggleLike(filtered[i].id),
           onMore: () => _showTrackOptions(context, filtered[i]),
         ),

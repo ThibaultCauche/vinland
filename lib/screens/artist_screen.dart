@@ -7,6 +7,7 @@ import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_artist.dart';
 import '../models/discovered_track.dart';
+import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
 import '../widgets/track_tile.dart';
 import 'album_screen.dart';
@@ -118,36 +119,49 @@ class _ArtistScreenState extends State<ArtistScreen> {
       });
     }
 
-    for (final album in unmatched) {
-      try {
-        final deezerTracks = await _discovery.getAlbumTracks(album.id);
-        if (deezerTracks.isEmpty) continue;
+    // Traite les albums par petits lots en parallele au lieu d'un appel
+    // Deezer sequentiel par album : plus rapide, et l'UI (albums grises qui
+    // deviennent disponibles) se met a jour progressivement lot par lot
+    // plutot qu'en un seul bloc a la toute fin.
+    const batchSize = 5;
+    for (var i = 0; i < unmatched.length; i += batchSize) {
+      final batch = unmatched.skip(i).take(batchSize);
 
-        for (final entry in localAlbumSignatures.entries) {
-          final localTitles = entry.value;
-          if (localTitles.isEmpty) continue;
+      await Future.wait(batch.map((album) async {
+        try {
+          final deezerTracks = await _discovery.getAlbumTracks(album.id);
+          if (deezerTracks.isEmpty) return;
 
-          int matches = 0;
-          for (final dt in deezerTracks) {
-            final dtTitle = _normalize(dt.title);
-            if (localTitles.any((lt) =>
-                lt == dtTitle ||
-                lt.contains(dtTitle) ||
-                dtTitle.contains(lt))) {
-              matches++;
+          for (final entry in localAlbumSignatures.entries) {
+            final localTitles = entry.value;
+            if (localTitles.isEmpty) continue;
+
+            int matches = 0;
+            for (final dt in deezerTracks) {
+              final dtTitle = _normalize(dt.title);
+              if (localTitles.any((lt) =>
+                  lt == dtTitle ||
+                  lt.contains(dtTitle) ||
+                  dtTitle.contains(lt))) {
+                matches++;
+              }
+            }
+
+            final ratio = matches / deezerTracks.length;
+            final threshold = deezerTracks.length <= 5 ? 0.20 : 0.10;
+
+            if (ratio >= threshold) {
+              album.isInLibrary = true;
+              break;
             }
           }
-
-          final ratio = matches / deezerTracks.length;
-          final threshold = deezerTracks.length <= 5 ? 0.20 : 0.10;
-
-          if (ratio >= threshold) {
-            album.isInLibrary = true;
-            break;
-          }
+        } catch (e) {
+          print('Deep match error for album ${album.title}: $e');
         }
-      } catch (e) {
-        print('Deep match error for album ${album.title}: $e');
+      }));
+
+      if (mounted) {
+        setState(() => _deepMatchProgress += batch.length);
       }
     }
 
@@ -188,20 +202,32 @@ class _ArtistScreenState extends State<ArtistScreen> {
     return null;
   }
 
-  Track? _findTrackById(List<Track> tracks, String id) {
-    try {
-      return tracks.firstWhere((t) => t.id == id);
-    } catch (_) {
-      return null;
-    }
-  }
-
   String _normalize(String text) {
     return text
         .toLowerCase()
         .replaceAll(RegExp(r'[^\w\s]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  /// Parse une date Deezer ("YYYY-MM-DD" ou juste "YYYY") en DateTime.
+  DateTime? _parseReleaseDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw) ??
+        DateTime.tryParse(RegExp(r'^\d{4}').stringMatch(raw) != null
+            ? '${RegExp(r'^\d{4}').stringMatch(raw)}-01-01'
+            : '');
+  }
+
+  void _recordRecent(AppState state, {String? coverPath}) {
+    state.recordRecentPlay(RecentPlay(
+      type: RecentPlayType.artist,
+      id: widget.artistName,
+      title: widget.artistName,
+      subtitle: 'Artiste',
+      coverPath: coverPath ?? _discoveredArtist?.pictureBigUrl,
+      playedAt: DateTime.now(),
+    ));
   }
 
   @override
@@ -218,15 +244,19 @@ class _ArtistScreenState extends State<ArtistScreen> {
           return parts.any((p) => p.trim() == search);
         }
 
-        final tracks =
-            state.allTracks.where((t) => artistMatch(t.artist)).toList();
+        final allTracks = state.allTracks;
+        final tracks = allTracks.where((t) => artistMatch(t.artist)).toList();
+
+        // Index id -> track construit une seule fois : evite un scan complet
+        // de la bibliotheque pour chaque trackId de chaque album ci-dessous.
+        final tracksById = {for (final t in allTracks) t.id: t};
 
         // Inclut les albums dont l'artiste d'album correspond
         // OU dont au moins une track correspond
         final albums = state.albums.where((a) {
           if (artistMatch(a.artist)) return true;
           return a.trackIds.any((id) {
-            final track = _findTrackById(state.allTracks, id);
+            final track = tracksById[id];
             return track != null && artistMatch(track.artist);
           });
         }).toList();
@@ -246,7 +276,30 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
         final discoveredOnly =
             _discoveredAlbums.where((d) => !d.isInLibrary).toList();
-        final totalAlbumCount = localAlbums.length + discoveredOnly.length;
+
+        // Albums locaux + Deezer tries par date de sortie decroissante
+        // (les albums sans date connue sont relegues a la fin).
+        final sortedAlbumEntries = <_ArtistAlbumEntry>[
+          for (final a in localAlbums)
+            _ArtistAlbumEntry.local(a, a.year != null ? DateTime(a.year!) : null),
+          for (final a in discoveredOnly)
+            _ArtistAlbumEntry.discovered(a, _parseReleaseDate(a.releaseDate)),
+        ]..sort((a, b) {
+            final da = a.sortDate;
+            final db = b.sortDate;
+            if (da == null && db == null) return 0;
+            if (da == null) return 1;
+            if (db == null) return -1;
+            return db.compareTo(da);
+          });
+
+        // Separe les singles (1 titre) des albums complets : les afficher
+        // dans la meme grille que des albums entiers rendait le rendu
+        // bizarre (meme taille de tuile pour 1 titre ou 15).
+        final fullAlbumEntries =
+            sortedAlbumEntries.where((e) => e.trackCount > 1).toList();
+        final singleEntries =
+            sortedAlbumEntries.where((e) => e.trackCount <= 1).toList();
 
         final artistImage = _discoveredArtist?.pictureBigUrl ??
             (localAlbums.isNotEmpty ? localAlbums.first.coverPath : null);
@@ -315,6 +368,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       ElevatedButton.icon(
                         onPressed: () {
                           if (allArtistTracks.isNotEmpty) {
+                            _recordRecent(state, coverPath: artistImage);
                             state.playTrack(allArtistTracks.first,
                                 trackList: allArtistTracks);
                           }
@@ -334,6 +388,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         icon: const Icon(Icons.shuffle, color: Colors.white),
                         onPressed: () {
                           if (allArtistTracks.isNotEmpty) {
+                            _recordRecent(state, coverPath: artistImage);
                             final shuffled = List.of(allArtistTracks)
                               ..shuffle();
                             state.playTrack(shuffled.first,
@@ -387,6 +442,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         track: popularTracks[index],
                         onPlay: () {
                           if (popularTracks[index].local != null) {
+                            _recordRecent(state, coverPath: artistImage);
                             state.playTrack(popularTracks[index].local!);
                           }
                         },
@@ -398,7 +454,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
               ],
 
               // ALBUMS
-              if (totalAlbumCount > 0) ...[
+              if (fullAlbumEntries.isNotEmpty) ...[
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
@@ -428,23 +484,22 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     ),
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                        if (index < localAlbums.length) {
+                        final entry = fullAlbumEntries[index];
+                        if (entry.local != null) {
                           return _LocalAlbumCard(
-                            album: localAlbums[index],
+                            album: entry.local!,
                             state: state,
                             artistName: widget.artistName,
                           );
                         } else {
-                          final disc =
-                              discoveredOnly[index - localAlbums.length];
                           return _DiscoveredAlbumCard(
-                            album: disc,
+                            album: entry.discovered!,
                             state: state,
                             artistName: widget.artistName,
                           );
                         }
                       },
-                      childCount: totalAlbumCount,
+                      childCount: fullAlbumEntries.length,
                     ),
                   ),
                 ),
@@ -455,6 +510,52 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       padding: EdgeInsets.all(32),
                       child:
                           CircularProgressIndicator(color: Color(0xFF1DB954)),
+                    ),
+                  ),
+                ),
+              ],
+
+              // SINGLES ET EP (rangee compacte, separee des albums complets)
+              if (singleEntries.isNotEmpty) ...[
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    child: Text(
+                      'Singles',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 168,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: singleEntries.length,
+                      itemBuilder: (context, index) {
+                        final entry = singleEntries[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: entry.local != null
+                              ? _LocalAlbumCard(
+                                  album: entry.local!,
+                                  state: state,
+                                  artistName: widget.artistName,
+                                  compact: true,
+                                )
+                              : _DiscoveredAlbumCard(
+                                  album: entry.discovered!,
+                                  state: state,
+                                  artistName: widget.artistName,
+                                  compact: true,
+                                ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -481,7 +582,10 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => TrackTile(
                         track: allArtistTracks[index],
-                        onTap: () => state.playTrack(allArtistTracks[index]),
+                        onTap: () {
+                          _recordRecent(state, coverPath: artistImage);
+                          state.playTrack(allArtistTracks[index]);
+                        },
                         onLike: () =>
                             state.toggleLike(allArtistTracks[index].id),
                       ),
@@ -498,6 +602,28 @@ class _ArtistScreenState extends State<ArtistScreen> {
       },
     );
   }
+}
+
+/// Entree unifiee (album local ou Deezer) pour le tri par date de sortie.
+class _ArtistAlbumEntry {
+  final Album? local;
+  final DiscoveredAlbum? discovered;
+  final DateTime? sortDate;
+
+  _ArtistAlbumEntry.local(Album album, this.sortDate)
+      : local = album,
+        discovered = null;
+
+  _ArtistAlbumEntry.discovered(DiscoveredAlbum album, this.sortDate)
+      : local = null,
+        discovered = album;
+
+  /// Nombre de titres. Pour un album Deezer sans compte connu, on suppose
+  /// que ce n'est pas un single (evite de le releguer a tort dans la rangee
+  /// "Singles" faute d'info).
+  int get trackCount => local != null
+      ? local!.trackIds.length
+      : (discovered!.nbTracks ?? 2);
 }
 
 /// Pair : track Deezer + track locale correspondante (ou null)
@@ -593,24 +719,36 @@ class _LocalAlbumCard extends StatelessWidget {
   final Album album;
   final AppState state;
   final String artistName;
+  final bool compact;
 
-  const _LocalAlbumCard(
-      {required this.album, required this.state, required this.artistName});
+  const _LocalAlbumCard({
+    required this.album,
+    required this.state,
+    required this.artistName,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final albumTracks =
         state.allTracks.where((t) => t.album == album.title).toList();
 
-    return GestureDetector(
+    final cover = compact
+        ? SizedBox(
+            width: 120,
+            height: 120,
+            child: _AlbumCover(coverPath: album.coverPath),
+          )
+        : Expanded(child: _AlbumCover(coverPath: album.coverPath));
+
+    final card = GestureDetector(
       onTap: () => state
           .pushOverlay(AlbumScreen(album: album, filterArtist: artistName)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          Expanded(
-            child: _AlbumCover(coverPath: album.coverPath),
-          ),
+          cover,
           const SizedBox(height: 8),
           Text(
             album.title,
@@ -623,12 +761,14 @@ class _LocalAlbumCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            '${albumTracks.length} titres',
+            compact ? 'Single' : '${albumTracks.length} titres',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
       ),
     );
+
+    return compact ? SizedBox(width: 120, child: card) : card;
   }
 }
 
@@ -637,39 +777,47 @@ class _DiscoveredAlbumCard extends StatelessWidget {
   final DiscoveredAlbum album;
   final AppState state;
   final String artistName;
+  final bool compact;
 
-  const _DiscoveredAlbumCard(
-      {required this.album, required this.state, required this.artistName});
+  const _DiscoveredAlbumCard({
+    required this.album,
+    required this.state,
+    required this.artistName,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final coverBox = Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+        image: album.coverUrl != null
+            ? DecorationImage(
+                image: NetworkImage(album.coverUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: album.coverUrl == null
+          ? const Center(
+              child: Icon(Icons.album, color: Colors.white54, size: 48))
+          : null,
+    );
+    final cover = compact
+        ? SizedBox(width: 120, height: 120, child: coverBox)
+        : Expanded(child: coverBox);
+
+    final card = GestureDetector(
       onTap: () => state.pushOverlay(
           DiscoveredAlbumScreen(album: album, filterArtist: artistName)),
       child: Opacity(
         opacity: 0.45,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
           children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(8),
-                  image: album.coverUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(album.coverUrl!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: album.coverUrl == null
-                    ? const Center(
-                        child:
-                            Icon(Icons.album, color: Colors.white54, size: 48))
-                    : null,
-              ),
-            ),
+            cover,
             const SizedBox(height: 8),
             Text(
               album.title,
@@ -682,7 +830,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              album.releaseDate ?? '',
+              compact ? 'Single' : (album.releaseDate ?? ''),
               style: const TextStyle(color: Colors.white38, fontSize: 11),
             ),
             const Padding(
@@ -700,6 +848,8 @@ class _DiscoveredAlbumCard extends StatelessWidget {
         ),
       ),
     );
+
+    return compact ? SizedBox(width: 120, child: card) : card;
   }
 }
 

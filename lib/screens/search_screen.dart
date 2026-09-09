@@ -41,7 +41,7 @@ class _SearchScreenState extends State<SearchScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     final state = context.read<AppState>();
-    _historyService.setCurrentUser(state.currentUser?.id);
+    _historyService.setCurrentUser(state.currentUserId);
     _loadHistory();
   }
 
@@ -102,15 +102,15 @@ class _SearchScreenState extends State<SearchScreen>
     switch (item.type) {
       case 'artist':
         if (item.name != null) {
-          Navigator.pop(context);
           final state = context.read<AppState>();
+          state.popOverlay();
           state.pushOverlay(ArtistScreen(artistName: item.name!));
         }
         break;
       case 'album':
         if (item.id != null) {
-          Navigator.pop(context);
           final state = context.read<AppState>();
+          state.popOverlay();
           state.pushOverlay(
               DiscoveredAlbumScreen.fromAlbumId(int.parse(item.id!)));
         }
@@ -121,6 +121,8 @@ class _SearchScreenState extends State<SearchScreen>
           final matches =
               state.allTracks.where((t) => t.id == item.id).toList();
           if (matches.isNotEmpty) {
+            FocusScope.of(context).unfocus();
+            state.popOverlay();
             state.playTrack(matches.first);
           }
         }
@@ -173,7 +175,7 @@ class _SearchScreenState extends State<SearchScreen>
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => context.read<AppState>().popOverlay(),
                   ),
                   Expanded(
                     child: Container(
@@ -383,6 +385,9 @@ class _SearchScreenState extends State<SearchScreen>
                   ? track.coverPath
                   : null,
             );
+            if (!mounted) return;
+            FocusScope.of(context).unfocus();
+            state.popOverlay();
             state.playTrack(track);
           },
         );
@@ -431,8 +436,8 @@ class _SearchScreenState extends State<SearchScreen>
               query: _query,
               imageUrl: artist.pictureUrl,
             );
-            Navigator.pop(context);
             final state = context.read<AppState>();
+            state.popOverlay();
             state.pushOverlay(ArtistScreen(artistName: artist.name));
           },
         );
@@ -471,8 +476,8 @@ class _SearchScreenState extends State<SearchScreen>
               query: _query,
               imageUrl: album.coverUrl,
             );
-            Navigator.pop(context);
             final state = context.read<AppState>();
+            state.popOverlay();
             Album? localAlbum;
             try {
               localAlbum = state.albums.firstWhere(

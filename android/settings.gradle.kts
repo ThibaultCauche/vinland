@@ -18,8 +18,8 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    id("com.android.application") version "8.7.0" apply false
-    id("org.jetbrains.kotlin.android") version "1.8.22" apply false
+    id("com.android.application") version "8.13.0" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
 }
 
 include(":app")
@@ -38,6 +38,23 @@ gradle.allprojects {
                 }
             } catch (_: Exception) {
                 // Ignore si pas de méthode getNamespace/setNamespace
+            }
+
+            // FIX: certains plugins (ex: metadata_god 0.5.2, plus maintenu)
+            // codent en dur un compileSdk ancien (31) dans leur propre
+            // build.gradle. Comme Gradle unifie les versions d'AndroidX sur
+            // tout le projet, ces plugins finissent par dependre (via
+            // resolution transitive) de bibliotheques AndroidX exigeant un
+            // compileSdk >= 34, ce que verifie la tache
+            // `checkDebugAarMetadata` -- et le build echoue. On force donc le
+            // compileSdk de TOUS les sous-projets a la meme valeur que
+            // l'app (36), une pratique standard pour les vieux plugins.
+            try {
+                val setCompileSdk =
+                    androidExt::class.java.getMethod("setCompileSdk", Int::class.javaObjectType)
+                setCompileSdk.invoke(androidExt, 36)
+            } catch (_: Exception) {
+                // Ignore si pas de methode setCompileSdk (DSL plus ancienne)
             }
         }
     }

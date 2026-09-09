@@ -9,7 +9,9 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../models/discovered_track.dart';
 import '../models/discovered_album.dart';
+import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
+import '../widgets/download_button.dart';
 import 'artist_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
@@ -112,19 +114,71 @@ class _AlbumScreenState extends State<AlbumScreen> {
         .trim();
   }
 
-  List<_AlbumListItem> _buildTrackList(List<Track> localTracks) {
-    final items = <_AlbumListItem>[];
-    for (final t in localTracks) {
-      items.add(_AlbumListItem(localTrack: t));
+  void _recordRecent(AppState state) {
+    state.recordRecentPlay(RecentPlay(
+      type: RecentPlayType.album,
+      id: widget.album.id,
+      title: widget.album.title,
+      subtitle: widget.album.artist,
+      coverPath: widget.album.coverPath,
+      playedAt: DateTime.now(),
+    ));
+  }
+
+  /// Fusionne les pistes locales par titre normalise (garde la version likee
+  /// si le NAS a deux fois le meme morceau range dans cet album) : evite
+  /// qu'un titre apparaisse deux fois (une fois like, une fois non-like).
+  List<Track> _dedupByTitle(List<Track> tracks) {
+    final byTitle = <String, Track>{};
+    for (final t in tracks) {
+      final key = _normalize(t.title);
+      final existing = byTitle[key];
+      if (existing == null || (!existing.isLiked && t.isLiked)) {
+        byTitle[key] = t;
+      }
     }
+    return byTitle.values.toList();
+  }
+
+  /// Construit la liste affichee a partir du tracklist Deezer (ordre et
+  /// contenu de reference) : pour chaque titre, on cherche juste s'il existe
+  /// en local (blanc/like) ou non (grise). Les pistes locales qu'on possede
+  /// mais qui ne sont pas dans le tracklist Deezer (bonus...) sont ajoutees
+  /// a la suite.
+  List<_AlbumListItem> _buildTrackList(List<Track> localTracks) {
+    if (_discoveredTracks.isEmpty) {
+      return [for (final t in localTracks) _AlbumListItem(localTrack: t)];
+    }
+
+    final byTitle = {for (final t in localTracks) _normalize(t.title): t};
+    final items = <_AlbumListItem>[];
+    final usedKeys = <String>{};
+
     for (final dt in _discoveredTracks) {
-      final isDup =
-          localTracks.any((t) => _normalize(t.title) == _normalize(dt.title));
-      if (!isDup) {
+      final dtTitle = _normalize(dt.title);
+      final exact = byTitle[dtTitle];
+      final match = exact ??
+          localTracks.cast<Track?>().firstWhere(
+                (t) {
+                  final lt = _normalize(t!.title);
+                  return lt.contains(dtTitle) || dtTitle.contains(lt);
+                },
+                orElse: () => null,
+              );
+
+      if (match != null) {
+        usedKeys.add(_normalize(match.title));
+        items.add(_AlbumListItem(localTrack: match));
+      } else {
         items.add(_AlbumListItem(discoveredTrack: dt));
       }
     }
-    // Garder l'ordre de l'album Deezer si possible
+
+    for (final t in localTracks) {
+      if (!usedKeys.contains(_normalize(t.title))) {
+        items.add(_AlbumListItem(localTrack: t));
+      }
+    }
     return items;
   }
 
@@ -152,6 +206,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           .toList();
     }
 
+    albumTracks = _dedupByTitle(albumTracks);
     final items = _buildTrackList(albumTracks);
 
     final topColor = _dominantColor != null
@@ -222,10 +277,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
                       return _AlbumTrackTile(
                         index: index,
                         track: track,
-                        onTap: () => appState.playTrack(
-                          track,
-                          trackList: albumTracks,
-                        ),
+                        onTap: () {
+                          _recordRecent(appState);
+                          appState.playTrack(track, trackList: albumTracks);
+                        },
                         onLike: () => appState.toggleLike(track.id),
                         onMore: () => _showTrackOptions(context, track),
                       );
@@ -367,9 +422,11 @@ class _AlbumScreenState extends State<AlbumScreen> {
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.download_outlined, color: Colors.white54),
-            onPressed: () {},
+          DownloadButton(
+            tracks: tracks,
+            idleColor: Colors.white54,
+            confirmDeleteMessage:
+                'Cet album ne sera plus disponible hors connexion.',
           ),
           IconButton(
             icon: const Icon(Icons.more_vert, color: Colors.white54),
@@ -380,13 +437,14 @@ class _AlbumScreenState extends State<AlbumScreen> {
             icon: const Icon(Icons.shuffle, color: Colors.white54, size: 26),
             onPressed: () {
               if (tracks.isNotEmpty) {
+                _recordRecent(state);
                 final shuffled = List<Track>.of(tracks)..shuffle();
                 state.playTrack(shuffled.first, trackList: shuffled);
               }
             },
           ),
           const SizedBox(width: 4),
-          _PlayPauseButton(albumTracks: tracks),
+          _PlayPauseButton(album: widget.album, albumTracks: tracks),
         ],
       ),
     );
@@ -649,8 +707,9 @@ class _SmallAvatar extends StatelessWidget {
 }
 
 class _PlayPauseButton extends StatelessWidget {
+  final Album album;
   final List<Track> albumTracks;
-  const _PlayPauseButton({required this.albumTracks});
+  const _PlayPauseButton({required this.album, required this.albumTracks});
 
   @override
   Widget build(BuildContext context) {
@@ -670,6 +729,14 @@ class _PlayPauseButton extends StatelessWidget {
             if (isPlayingThisAlbum) {
               state.togglePlayPause();
             } else if (albumTracks.isNotEmpty) {
+              state.recordRecentPlay(RecentPlay(
+                type: RecentPlayType.album,
+                id: album.id,
+                title: album.title,
+                subtitle: album.artist,
+                coverPath: album.coverPath,
+                playedAt: DateTime.now(),
+              ));
               state.playTrack(albumTracks.first, trackList: albumTracks);
             }
           },

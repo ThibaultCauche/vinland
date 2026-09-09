@@ -9,6 +9,8 @@ import 'package:metadata_god/metadata_god.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
+import '../models/friend_profile.dart';
+import '../models/recent_play.dart';
 import 'navidrome_service.dart';
 import 'package:http/http.dart' as http;
 
@@ -26,6 +28,15 @@ class MusicService {
   List<Map<String, dynamic>> get missingTracks =>
       List.unmodifiable(_missingTracks);
 
+  /// Marqueur stable (champ "comment" cote serveur) de la playlist qui
+  /// miroite les titres likes de l'utilisateur courant : le nom affiche,
+  /// lui, est modifiable et ne doit pas servir a la retrouver.
+  static const String _likesMirrorTag = 'vinland:likes-mirror';
+
+  bool _shareLikesWithFriends = true;
+  bool get shareLikesWithFriends => _shareLikesWithFriends;
+  final Map<String, Timer> _playlistSyncDebounce = {};
+
   // Cache en memoire des covers existantes pour eviter les existsSync()
   final Set<String> _existingCovers = {};
   Timer? _saveDebounceTimer;
@@ -41,6 +52,20 @@ class MusicService {
   List<Track> get navidromeTracks => List.unmodifiable(_navidromeTracks);
   bool isTrackDownloaded(String trackId) => _offlineFiles.containsKey(trackId);
   String? getOfflinePath(String trackId) => _offlineFiles[trackId];
+
+  List<RecentPlay> _recentPlays = [];
+  List<RecentPlay> get recentPlays => List.unmodifiable(_recentPlays);
+
+  /// Enregistre un album/playlist/artiste comme "recemment ecoute".
+  /// Deplace l'entree en tete si elle existe deja au lieu de la dupliquer.
+  void recordRecentPlay(RecentPlay entry) {
+    _recentPlays.removeWhere((r) => r.type == entry.type && r.id == entry.id);
+    _recentPlays.insert(0, entry);
+    if (_recentPlays.length > 20) {
+      _recentPlays = _recentPlays.sublist(0, 20);
+    }
+    _debouncedSave();
+  }
 
   String? _currentUserId;
 
@@ -219,6 +244,14 @@ class MusicService {
     }
   }
 
+  String _normalizeTitle(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   void rebuildAlbums() {
     // Préserver les albums existants par ID (isSaved, artist)
     final existingAlbums = <String, Album>{};
@@ -233,7 +266,19 @@ class MusicService {
 
     final newAlbums = <Album>[];
     for (final entry in albumMap.entries) {
-      final tracks = entry.value;
+      // Deduplique par titre normalise (garde la version likee si le NAS a
+      // le meme morceau range plusieurs fois dans cet album) : sinon
+      // trackIds/le nombre de titres comptent des doublons partout en aval
+      // (page album, "Decouverte" qui classe a tort un album comme single...).
+      final byTitle = <String, Track>{};
+      for (final t in entry.value) {
+        final key = _normalizeTitle(t.title);
+        final existing = byTitle[key];
+        if (existing == null || (!existing.isLiked && t.isLiked)) {
+          byTitle[key] = t;
+        }
+      }
+      final tracks = byTitle.values.toList();
       String? albumCover;
       for (final track in tracks) {
         if (track.coverPath != null) {
@@ -253,6 +298,17 @@ class MusicService {
       final artist =
           firstTrack.albumArtist ?? existing?.artist ?? firstTrack.artist;
 
+      final year = firstTrack.year ?? existing?.year;
+
+      DateTime? addedToServerAt = existing?.addedToServerAt;
+      for (final t in tracks) {
+        final added = t.addedToServerAt;
+        if (added != null &&
+            (addedToServerAt == null || added.isAfter(addedToServerAt))) {
+          addedToServerAt = added;
+        }
+      }
+
       newAlbums.add(Album(
         id: id,
         title: entry.key,
@@ -260,6 +316,8 @@ class MusicService {
         trackIds: tracks.map((t) => t.id).toList(),
         isSaved: existing?.isSaved ?? false,
         coverPath: albumCover,
+        year: year,
+        addedToServerAt: addedToServerAt,
       ));
     }
 
@@ -403,14 +461,66 @@ class MusicService {
       }
     }
     _debouncedSave();
+    _syncLikesMirror();
+  }
+
+  Timer? _likesMirrorDebounce;
+  String? _likesMirrorServerId;
+
+  Future<void> setShareLikesWithFriends(bool value) async {
+    _shareLikesWithFriends = value;
+    _debouncedSave();
+    if (_likesMirrorServerId != null) {
+      await _navidrome.setPlaylistMeta(_likesMirrorServerId!, public: value);
+    } else {
+      _syncLikesMirror();
+    }
+  }
+
+  /// Maintient une playlist serveur ("miroir") a jour avec les titres likes
+  /// de l'utilisateur courant, pour que les amis puissent la voir si elle
+  /// est publique. Debounce : evite un aller-retour reseau a chaque like
+  /// quand l'utilisateur en enchaine plusieurs d'un coup.
+  void _syncLikesMirror() {
+    if (!_navidrome.isConnected) return;
+    _likesMirrorDebounce?.cancel();
+    _likesMirrorDebounce = Timer(const Duration(seconds: 3), () async {
+      var mirrorId = _likesMirrorServerId;
+      if (mirrorId == null) {
+        final existing = await _navidrome.fetchPlaylists();
+        final mine = existing.firstWhere(
+          (pl) =>
+              pl['owner'] == _navidrome.username &&
+              pl['comment'] == _likesMirrorTag,
+          orElse: () => <String, dynamic>{},
+        );
+        mirrorId = mine['id'] as String?;
+        mirrorId ??= await _navidrome.createServerPlaylist(
+          'Titres likes',
+          comment: _likesMirrorTag,
+          public: _shareLikesWithFriends,
+        );
+        if (mirrorId == null) return;
+        _likesMirrorServerId = mirrorId;
+        _debouncedSave();
+      }
+      final cleanIds =
+          likedTracks.map((t) => t.id.replaceFirst('navidrome_', '')).toList();
+      await _navidrome.replacePlaylistSongs(mirrorId, cleanIds);
+    });
   }
 
   Future<void> createPlaylist(String name) async {
-    _playlists.add(Playlist(
+    final playlist = Playlist(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
-    ));
+    );
+    _playlists.add(playlist);
     _debouncedSave();
+    if (_navidrome.isConnected) {
+      playlist.serverId = await _navidrome.createServerPlaylist(name);
+      _debouncedSave();
+    }
   }
 
   Future<void> addToPlaylist(String playlistId, String trackId) async {
@@ -418,6 +528,7 @@ class MusicService {
     if (!playlist.trackIds.contains(trackId)) {
       playlist.trackIds.add(trackId);
       _debouncedSave();
+      _syncPlaylistToServer(playlist);
     }
   }
 
@@ -425,6 +536,48 @@ class MusicService {
     final playlist = _playlists.firstWhere((p) => p.id == playlistId);
     playlist.trackIds.remove(trackId);
     _debouncedSave();
+    _syncPlaylistToServer(playlist);
+  }
+
+  Future<void> deletePlaylist(String playlistId) async {
+    final playlist = _playlists.firstWhere((p) => p.id == playlistId);
+    _playlists.removeWhere((p) => p.id == playlistId);
+    _debouncedSave();
+    _playlistSyncDebounce.remove(playlistId)?.cancel();
+    if (playlist.serverId != null) {
+      await _navidrome.deleteServerPlaylist(playlist.serverId!);
+    }
+  }
+
+  Future<void> setPlaylistPublic(String playlistId, bool public) async {
+    final playlist = _playlists.firstWhere((p) => p.id == playlistId);
+    playlist.isPublic = public;
+    _debouncedSave();
+    if (playlist.serverId != null) {
+      await _navidrome.setPlaylistMeta(playlist.serverId!, public: public);
+    }
+  }
+
+  /// Renvoie sur le serveur le contenu complet d'une playlist locale, avec
+  /// un debounce par playlist : evite un aller-retour reseau a chaque ajout
+  /// quand l'utilisateur enchaine plusieurs titres d'un coup.
+  void _syncPlaylistToServer(Playlist playlist) {
+    if (!_navidrome.isConnected) return;
+    _playlistSyncDebounce[playlist.id]?.cancel();
+    _playlistSyncDebounce[playlist.id] =
+        Timer(const Duration(seconds: 2), () async {
+      var serverId = playlist.serverId;
+      if (serverId == null) {
+        serverId = await _navidrome.createServerPlaylist(playlist.name,
+            public: playlist.isPublic);
+        if (serverId == null) return;
+        playlist.serverId = serverId;
+        _debouncedSave();
+      }
+      final cleanIds =
+          playlist.trackIds.map((id) => id.replaceFirst('navidrome_', '')).toList();
+      await _navidrome.replacePlaylistSongs(serverId, cleanIds);
+    });
   }
 
   Future<void> recordPlay(String trackId) async {
@@ -447,16 +600,11 @@ class MusicService {
       'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
       'offlineFiles': _offlineFiles,
       'missingTracks': _missingTracks,
-      'playlists': _playlists
-          .map((pl) => {
-                'id': pl.id,
-                'name': pl.name,
-                'trackIds': pl.trackIds,
-                'createdAt': pl.createdAt.toIso8601String(),
-                'isSaved': pl.isSaved,
-              })
-          .toList(),
+      'recentPlays': _recentPlays.map((r) => r.toJson()).toList(),
+      'playlists': _playlists.map((pl) => pl.toJson()).toList(),
       'albums': _albums.map((a) => a.toJson()).toList(),
+      'shareLikesWithFriends': _shareLikesWithFriends,
+      'likesMirrorServerId': _likesMirrorServerId,
     };
     await file.writeAsString(jsonEncode(data));
   }
@@ -487,17 +635,17 @@ class MusicService {
         _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
 
         _playlists = (data['playlists'] as List?)
-                ?.map((pl) => Playlist(
-                      id: pl['id'],
-                      name: pl['name'],
-                      trackIds: List<String>.from(pl['trackIds'] ?? []),
-                      createdAt: DateTime.parse(pl['createdAt']),
-                      isSaved: pl['isSaved'] ?? true,
-                    ))
+                ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
                 .toList() ??
             [];
+        _shareLikesWithFriends = data['shareLikesWithFriends'] ?? true;
+        _likesMirrorServerId = data['likesMirrorServerId'];
         _missingTracks = (data['missingTracks'] as List?)
                 ?.map((m) => Map<String, dynamic>.from(m))
+                .toList() ??
+            [];
+        _recentPlays = (data['recentPlays'] as List?)
+                ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
                 .toList() ??
             [];
         _albums = (data['albums'] as List?)
@@ -617,13 +765,130 @@ class MusicService {
 
     _debouncedSave();
     print('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
+
+    await _syncPlaylistsFromServer();
   }
 
+  /// Fait correspondre les playlists locales avec celles du serveur : publie
+  /// celles qui n'existaient encore que localement (cree avant cette
+  /// synchro), et recupere l'etat (id serveur, contenu, public) des autres.
+  /// Repere aussi la playlist miroir des likes par son "comment" et
+  /// synchronise son contenu si elle n'est pas encore a jour.
+  Future<void> _syncPlaylistsFromServer() async {
+    if (!_navidrome.isConnected) return;
+    final username = _navidrome.username;
+    if (username == null) return;
+
+    final raw = await _navidrome.fetchPlaylists();
+    final mine = raw.where((pl) => pl['owner'] == username).toList();
+
+    // Playlists creees en local avant d'avoir jamais synchronise : on les
+    // publie maintenant sur le serveur.
+    for (final playlist in _playlists) {
+      if (playlist.serverId != null || playlist.isLikesMirror) continue;
+      final serverId = await _navidrome.createServerPlaylist(playlist.name,
+          public: playlist.isPublic);
+      if (serverId == null) continue;
+      playlist.serverId = serverId;
+      final cleanIds =
+          playlist.trackIds.map((id) => id.replaceFirst('navidrome_', '')).toList();
+      await _navidrome.replacePlaylistSongs(serverId, cleanIds);
+    }
+
+    // Retrouve/cree la playlist miroir des likes.
+    final mirrorRaw = mine.firstWhere(
+      (pl) => pl['comment'] == _likesMirrorTag,
+      orElse: () => <String, dynamic>{},
+    );
+    _likesMirrorServerId = mirrorRaw['id'] as String?;
+    if (_likesMirrorServerId == null) {
+      _syncLikesMirror();
+    }
+
+    // Recupere le contenu serveur des playlists qui ont deja un serverId
+    // (ordre/contenu peut avoir change depuis un autre appareil).
+    final byServerId = {
+      for (final p in _playlists)
+        if (p.serverId != null) p.serverId!: p,
+    };
+    for (final pl in mine) {
+      final serverId = pl['id'] as String;
+      if (serverId == _likesMirrorServerId) continue;
+      final local = byServerId[serverId];
+      if (local == null) continue;
+      local.isPublic = pl['public'] == true;
+      local.trackIds
+        ..clear()
+        ..addAll(await _navidrome.fetchPlaylistSongIds(serverId));
+    }
+
+    _debouncedSave();
+  }
+
+  /// Amis = tout autre utilisateur du serveur ayant au moins une playlist
+  /// publique (celle des likes ou une autre). Pas de systeme de
+  /// demande/acceptation : tout compte cree sur ce Navidrome est considere
+  /// comme un ami.
+  Future<List<FriendProfile>> fetchFriends() async {
+    if (!_navidrome.isConnected) return [];
+    final username = _navidrome.username;
+    final raw = await _navidrome.fetchPlaylists();
+    final others =
+        raw.where((pl) => pl['owner'] != username && pl['public'] == true);
+
+    final byOwner = <String, List<Map<String, dynamic>>>{};
+    for (final pl in others) {
+      byOwner.putIfAbsent(pl['owner'] as String, () => []).add(pl);
+    }
+
+    final profiles = <FriendProfile>[];
+    for (final entry in byOwner.entries) {
+      final owner = entry.key;
+      Playlist? likes;
+      final playlists = <Playlist>[];
+      for (final pl in entry.value) {
+        final isMirror = pl['comment'] == _likesMirrorTag;
+        final trackIds = await _navidrome.fetchPlaylistSongIds(pl['id'] as String);
+        final built = Playlist(
+          id: pl['id'] as String,
+          name: pl['name'] as String,
+          trackIds: trackIds,
+          serverId: pl['id'] as String,
+          isPublic: true,
+          ownerUsername: owner,
+          isLikesMirror: isMirror,
+        );
+        if (isMirror) {
+          likes = built;
+        } else {
+          playlists.add(built);
+        }
+      }
+      profiles.add(FriendProfile(
+        username: owner,
+        likesPlaylist: likes,
+        playlists: playlists,
+      ));
+    }
+    profiles.sort((a, b) => a.username.compareTo(b.username));
+    return profiles;
+  }
+
+  /// Bitrate cible pour les telechargements hors-ligne : le NAS transcode a
+  /// la volee, ce qui divise par ~5-10 la taille stockee sur le telephone
+  /// par rapport a la qualite d'origine (FLAC/320kbps).
+  static const int offlineMaxBitRateKbps = 192;
+
   Future<void> downloadTrack(Track track) async {
-    if (!track.filePath!.startsWith('http')) return;
+    if (!track.id.startsWith('navidrome_')) return;
+    if (isTrackDownloaded(track.id)) return;
 
     final navidromeId = track.id.replaceFirst('navidrome_', '');
-    final url = _navidrome.getStreamUrl(navidromeId);
+    final url = _navidrome.getStreamUrl(
+      navidromeId,
+      maxBitRateKbps: offlineMaxBitRateKbps,
+      format: 'mp3',
+    );
 
     try {
       final response =
@@ -633,8 +898,7 @@ class MusicService {
         final offlineDir = Directory('${appDir.path}/offline_music');
         await offlineDir.create(recursive: true);
 
-        final ext = '.mp3'; // Navidrome stream souvent en MP3
-        final filePath = '${offlineDir.path}/${track.id.hashCode}$ext';
+        final filePath = '${offlineDir.path}/${track.id.hashCode}.mp3';
         await File(filePath).writeAsBytes(response.bodyBytes);
 
         _offlineFiles[track.id] = filePath;
@@ -644,6 +908,38 @@ class MusicService {
     } catch (e) {
       print('DOWNLOAD ERROR ${track.title}: $e');
     }
+  }
+
+  bool areAllDownloaded(List<Track> tracks) =>
+      tracks.isNotEmpty && tracks.every((t) => isTrackDownloaded(t.id));
+
+  /// Telecharge une liste de titres (album/playlist) sequentiellement,
+  /// en notifiant la progression (0.0 a 1.0) apres chaque titre.
+  Future<void> downloadTracks(
+    List<Track> tracks, {
+    void Function(double progress)? onProgress,
+  }) async {
+    var done = 0;
+    for (final track in tracks) {
+      await downloadTrack(track);
+      done++;
+      onProgress?.call(done / tracks.length);
+    }
+  }
+
+  Future<void> removeDownloads(List<Track> tracks) async {
+    for (final track in tracks) {
+      final path = _offlineFiles[track.id];
+      if (path == null) continue;
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } catch (e) {
+        print('REMOVE DOWNLOAD ERROR ${track.title}: $e');
+      }
+      _offlineFiles.remove(track.id);
+    }
+    _debouncedSave();
   }
 
   void setMissingTracks(List<Map<String, dynamic>> tracks) {

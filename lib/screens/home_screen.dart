@@ -1,12 +1,18 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../models/album.dart';
 import '../models/track.dart';
+import '../models/recent_play.dart';
 import '../screens/settings_screen.dart';
+import 'album_screen.dart';
+import 'artist_screen.dart';
+import 'playlist_screen.dart';
 import '../screens/missing_tracks_screen.dart';
-import '../widgets/track_tile.dart';
 import '../services/music_service.dart';
+import '../widgets/update_banner.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -15,15 +21,15 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Selector<AppState,
-        (List<Track>, List<Track>, String?, List<Map<String, dynamic>>)>(
+        (List<Album>, List<Track>, String?, List<Map<String, dynamic>>)>(
       selector: (_, state) => (
+        state.albums,
         state.allTracks,
-        state.likedTracks,
         state.userName,
         state.missingTracks,
       ),
       builder: (context, data, child) {
-        final (allTracks, likedTracks, userName, missingTracks) = data;
+        final (albums, allTracks, userName, missingTracks) = data;
         final state = context.read<AppState>();
         return SafeArea(
           bottom: false,
@@ -50,10 +56,8 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const SearchScreen()),
-                          ),
+                          onTap: () =>
+                              state.pushOverlay(const SearchScreen()),
                           child: Container(
                             height: 40,
                             decoration: BoxDecoration(
@@ -80,115 +84,22 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              _buildSectionTitleWithAction(
-                'Toutes les musiques',
-                'Voir tout',
-                () => _showAllTracks(context),
-              ),
-              allTracks.isEmpty
-                  ? _buildEmpty('Aucune musique trouvée')
-                  : SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => TrackTile(
-                            track: allTracks[index],
-                            onTap: () => state.playTrack(allTracks[index]),
-                            onLike: () => state.toggleLike(allTracks[index].id),
-                          ),
-                          childCount:
-                              allTracks.length > 5 ? 5 : allTracks.length,
-                        ),
-                      ),
-                    ),
+              const SliverToBoxAdapter(child: UpdateBanner()),
               _buildSectionTitle('Récemment écouté'),
               _buildRecentlyPlayed(state),
-              _buildSectionTitle('Titres likés'),
-              likedTracks.isEmpty
-                  ? _buildEmpty('Aucun titre liké')
-                  : SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => TrackTile(
-                            track: likedTracks[index],
-                            onTap: () => state.playTrack(likedTracks[index],
-                                trackList: likedTracks),
-                            onLike: () =>
-                                state.toggleLike(likedTracks[index].id),
-                          ),
-                          childCount: likedTracks.length,
-                        ),
-                      ),
-                    ),
+              _buildSectionTitle('Écoutés cette semaine'),
+              _buildWeeklyTracks(state, allTracks),
+              _buildSectionTitle('Artistes du moment'),
+              _buildTopArtists(state, allTracks),
+              _buildSectionTitle('Découverte'),
+              _buildDiscovery(state, albums, allTracks),
+              _buildSectionTitle('Nouveautés du NAS'),
+              _buildNewOnServer(state, albums),
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildSectionTitleWithAction(
-      String title, String action, VoidCallback onTap) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            GestureDetector(
-              onTap: onTap,
-              child: Text(
-                action,
-                style: const TextStyle(
-                  color: Color(0xFF1DB954),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAllTracks(BuildContext context) {
-    final state = context.read<AppState>();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: const Color(0xFF121212),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
-            elevation: 0,
-            title: const Text(
-              'Toutes les musiques',
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-            iconTheme: const IconThemeData(color: Colors.white),
-          ),
-          body: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 120),
-            itemCount: state.allTracks.length,
-            itemBuilder: (context, index) => TrackTile(
-              track: state.allTracks[index],
-              onTap: () => state.playTrack(state.allTracks[index]),
-              onLike: () => state.toggleLike(state.allTracks[index].id),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -220,19 +131,9 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildRecentlyPlayed(AppState state) {
-    final recentAlbums = <String>[];
-    final recentTracks = state.allTracks
-        .where((t) => t.lastPlayed != null)
-        .toList()
-      ..sort((a, b) => b.lastPlayed!.compareTo(a.lastPlayed!));
+    final recentPlays = state.recentPlays; // deja limite a 6 par AppState
 
-    for (final track in recentTracks) {
-      if (!recentAlbums.contains(track.album)) {
-        recentAlbums.add(track.album);
-      }
-    }
-
-    if (recentAlbums.isEmpty) {
+    if (recentPlays.isEmpty) {
       return _buildEmpty('Commencez à écouter de la musique');
     }
 
@@ -247,20 +148,10 @@ class HomeScreen extends StatelessWidget {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
-            final albumTitle = recentAlbums[index];
-            final albumTracks =
-                state.allTracks.where((t) => t.album == albumTitle).toList();
-            final artist =
-                albumTracks.isNotEmpty ? albumTracks.first.artist : 'Artiste';
-            final coverPath =
-                albumTracks.isNotEmpty ? albumTracks.first.coverPath : null;
+            final entry = recentPlays[index];
 
             return GestureDetector(
-              onTap: () {
-                if (albumTracks.isNotEmpty) {
-                  state.playTrack(albumTracks.first, trackList: albumTracks);
-                }
-              },
+              onTap: () => _openRecentPlay(context, state, entry),
               child: Container(
                 height: 56,
                 decoration: BoxDecoration(
@@ -269,7 +160,7 @@ class HomeScreen extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    _AlbumCover(coverPath: coverPath),
+                    _RecentPlayCover(entry: entry),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -278,7 +169,7 @@ class HomeScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              albumTitle,
+                              entry.title,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -288,7 +179,7 @@ class HomeScreen extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              artist,
+                              entry.subtitle,
                               style: const TextStyle(
                                   color: Colors.white38, fontSize: 11),
                             ),
@@ -301,10 +192,269 @@ class HomeScreen extends StatelessWidget {
               ),
             );
           },
-          childCount: recentAlbums.length,
+          childCount: recentPlays.length,
         ),
       ),
     );
+  }
+
+  /// Albums presents sur le NAS mais pas encore likes (ni l'album, ni aucun
+  /// de ses titres individuellement), dans un ordre melange stable sur une
+  /// journee (change chaque jour, pas a chaque rebuild) pour donner un cote
+  /// "decouverte" plutot qu'aleatoire a chaque frame.
+  Widget _buildDiscovery(
+      AppState state, List<Album> albums, List<Track> allTracks) {
+    final tracksById = {for (final t in allTracks) t.id: t};
+
+    // Un album n'est "a decouvrir" que si aucun de ses titres n'est deja
+    // like : un album non-like dont tous les titres sont likes individuellement
+    // n'a rien de nouveau a proposer.
+    final notLiked = albums.where((a) {
+      if (a.isSaved) return false;
+      return a.trackIds.every((id) => tracksById[id]?.isLiked != true);
+    }).toList();
+
+    if (notLiked.isEmpty) {
+      return _buildEmpty('Tout est déjà liké !');
+    }
+
+    final today = DateTime.now();
+    final seed = today.year * 10000 + today.month * 100 + today.day;
+    final picks = (List<Album>.of(notLiked)..shuffle(Random(seed)))
+        .take(10)
+        .toList();
+
+    return _buildAlbumShelf(state, picks);
+  }
+
+  /// Derniers albums ajoutes au NAS (base sur la date d'ajout Navidrome des
+  /// titres qui les composent).
+  Widget _buildNewOnServer(AppState state, List<Album> albums) {
+    final withDate = albums.where((a) => a.addedToServerAt != null).toList()
+      ..sort((a, b) => b.addedToServerAt!.compareTo(a.addedToServerAt!));
+
+    if (withDate.isEmpty) {
+      return _buildEmpty('Aucune date d\'ajout disponible (resynchronisez)');
+    }
+
+    return _buildAlbumShelf(state, withDate.take(10).toList());
+  }
+
+  Widget _buildAlbumShelf(AppState state, List<Album> picks) {
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 190,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: picks.length,
+          itemBuilder: (context, index) {
+            final album = picks[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SizedBox(
+                width: 130,
+                child: GestureDetector(
+                  onTap: () => state.pushOverlay(AlbumScreen(album: album)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 130,
+                        height: 130,
+                        child: _DiscoveryCover(coverPath: album.coverPath),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        album.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        album.artist,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Titres les plus ecoutes au cours des 7 derniers jours.
+  Widget _buildWeeklyTracks(AppState state, List<Track> allTracks) {
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    final recent = allTracks
+        .where((t) =>
+            t.playCount > 0 && t.lastPlayed != null && t.lastPlayed!.isAfter(weekAgo))
+        .toList()
+      ..sort((a, b) => b.playCount.compareTo(a.playCount));
+
+    if (recent.isEmpty) {
+      return _buildEmpty('Pas encore assez d\'écoutes cette semaine');
+    }
+
+    final picks = recent.take(10).toList();
+
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 190,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: picks.length,
+          itemBuilder: (context, index) {
+            final track = picks[index];
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: SizedBox(
+                width: 130,
+                child: GestureDetector(
+                  onTap: () => state.playTrack(track, trackList: picks),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 130,
+                        height: 130,
+                        child: _DiscoveryCover(coverPath: track.coverPath),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        track.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        track.artist,
+                        style: const TextStyle(
+                            color: Colors.white54, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Artistes cumulant le plus d'ecoutes dans la bibliotheque locale.
+  Widget _buildTopArtists(AppState state, List<Track> allTracks) {
+    final playsByArtist = <String, int>{};
+    final coverByArtist = <String, String?>{};
+    for (final t in allTracks) {
+      if (t.playCount <= 0) continue;
+      playsByArtist.update(t.artist, (v) => v + t.playCount,
+          ifAbsent: () => t.playCount);
+      coverByArtist.putIfAbsent(t.artist, () => t.coverPath);
+    }
+
+    final artists = playsByArtist.keys.toList()
+      ..sort((a, b) => playsByArtist[b]!.compareTo(playsByArtist[a]!));
+
+    if (artists.isEmpty) {
+      return _buildEmpty('Écoutez de la musique pour voir vos artistes ici');
+    }
+
+    final picks = artists.take(10).toList();
+
+    return SliverToBoxAdapter(
+      child: SizedBox(
+        height: 150,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: picks.length,
+          itemBuilder: (context, index) {
+            final artist = picks[index];
+            final coverPath = coverByArtist[artist];
+            return Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 96,
+                child: GestureDetector(
+                  onTap: () =>
+                      state.pushOverlay(ArtistScreen(artistName: artist)),
+                  child: Column(
+                    children: [
+                      ClipOval(
+                        child: SizedBox(
+                          width: 88,
+                          height: 88,
+                          child: _DiscoveryCover(coverPath: coverPath),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        artist,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openRecentPlay(
+      BuildContext context, AppState state, RecentPlay entry) {
+    switch (entry.type) {
+      case RecentPlayType.album:
+        final albums = state.albums.where((a) => a.id == entry.id);
+        if (albums.isNotEmpty) {
+          state.pushOverlay(AlbumScreen(album: albums.first));
+        }
+        break;
+      case RecentPlayType.playlist:
+        if (entry.id == kLikedSongsRecentId) {
+          final liked = state.likedTracks;
+          if (liked.isNotEmpty) {
+            state.playTrack(liked.first, trackList: liked);
+          }
+          return;
+        }
+        final playlists = state.playlists.where((p) => p.id == entry.id);
+        if (playlists.isNotEmpty) {
+          state.pushOverlay(PlaylistScreen(playlist: playlists.first));
+        }
+        break;
+      case RecentPlayType.artist:
+        state.pushOverlay(ArtistScreen(artistName: entry.id));
+        break;
+    }
   }
 
   void _showProfileMenu(BuildContext context) {
@@ -335,7 +485,7 @@ class HomeScreen extends StatelessWidget {
                       color: Colors.white, fontWeight: FontWeight.w600),
                 ),
                 subtitle: Text(
-                  state.userEmail ?? '',
+                  state.navidromeUrl ?? '',
                   style: const TextStyle(color: Colors.white54),
                 ),
               ),
@@ -386,13 +536,61 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _AlbumCover extends StatelessWidget {
+class _DiscoveryCover extends StatelessWidget {
   final String? coverPath;
-  const _AlbumCover({this.coverPath});
+  const _DiscoveryCover({this.coverPath});
 
   @override
   Widget build(BuildContext context) {
     final path = coverPath;
+    final exists = context.read<MusicService>().coverExists(path);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(8),
+        image: exists && path != null
+            ? DecorationImage(
+                image: path.startsWith('http')
+                    ? NetworkImage(path) as ImageProvider
+                    : FileImage(File(path)),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: exists != true
+          ? const Center(
+              child: Icon(Icons.album, color: Colors.white54, size: 40),
+            )
+          : null,
+    );
+  }
+}
+
+class _RecentPlayCover extends StatelessWidget {
+  final RecentPlay entry;
+  const _RecentPlayCover({required this.entry});
+
+  IconData get _fallbackIcon {
+    switch (entry.type) {
+      case RecentPlayType.album:
+        return Icons.album;
+      case RecentPlayType.playlist:
+        return entry.id == kLikedSongsRecentId
+            ? Icons.favorite
+            : Icons.queue_music;
+      case RecentPlayType.artist:
+        return Icons.person;
+    }
+  }
+
+  BorderRadius get _shape => entry.type == RecentPlayType.artist
+      ? const BorderRadius.all(Radius.circular(28))
+      : const BorderRadius.horizontal(left: Radius.circular(6));
+
+  @override
+  Widget build(BuildContext context) {
+    final path = entry.coverPath;
     final exists = context.read<MusicService>().coverExists(path);
 
     if (exists && path != null) {
@@ -400,7 +598,7 @@ class _AlbumCover extends StatelessWidget {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          borderRadius: const BorderRadius.horizontal(left: Radius.circular(6)),
+          borderRadius: _shape,
           image: DecorationImage(
             image: path.startsWith('http')
                 ? NetworkImage(path) as ImageProvider
@@ -413,11 +611,11 @@ class _AlbumCover extends StatelessWidget {
     return Container(
       width: 56,
       height: 56,
-      decoration: const BoxDecoration(
-        color: Color(0xFF3E3E3E),
-        borderRadius: BorderRadius.horizontal(left: Radius.circular(6)),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3E3E3E),
+        borderRadius: _shape,
       ),
-      child: const Icon(Icons.album, color: Colors.white54),
+      child: Icon(_fallbackIcon, color: Colors.white54),
     );
   }
 }

@@ -12,6 +12,8 @@ class Track {
   DateTime? dateAdded;
   final String? albumId;
   final String? albumArtist;
+  final int? year;
+  final DateTime? addedToServerAt;
 
   Track({
     required this.id,
@@ -27,6 +29,8 @@ class Track {
     this.dateAdded,
     this.albumId,
     this.albumArtist,
+    this.year,
+    this.addedToServerAt,
   });
 
   Map<String, dynamic> toJson() => {
@@ -43,6 +47,8 @@ class Track {
         'dateAdded': dateAdded?.toIso8601String(),
         'albumId': albumId,
         'albumArtist': albumArtist,
+        'year': year,
+        'addedToServerAt': addedToServerAt?.toIso8601String(),
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -80,6 +86,10 @@ class Track {
       dateAdded: parseDate('dateAdded'),
       albumId: json['albumId']?.toString(),
       albumArtist: json['albumArtist']?.toString(),
+      year: (json['year'] as num?)?.toInt(),
+      addedToServerAt: json['addedToServerAt'] != null
+          ? DateTime.tryParse(json['addedToServerAt'].toString())
+          : null,
     );
   }
 }

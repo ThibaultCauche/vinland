@@ -9,7 +9,14 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  just_audio: ^0.9.46
+  just_audio: ^0.10.6
+  # just_audio ne declare aucune implementation Windows lui-meme (seulement
+  # android/ios/macos/web) -- reserve au mobile/web/macos. Sur Windows on
+  # passe par media_kit (voir lib/services/player_engine.dart), plus mature
+  # sur ce backend : just_audio_windows (essaye d'abord) plantait en natif
+  # (segfault) pendant la lecture reelle d'un flux distant.
+  media_kit: ^1.1.11
+  media_kit_libs_windows_audio: ^1.0.9
   audio_service: ^0.18.19
   path_provider: ^2.1.5
   path: ^1.9.1
@@ -26,6 +33,14 @@ dependencies:
   image: ^4.5.0
   csv: ^6.0.0
   diacritic: ^0.1.6
+  package_info_plus: ^9.0.1
+  url_launcher: ^6.3.2
+
+dependency_overrides:
+  # VS 2026's MSVC now hard-errors on the deprecated /await experimental
+  # coroutine flag that permission_handler_windows 0.2.1 still uses; try
+  # the next patch release to see if it dropped it.
+  permission_handler_windows: ^0.2.2
 
 dev_dependencies:
   flutter_test:
@@ -36,11 +51,4 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
-  # AJOUTE CECI :
-  assets:
-    - assets/music/
-    - assets/music/Arcane League of Legends (Original Score from Act 1 of the Animated Series)/
-    - assets/music/Arcane League of Legends (Original Score from Act 2 of the Animated Series)/
-    - assets/music/Arcane League of Legends (Original Score from Act 3 of the Animated Series)/
 
