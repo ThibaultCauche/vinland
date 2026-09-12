@@ -97,6 +97,13 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
     final filteredTracks = selectedGenre == null
         ? tracks
         : tracks.where((t) => t.genre?.trim() == selectedGenre).toList();
+    // Titres "Titres likes" importes via CSV mais introuvables sur le NAS
+    // (Track.isPlaceholder) : affiches grises dans la liste (DesktopTrackRow)
+    // mais jamais dans une file de lecture -- pas de fichier reel a jouer.
+    // Sans objet pour album/playlist/artiste (aucun placeholder n'y figure),
+    // donc identique a filteredTracks partout ailleurs.
+    final playableTracks =
+        filteredTracks.where((t) => !t.isPlaceholder).toList();
 
     // Resolution album par titre calculee une fois par build (pas par ligne)
     // pour eviter de rescanner state.albums a chaque item de la liste.
@@ -129,10 +136,10 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
               isLiked: isLiked ?? false,
               onToggleLike: onToggleLike,
               onBack: onBack,
-              onShuffle: filteredTracks.isEmpty
+              onShuffle: playableTracks.isEmpty
                   ? () {}
                   : () {
-                      final shuffled = List<Track>.of(filteredTracks)
+                      final shuffled = List<Track>.of(playableTracks)
                         ..shuffle();
                       state.playTrack(shuffled.first, trackList: shuffled);
                     },
@@ -172,7 +179,7 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
                         track: track,
                         isPlaying: currentTrack?.id == track.id,
                         onTap: () => state.playTrack(track,
-                            trackList: filteredTracks),
+                            trackList: playableTracks),
                         onLike: () => state.toggleLike(track.id),
                         onMore: () {},
                         onOpenAlbum: album == null || widget.onOpenAlbum == null

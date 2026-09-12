@@ -11,7 +11,32 @@ class MediaKitPlayerEngine implements PlayerEngine {
   LoopMode _loopMode = LoopMode.off;
   bool _hasSource = false;
 
+  // Ordre "logique" (celui de AppState.queue au moment du chargement) des
+  // URIs de la playlist chargee. setShuffle() (commande mpv
+  // "playlist-shuffle", voir setAudioSources ci-dessous) reordonne l'ordre
+  // INTERNE de mpv -- y compris quand on l'appelle en cours de lecture, sur
+  // simple bascule du bouton "lecture aleatoire" -- sans jamais changer le
+  // titre reellement en train de jouer. Si currentIndex renvoyait la
+  // position brute mpv, AppState (qui associe index -> Track via son propre
+  // AppState.queue, jamais reordonne, lui) affichait alors instantanement
+  // la cover/le titre/l'artiste d'un AUTRE titre que celui qu'on entendait
+  // reellement. just_audio n'a pas ce probleme : son shuffle ne touche
+  // jamais a currentIndex, qui reste toujours la position dans la sequence
+  // d'origine -- on reproduit ce meme contrat ici en retrouvant, a chaque
+  // evenement, la position d'origine du titre reellement charge par mpv.
+  final List<String> _logicalOrder = [];
+
   MediaKitPlayerEngine() : _player = mk.Player();
+
+  int? _logicalIndexOf(mk.Playlist playlist) {
+    if (!_hasSource) return null;
+    if (playlist.index < 0 || playlist.index >= playlist.medias.length) {
+      return null;
+    }
+    final uri = playlist.medias[playlist.index].uri;
+    final logical = _logicalOrder.indexOf(uri);
+    return logical == -1 ? playlist.index : logical;
+  }
 
   @override
   Stream<Duration> get positionStream => _player.stream.position;
@@ -21,7 +46,7 @@ class MediaKitPlayerEngine implements PlayerEngine {
   Stream<bool> get playingStream => _player.stream.playing;
   @override
   Stream<int?> get currentIndexStream =>
-      _player.stream.playlist.map((p) => p.index);
+      _player.stream.playlist.map(_logicalIndexOf);
   @override
   Stream<void> get completedStream =>
       _player.stream.completed.where((completed) => completed);
@@ -42,7 +67,7 @@ class MediaKitPlayerEngine implements PlayerEngine {
   bool get playing => _player.state.playing;
   @override
   int? get currentIndex =>
-      _hasSource ? _player.state.playlist.index : null;
+      _hasSource ? _logicalIndexOf(_player.state.playlist) : null;
   @override
   bool get hasSource => _hasSource;
   @override
@@ -74,6 +99,9 @@ class MediaKitPlayerEngine implements PlayerEngine {
       playable.map((i) => mk.Media(i.path)).toList(),
       index: adjustedIndex,
     );
+    _logicalOrder
+      ..clear()
+      ..addAll(playlist.medias.map((m) => m.uri));
     await _player.open(playlist);
     await _player.setShuffle(_shuffleEnabled);
     // _player.open() positionne bien playlist-pos sur adjustedIndex, mais

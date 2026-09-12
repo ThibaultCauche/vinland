@@ -6,6 +6,7 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/player/jam_controls.dart';
+import 'desktop_queue_panel.dart';
 import 'glass.dart';
 
 /// Barre de lecture flottante en bas, en verre, avec transport centre et
@@ -377,6 +378,11 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
             size: 18,
             onPressed: () => showJamMenu(context),
           ),
+        ),
+        GlassIconButton(
+          icon: Icons.queue_music,
+          size: 18,
+          onPressed: () => showQueuePanel(context),
         ),
       ],
     );

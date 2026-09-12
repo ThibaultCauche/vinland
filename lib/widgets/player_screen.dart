@@ -4,6 +4,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../screens/queue_screen.dart';
 import 'player/like_button.dart';
 import 'player/play_pause_button.dart';
 import 'player/player_slider.dart';
@@ -38,6 +39,13 @@ class PlayerScreen extends StatelessWidget {
               onPressed: () => context.read<AppState>().popOverlay(),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.queue_music, color: Colors.white),
+                tooltip: 'File d\'attente',
+                onPressed: () => context
+                    .read<AppState>()
+                    .pushOverlay(const QueueScreen()),
+              ),
               IconButton(
                 icon: const Icon(Icons.more_vert, color: Colors.white),
                 onPressed: () => showPlayerOptions(context, track),

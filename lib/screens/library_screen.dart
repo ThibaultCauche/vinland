@@ -68,7 +68,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   Widget build(BuildContext context) {
     return Selector<AppState, (List<Track>, List<Album>, List<Playlist>)>(
       selector: (_, state) =>
-          (state.likedTracks, state.likedAlbums, state.playlists),
+          (state.likedTracksWithMissing, state.likedAlbums, state.playlists),
       builder: (context, data, child) {
         final (likedTracks, likedAlbums, playlists) = data;
         final state = context.read<AppState>();
@@ -183,6 +183,12 @@ class _LibraryScreenState extends State<LibraryScreen>
       return _buildEmpty('Aucun titre like');
     }
 
+    // Les titres importes via CSV mais introuvables sur le NAS (voir
+    // AppState.likedTracksWithMissing) sont affiches grises dans la liste
+    // (TrackTile) mais ne comptent pas comme de vrais titres likes ici : pas
+    // de fichier a telecharger ni a jouer.
+    final playableTracks = likedTracks.where((t) => !t.isPlaceholder).toList();
+
     return Column(
       children: [
         Padding(
@@ -190,12 +196,12 @@ class _LibraryScreenState extends State<LibraryScreen>
           child: Row(
             children: [
               Text(
-                '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
+                '${playableTracks.length} titre${playableTracks.length > 1 ? 's' : ''}',
                 style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
               const Spacer(),
               DownloadButton(
-                tracks: likedTracks,
+                tracks: playableTracks,
                 confirmDeleteMessage:
                     'Vos titres likés ne seront plus disponibles hors connexion.',
               ),
@@ -212,6 +218,11 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (filtered.isEmpty) {
       return _buildEmpty('Aucun resultat');
     }
+    final playableCount =
+        likedTracks.where((t) => !t.isPlaceholder).length;
+    // File de lecture reservee aux vrais titres (voir isPlaceholder plus
+    // haut) : un titre fantome n'a pas de fichier a jouer.
+    final playableFiltered = filtered.where((t) => !t.isPlaceholder).toList();
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         _onScroll(0, n);
@@ -221,26 +232,29 @@ class _LibraryScreenState extends State<LibraryScreen>
         controller: _scrollControllers[0],
         padding: const EdgeInsets.only(bottom: 100),
         itemCount: filtered.length,
-        itemBuilder: (context, i) => Selector<AppState, Track?>(
-          selector: (_, s) => s.currentTrack,
-          builder: (context, currentTrack, __) => TrackTile(
-            track: filtered[i],
-            isPlaying: currentTrack?.id == filtered[i].id,
-            onTap: () {
-              state.recordRecentPlay(RecentPlay(
-                type: RecentPlayType.playlist,
-                id: kLikedSongsRecentId,
-                title: 'Titres likés',
-                subtitle:
-                    '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
-                playedAt: DateTime.now(),
-              ));
-              state.playTrack(filtered[i], trackList: filtered);
-            },
-            onLike: () => state.toggleLike(filtered[i].id),
-            onMore: () => _showTrackOptions(context, filtered[i]),
-          ),
-        ),
+        itemBuilder: (context, i) {
+          final track = filtered[i];
+          return Selector<AppState, Track?>(
+            selector: (_, s) => s.currentTrack,
+            builder: (context, currentTrack, __) => TrackTile(
+              track: track,
+              isPlaying: currentTrack?.id == track.id,
+              onTap: () {
+                state.recordRecentPlay(RecentPlay(
+                  type: RecentPlayType.playlist,
+                  id: kLikedSongsRecentId,
+                  title: 'Titres likés',
+                  subtitle:
+                      '$playableCount titre${playableCount > 1 ? 's' : ''}',
+                  playedAt: DateTime.now(),
+                ));
+                state.playTrack(track, trackList: playableFiltered);
+              },
+              onLike: () => state.toggleLike(track.id),
+              onMore: () => _showTrackOptions(context, track),
+            ),
+          );
+        },
       ),
     );
   }
@@ -420,6 +434,20 @@ class _LibraryScreenState extends State<LibraryScreen>
               onTap: () {
                 Navigator.pop(ctx);
                 _showAddToPlaylistDialog(context, track);
+              },
+            ),
+            _SheetTile(
+              icon: Icons.queue_music,
+              label: "Ajouter a la file d'attente",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.addToQueue(track);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('"${track.title}" ajoute a la file'),
+                    backgroundColor: const Color(0xFF1DB954),
+                  ),
+                );
               },
             ),
             _SheetTile(

@@ -11,6 +11,7 @@ import '../models/discovered_track.dart';
 import '../models/discovered_album.dart';
 import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
+import '../services/matching_service.dart';
 import '../widgets/download_button.dart';
 import '../widgets/cover_image.dart';
 import 'artist_screen.dart';
@@ -92,7 +93,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           await _discovery.searchAlbums(widget.album.title, limit: 10);
       DiscoveredAlbum? match;
       for (final a in albums) {
-        if (_normalize(a.title) == _normalize(widget.album.title)) {
+        if (MatchingService.albumsMatch(a.title, widget.album.title)) {
           match = a;
           break;
         }
@@ -105,14 +106,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
       print('Deezer album tracks error: $e');
     }
     if (mounted) setState(() => _loadingDeezer = false);
-  }
-
-  String _normalize(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
   }
 
   void _recordRecent(AppState state) {
@@ -132,7 +125,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
   List<Track> _dedupByTitle(List<Track> tracks) {
     final byTitle = <String, Track>{};
     for (final t in tracks) {
-      final key = _normalize(t.title);
+      final key = MatchingService.normalize(t.title);
       final existing = byTitle[key];
       if (existing == null || (!existing.isLiked && t.isLiked)) {
         byTitle[key] = t;
@@ -151,24 +144,23 @@ class _AlbumScreenState extends State<AlbumScreen> {
       return [for (final t in localTracks) _AlbumListItem(localTrack: t)];
     }
 
-    final byTitle = {for (final t in localTracks) _normalize(t.title): t};
+    final byTitle = {
+      for (final t in localTracks) MatchingService.normalize(t.title): t
+    };
     final items = <_AlbumListItem>[];
     final usedKeys = <String>{};
 
     for (final dt in _discoveredTracks) {
-      final dtTitle = _normalize(dt.title);
+      final dtTitle = MatchingService.normalize(dt.title);
       final exact = byTitle[dtTitle];
       final match = exact ??
           localTracks.cast<Track?>().firstWhere(
-            (t) {
-              final lt = _normalize(t!.title);
-              return lt.contains(dtTitle) || dtTitle.contains(lt);
-            },
-            orElse: () => null,
-          );
+                (t) => MatchingService.titlesMatch(t!.title, dt.title),
+                orElse: () => null,
+              );
 
       if (match != null) {
-        usedKeys.add(_normalize(match.title));
+        usedKeys.add(MatchingService.normalize(match.title));
         items.add(_AlbumListItem(localTrack: match));
       } else {
         items.add(_AlbumListItem(discoveredTrack: dt));
@@ -176,7 +168,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     }
 
     for (final t in localTracks) {
-      if (!usedKeys.contains(_normalize(t.title))) {
+      if (!usedKeys.contains(MatchingService.normalize(t.title))) {
         items.add(_AlbumListItem(localTrack: t));
       }
     }
@@ -188,19 +180,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
     final appState = context.watch<AppState>();
 
     var albumTracks = appState.allTracks
-        .where((t) => _normalize(t.album) == _normalize(widget.album.title))
+        .where((t) => MatchingService.albumsMatch(t.album, widget.album.title))
         .toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
     if (widget.filterArtist != null) {
-      bool artistMatch(String? artistField) {
-        if (artistField == null) return false;
-        final search = widget.filterArtist!.toLowerCase();
-        final field = artistField.toLowerCase();
-        if (field == search) return true;
-        if (field.contains(search)) return true;
-        return field.split(RegExp(r'[/&,]')).any((p) => p.trim() == search);
-      }
+      bool artistMatch(String? artistField) =>
+          MatchingService.artistFieldContains(artistField, widget.filterArtist!);
 
       albumTracks = albumTracks
           .where((t) => artistMatch(t.artist) || artistMatch(t.albumArtist))
@@ -262,7 +248,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
               ),
             ),
             SliverToBoxAdapter(
-              child: _buildHeader(albumTracks, appState),
+              child: _buildHeader(albumTracks, appState,
+                  totalCount: items.length),
             ),
             SliverToBoxAdapter(
               child: _buildActionBar(albumTracks, appState),
@@ -320,7 +307,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     );
   }
 
-  Widget _buildHeader(List<Track> tracks, AppState state) {
+  Widget _buildHeader(List<Track> tracks, AppState state, {int? totalCount}) {
     final coverPath = widget.album.coverPath;
     final exists = state.coverExists(coverPath);
     final screenWidth = MediaQuery.of(context).size.width;
@@ -393,7 +380,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Album • ${tracks.length} titres',
+            'Album • ${totalCount ?? tracks.length} titres',
             style: const TextStyle(
               color: Colors.white54,
               fontSize: 12,
@@ -434,7 +421,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.more_vert, color: Colors.white54),
-            onPressed: () => _showAlbumOptions(context),
+            onPressed: () => _showAlbumOptions(context, tracks),
           ),
           const Spacer(),
           IconButton(
@@ -527,7 +514,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
               label: "Ajouter a la file d'attente",
               onTap: () {
                 Navigator.pop(ctx);
-                _showSnack("Ajoute a la file d'attente");
+                state.addToQueue(track);
+                _showSnack('"${track.title}" ajoute a la file');
               },
             ),
             _SheetTile(
@@ -561,7 +549,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     );
   }
 
-  void _showAlbumOptions(BuildContext context) {
+  void _showAlbumOptions(BuildContext context, List<Track> albumTracks) {
     final state = context.read<AppState>();
     showModalBottomSheet(
       context: context,
@@ -603,7 +591,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
               label: "Ajouter a la file d'attente",
               onTap: () {
                 Navigator.pop(ctx);
-                _showSnack("Ajoute a la file d'attente");
+                for (final t in albumTracks) {
+                  state.addToQueue(t);
+                }
+                _showSnack('Album ajoute a la file');
               },
             ),
             const SizedBox(height: 8),

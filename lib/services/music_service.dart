@@ -1381,6 +1381,21 @@ class MusicService {
     _debouncedSave();
   }
 
+  /// Ajoute des titres manquants en ignorant les doublons (meme
+  /// titre/artiste/album deja present), sans toucher a ceux deja
+  /// enregistres par un import precedent.
+  void addMissingTracks(List<Map<String, dynamic>> tracks) {
+    for (final t in tracks) {
+      final exists = _missingTracks.any((m) =>
+          m['title'] == t['title'] &&
+          m['artist'] == t['artist'] &&
+          m['album'] == t['album']);
+      if (!exists) _missingTracks.add(t);
+    }
+    _missingTracksView = null;
+    _debouncedSave();
+  }
+
   void clearMissingTracks() {
     _missingTracks = [];
     _missingTracksView = null;

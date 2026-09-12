@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/track.dart';
+import '../providers/app_state.dart';
 import '../widgets/cover_image.dart';
 import 'glass.dart';
 
@@ -34,11 +36,52 @@ class DesktopTrackRow extends StatefulWidget {
 
 class _DesktopTrackRowState extends State<DesktopTrackRow> {
   bool _hover = false;
+  final _moreButtonKey = GlobalKey();
+
+  /// Menu "..." ancre sur son propre bouton (via _moreButtonKey) : pour
+  /// l'instant une seule entree, "Ajouter a la file d'attente" -- ce bouton
+  /// ne faisait jusqu'ici absolument rien sur desktop (onMore etait un
+  /// no-op partout ou cette ligne est reutilisee : Titres likes, playlists,
+  /// albums, artistes, recherche).
+  void _showMoreMenu() {
+    final box = _moreButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
+    final position = RelativeRect.fromLTRB(
+      topLeft.dx,
+      topLeft.dy + box.size.height,
+      overlay.size.width - topLeft.dx - box.size.width,
+      0,
+    );
+    showMenu<void>(
+      context: context,
+      position: position,
+      color: const Color(0xFF1E1E1E),
+      items: [
+        PopupMenuItem<void>(
+          child: const Row(
+            children: [
+              Icon(Icons.queue_music, color: Colors.white70, size: 18),
+              SizedBox(width: 10),
+              Text('Ajouter a la file d\'attente',
+                  style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          onTap: () => context.read<AppState>().addToQueue(widget.track),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final track = widget.track;
     final path = track.coverPath;
+    // Titre importe via CSV mais introuvable sur le NAS (voir
+    // AppState.likedTracksWithMissing) : pas de fichier reel, donc grise,
+    // non cliquable, sans bouton like/menu (rien a jouer ni a liker).
+    final isPlaceholder = track.isPlaceholder;
     // Plusieurs artistes (feat., collaborations) separes individuellement
     // pour rester cliquables un par un, meme regex que desktop_player_bar.
     final artistNames = track.artist
@@ -51,18 +94,23 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      cursor: SystemMouseCursors.click,
+      cursor: isPlaceholder
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          decoration: BoxDecoration(
-            color: _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
-            borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-          ),
-          child: Row(
+        onTap: isPlaceholder ? null : widget.onTap,
+        child: Opacity(
+          opacity: isPlaceholder ? 0.45 : 1.0,
+          child: Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            decoration: BoxDecoration(
+              color:
+                  _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
+              borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+            ),
+            child: Row(
             children: [
               Container(
                 width: 40,
@@ -135,27 +183,40 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
                   onTap: widget.onOpenAlbum,
                 ),
               ),
-              SizedBox(
-                width: 56,
-                child: Text(
-                  formatDuration(track.duration),
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+              if (isPlaceholder) ...[
+                const Icon(Icons.error_outline,
+                    color: Colors.orange, size: 16),
+                const SizedBox(width: 6),
+                const Text('Introuvable',
+                    style: TextStyle(color: Colors.orange, fontSize: 12)),
+              ] else ...[
+                SizedBox(
+                  width: 56,
+                  child: Text(
+                    formatDuration(track.duration),
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              GlassIconButton(
-                icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
-                color: track.isLiked ? DesktopGlass.accent : Colors.white54,
-                size: 18,
-                onPressed: widget.onLike,
-              ),
-              GlassIconButton(
-                icon: Icons.more_horiz,
-                color: Colors.white54,
-                size: 18,
-                onPressed: widget.onMore,
-              ),
+                const SizedBox(width: 8),
+                GlassIconButton(
+                  icon:
+                      track.isLiked ? Icons.favorite : Icons.favorite_border,
+                  color:
+                      track.isLiked ? DesktopGlass.accent : Colors.white54,
+                  size: 18,
+                  onPressed: widget.onLike,
+                ),
+                GlassIconButton(
+                  key: _moreButtonKey,
+                  icon: Icons.more_horiz,
+                  color: Colors.white54,
+                  size: 18,
+                  onPressed: _showMoreMenu,
+                ),
+              ],
             ],
+          ),
           ),
         ),
       ),

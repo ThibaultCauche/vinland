@@ -26,6 +26,13 @@ class Track {
   final DateTime? addedToServerAt;
   final String? genre;
 
+  /// Vrai pour un titre "fantome" affiche dans les Titres likes qui n'a pas
+  /// ete retrouve dans la bibliotheque NAS lors d'un import CSV (voir
+  /// AppState.likedTracksWithMissing) : jamais de fichier reel pour un titre
+  /// Navidrome/local, donc ce champ nul sert de marqueur -- illisible,
+  /// affiche grise et non cliquable dans TrackTile/DesktopTrackRow.
+  bool get isPlaceholder => filePath == null;
+
   Track({
     required this.id,
     required this.title,

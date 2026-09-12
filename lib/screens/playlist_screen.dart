@@ -307,6 +307,14 @@ class PlaylistScreen extends StatelessWidget {
                 },
               ),
             _SheetTile(
+              icon: Icons.queue_music,
+              label: "Ajouter a la file d'attente",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.addToQueue(track);
+              },
+            ),
+            _SheetTile(
               icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
               label: track.isLiked
                   ? 'Retirer des titres likes'

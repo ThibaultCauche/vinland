@@ -49,8 +49,32 @@ class AppState extends ChangeNotifier {
   bool isPlaying = false;
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
+
+  // File d'attente ("Titres a venir") : les titres qui vont suivre, dans
+  // l'ordre d'ecoute -- visible/reordonnable par l'utilisateur (voir
+  // QueueScreen), completee par "Ajouter a la file d'attente". Ne contient
+  // JAMAIS le titre en cours (currentTrack) : contrairement a l'ancien
+  // design, un seul titre a la fois est charge dans le moteur audio (voir
+  // _playSingle) -- next/previous/shuffle sont geres ici, pas delegues au
+  // shuffle natif de just_audio/mpv (source du bug ou le titre affiche
+  // desynchronisait du titre reellement joue, et ou le tout premier titre de
+  // "Titres likes" revenait bien plus souvent que les autres a chaque fin de
+  // cycle melange).
   List<Track> queue = [];
-  int currentIndex = -1;
+  // Ordre d'origine de la collection lancee (album/playlist/titres likes/
+  // artiste) : sert a regenerer `queue` quand on (re)active le mode
+  // aleatoire ou quand la file est epuisee (on reboucle sur ce meme
+  // contexte plutot que de s'arreter net, cf. retour des beta-testeurs).
+  List<Track> _sourceOrder = [];
+  // Titres deja joues cette session, pour le bouton "precedent". Bornee pour
+  // ne pas grossir indefiniment sur une tres longue session d'ecoute.
+  static const int _maxHistory = 200;
+  final List<Track> _history = [];
+  void _pushHistory(Track track) {
+    _history.add(track);
+    if (_history.length > _maxHistory) _history.removeAt(0);
+  }
+
   int _lastColorRequest = 0;
   final Map<String, Color> _colorCache = {};
 
@@ -68,15 +92,44 @@ class AppState extends ChangeNotifier {
 
   // Getters
   List<Track> get allTracks => _music.navidromeTracks;
-  List<Track> get likedTracks {
-    final tracks = List<Track>.from(_music.likedTracks);
-    tracks.sort((a, b) {
-      if (a.dateAdded == null && b.dateAdded == null) return 0;
-      if (a.dateAdded == null) return 1;
-      if (b.dateAdded == null) return -1;
-      return b.dateAdded!.compareTo(a.dateAdded!);
+  // MusicService.likedTracks trie deja par dateAdded (plus recent d'abord)
+  // avec un tiebreak stable -- ne pas re-trier ici : un deuxieme List.sort
+  // avec ex-aequo (meme date, ex: import CSV en lot) melangeait l'ordre a
+  // chaque appel, le tri de Dart n'etant pas garanti stable.
+  List<Track> get likedTracks => _music.likedTracks;
+
+  /// Comme [likedTracks], mais avec en plus un titre "fantome" par entree de
+  /// [missingTracks] (titre importe via CSV mais introuvable sur le NAS),
+  /// intercale au bon endroit grace a la meme date synthetique que celle
+  /// posee sur les titres retrouves au moment de l'import (voir
+  /// StreamingMatchScreen._likeMatched) -- l'ordre affiche correspond ainsi a
+  /// l'ordre du fichier importe, pistes manquantes comprises. A n'utiliser
+  /// que pour l'affichage de la page "Titres likes" : ces titres fantomes
+  /// n'ont pas de fichier reel (Track.isPlaceholder) et doivent etre exclus
+  /// de toute file de lecture.
+  List<Track> get likedTracksWithMissing {
+    final placeholders = _music.missingTracks.map((m) {
+      return Track(
+        id: 'missing:${m['title']}:${m['artist']}:${m['album']}',
+        title: (m['title'] ?? '').toString(),
+        artist: (m['artist'] ?? '').toString(),
+        album: (m['album'] ?? '').toString(),
+        duration: Duration.zero,
+        isLiked: true,
+        dateAdded: DateTime.tryParse((m['dateAdded'] ?? '').toString()),
+      );
+    }).toList();
+
+    final combined = [..._music.likedTracks, ...placeholders];
+    combined.sort((a, b) {
+      final da = a.dateAdded;
+      final db = b.dateAdded;
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db.compareTo(da);
     });
-    return tracks;
+    return combined;
   }
 
   List<Track> get searchResults {
@@ -184,9 +237,11 @@ class AppState extends ChangeNotifier {
   bool _useNavidrome = true;
   bool get useNavidrome => _useNavidrome;
 
-  //lecture aléatoire
-  bool get isShuffled => _audioHandler.isShuffled;
-  LoopMode get loopMode => _audioHandler.loopMode;
+  // Lecture aleatoire/repetition : geres ici (pas delegues au moteur audio,
+  // qui ne charge plus qu'un seul titre a la fois -- voir _playSingle), pour
+  // pouvoir melanger/reboucler notre propre file d'attente nous-memes.
+  bool isShuffled = false;
+  LoopMode loopMode = LoopMode.off;
 
   // Telechargement automatique des titres/albums/playlists likes
   static const _keyAutoDownloadLikes = 'vinland_auto_download_likes';
@@ -197,6 +252,7 @@ class AppState extends ChangeNotifier {
   // memorises pour survivre a un redemarrage de l'app.
   static const _keyLastTrackId = 'vinland_last_track_id';
   static const _keyLastQueueIds = 'vinland_last_queue_ids';
+  static const _keyLastSourceIds = 'vinland_last_source_ids';
   static const _keyLastQueueIndex = 'vinland_last_queue_index';
   static const _keyShuffleEnabled = 'vinland_shuffle_enabled';
   static const _keyLoopMode = 'vinland_loop_mode';
@@ -237,19 +293,14 @@ class AppState extends ChangeNotifier {
       }
       _broadcastJamState();
     });
-    _audioHandler.player.currentIndexStream.listen((index) {
-      if (index != null && index >= 0 && index < queue.length) {
-        final newTrack = queue[index];
-        if (newTrack.id != currentTrack?.id) {
-          currentIndex = index;
-          currentTrack = newTrack;
-          _updateDominantColor(newTrack.coverPath);
-          _music.recordPlay(newTrack.id);
-          _music.updateNowPlaying(newTrack.id,
-              jamSessionId: isJamHost ? jamSessionId : null);
-          _notify();
-        }
-      }
+    // Le titre en cours est desormais toujours pousse explicitement par
+    // _playSingle() (appele par playTrack/_advance/previousTrack), jamais
+    // deduit d'un index rapporte par le moteur audio -- un seul titre a la
+    // fois lui est confie (voir _playSingle), donc plus de risque qu'un
+    // index de lecteur natif (potentiellement decale par un shuffle natif,
+    // cf. l'ancien bug ou la cover/le titre affiches ne correspondaient plus
+    // au titre reellement en train de jouer) desynchronise l'affichage.
+    _audioHandler.player.currentIndexStream.listen((_) {
       _broadcastJamState();
     });
 
@@ -267,15 +318,40 @@ class AppState extends ChangeNotifier {
 
   Future<void> _continueQueueAutomatically() async {
     if (_autoContinuing || _isDisposed) return;
-    if (loopMode != LoopMode.off) return; // l'utilisateur boucle deja
-    if (queue.isEmpty) return;
-
     _autoContinuing = true;
     try {
-      await playTrack(queue.first, trackList: queue);
+      if (loopMode == LoopMode.one) {
+        if (currentTrack != null) await _playSingle(currentTrack!);
+        return;
+      }
+      await _advanceQueue();
     } finally {
       _autoContinuing = false;
     }
+  }
+
+  /// Passe au titre suivant de `queue` (la file d'attente). Si elle est
+  /// vide, la regenere depuis `_sourceOrder` (le contexte lance -- album,
+  /// playlist, titres likes, artiste) au lieu de s'arreter net : c'est le
+  /// "reboucler sur la meme file" attendu par les beta-testeurs, qui
+  /// s'applique maintenant que la lecture aleatoire soit active ou non
+  /// (avant, ce rebouclage rejouait toujours le tout premier titre de la
+  /// liste d'origine meme en mode aleatoire -- voir le commentaire sur
+  /// `toggleShuffle` pour le detail du bug que ca causait).
+  Future<void> _advanceQueue() async {
+    if (queue.isEmpty) {
+      if (_sourceOrder.isEmpty) return;
+      final playedIds = {if (currentTrack != null) currentTrack!.id};
+      var refill =
+          _sourceOrder.where((t) => !playedIds.contains(t.id)).toList();
+      if (refill.isEmpty) refill = List<Track>.of(_sourceOrder);
+      if (isShuffled) refill.shuffle();
+      queue = refill;
+    }
+    if (queue.isEmpty) return;
+    if (currentTrack != null) _pushHistory(currentTrack!);
+    final next = queue.removeAt(0);
+    await _playSingle(next);
   }
 
   /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee
@@ -547,13 +623,11 @@ class AppState extends ChangeNotifier {
   /// aleatoire/repetition, a partir du cache local deja charge par
   /// `_music.initialize()` (pas besoin d'attendre la sync Navidrome).
   Future<void> _restorePlaybackState(SharedPreferences prefs) async {
-    final shuffle = prefs.getBool(_keyShuffleEnabled) ?? false;
-    if (shuffle) await _audioHandler.player.setShuffleModeEnabled(true);
+    isShuffled = prefs.getBool(_keyShuffleEnabled) ?? false;
     final loopName = prefs.getString(_keyLoopMode);
     if (loopName != null) {
-      final mode = LoopMode.values
+      loopMode = LoopMode.values
           .firstWhere((m) => m.name == loopName, orElse: () => LoopMode.off);
-      await _audioHandler.setLoopMode(mode);
     }
 
     final lastTrackId = prefs.getString(_keyLastTrackId);
@@ -561,12 +635,11 @@ class AppState extends ChangeNotifier {
     final track = _findTrackById(lastTrackId);
     if (track == null) return;
 
-    final queueIds = prefs.getStringList(_keyLastQueueIds) ?? [lastTrackId];
-    final restoredQueue =
-        queueIds.map(_findTrackById).whereType<Track>().toList();
-    queue = restoredQueue.isNotEmpty ? restoredQueue : [track];
-    currentIndex = queue.indexWhere((t) => t.id == track.id);
-    if (currentIndex < 0) currentIndex = 0;
+    final queueIds = prefs.getStringList(_keyLastQueueIds) ?? [];
+    queue = queueIds.map(_findTrackById).whereType<Track>().toList();
+    final sourceIds =
+        prefs.getStringList(_keyLastSourceIds) ?? [lastTrackId, ...queueIds];
+    _sourceOrder = sourceIds.map(_findTrackById).whereType<Track>().toList();
     currentTrack = track;
     _updateDominantColor(track.coverPath);
     // isPlaying reste false : on affiche juste le dernier titre, on ne
@@ -579,7 +652,8 @@ class AppState extends ChangeNotifier {
     await prefs.setString(_keyLastTrackId, currentTrack!.id);
     await prefs.setStringList(
         _keyLastQueueIds, queue.map((t) => t.id).toList());
-    await prefs.setInt(_keyLastQueueIndex, currentIndex);
+    await prefs.setStringList(
+        _keyLastSourceIds, _sourceOrder.map((t) => t.id).toList());
   }
 
   Future<void> _saveShuffleLoopState() async {
@@ -592,6 +666,7 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyLastTrackId);
     await prefs.remove(_keyLastQueueIds);
+    await prefs.remove(_keyLastSourceIds);
     await prefs.remove(_keyLastQueueIndex);
     await prefs.remove(_keyShuffleEnabled);
     await prefs.remove(_keyLoopMode);
@@ -638,50 +713,72 @@ class AppState extends ChangeNotifier {
     currentTrack = null;
     isPlaying = false;
     queue = [];
-    currentIndex = -1;
+    _sourceOrder = [];
+    _history.clear();
     await _clearPlaybackState();
     _notify();
   }
 
+  /// Lance `track` et construit la file d'attente a partir de `trackList`
+  /// (le contexte -- album, playlist, titres likes, artiste...) : tout ce
+  /// qui suit `track` dans cette liste devient `queue` (melange une fois si
+  /// la lecture aleatoire est active). `trackList` devient aussi
+  /// `_sourceOrder`, reutilise pour regenerer la file quand elle s'epuise ou
+  /// qu'on (re)bascule le mode aleatoire.
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
     // Participant d'une session Jam (pas hote) : suit passivement l'etat
     // recu du relais (voir _applyJamState), ne pilote jamais la lecture
     // lui-meme -- sauf l'appel interne fait par _applyJamState, qui doit
     // pouvoir passer.
     if (isJamActive && !isJamHost && !_applyingJamState) return;
+    _history.clear();
+    _sourceOrder = trackList ?? [track];
+    final startIndex = _sourceOrder.indexWhere((t) => t.id == track.id);
+    var remainder = startIndex == -1
+        ? <Track>[]
+        : _sourceOrder.sublist(startIndex + 1);
+    if (isShuffled) remainder = List<Track>.of(remainder)..shuffle();
+    queue = remainder;
+    await _playSingle(track);
+  }
+
+  /// Charge et joue un seul titre dans le moteur audio, sans toucher a
+  /// `queue`/`_sourceOrder`/`_history` : c'est le point commun a playTrack,
+  /// _advanceQueue, previousTrack et togglePlayPause (reprise apres
+  /// redemarrage de l'app). Un seul titre a la fois est confie au moteur --
+  /// voir le commentaire sur le champ `queue` pour le bug (natif shuffle
+  /// desynchronisant l'affichage) que ca evite.
+  Future<void> _playSingle(Track track) async {
     currentTrack = track;
-    queue = trackList ?? [track];
-    currentIndex = queue.indexWhere((t) => t.id == track.id);
+    final path = _music.getOfflinePath(track.id) ?? track.filePath!;
+    final isAsset = path.startsWith('assets/');
+    final isRemote = path.startsWith('http');
 
-    final items = queue.map((t) {
-      final path = _music.getOfflinePath(t.id) ?? t.filePath!;
-      final isAsset = path.startsWith('assets/');
-      final isRemote = path.startsWith('http');
+    Uri? artUri;
+    if (track.coverPath != null) {
+      artUri = track.coverPath!.startsWith('http')
+          ? Uri.parse(track.coverPath!)
+          : Uri.file(track.coverPath!);
+    }
 
-      Uri? artUri;
-      if (t.coverPath != null) {
-        artUri = t.coverPath!.startsWith('http')
-            ? Uri.parse(t.coverPath!)
-            : Uri.file(t.coverPath!);
-      }
-
-      return MediaItem(
-        id: path,
-        title: t.title,
-        artist: t.artist,
-        album: t.album,
-        duration: t.duration,
-        artUri: artUri,
-        extras: {'isAsset': isAsset, 'isRemote': isRemote},
-      );
-    }).toList();
+    final item = MediaItem(
+      id: path,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      duration: track.duration,
+      artUri: artUri,
+      extras: {'isAsset': isAsset, 'isRemote': isRemote},
+    );
 
     _updateDominantColor(track.coverPath);
     _notify();
     await Future.delayed(Duration.zero);
-    await _audioHandler.loadAndPlay(items, currentIndex);
+    await _audioHandler.loadAndPlay([item], 0);
     isPlaying = true;
     await _music.recordPlay(track.id);
+    _music.updateNowPlaying(track.id,
+        jamSessionId: isJamHost ? jamSessionId : null);
     // Voir NavidromeService.scrobble : fait remonter la lecture au NAS pour
     // que la regle de suppression des morceaux peu ecoutes puisse s'appuyer
     // dessus. Ids locaux/hors-Navidrome (assets, imports) n'ont pas
@@ -698,9 +795,9 @@ class AppState extends ChangeNotifier {
     // Redemarrage de l'app : le mini-player affiche le dernier titre joue
     // mais aucune source audio n'a encore ete chargee dans le player. Un
     // simple play()/pause() sur un player vide ne fait rien : il faut
-    // relancer une vraie lecture via playTrack().
+    // relancer une vraie lecture -- sans toucher a la file restauree.
     if (currentTrack != null && !_audioHandler.player.hasSource) {
-      playTrack(currentTrack!, trackList: queue.isNotEmpty ? queue : null);
+      _playSingle(currentTrack!);
       return;
     }
     if (isPlaying) {
@@ -712,14 +809,60 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
-  void nextTrack() {
+  Future<void> nextTrack() async {
     if (isJamActive && !isJamHost) return;
-    _audioHandler.skipToNext();
+    await _advanceQueue();
   }
 
-  void previousTrack() {
+  /// Avant 3s de lecture : revient au titre precedent (file d'attente
+  /// remise en tete). Au-dela : redemarre simplement le titre en cours,
+  /// comme la plupart des lecteurs.
+  Future<void> previousTrack() async {
     if (isJamActive && !isJamHost) return;
-    _audioHandler.skipToPrevious();
+    if (position > const Duration(seconds: 3) || _history.isEmpty) {
+      seek(Duration.zero);
+      return;
+    }
+    if (currentTrack != null) queue.insert(0, currentTrack!);
+    final prev = _history.removeLast();
+    await _playSingle(prev);
+  }
+
+  /// Saute directement au titre en position `index` de la file d'attente :
+  /// tout ce qui le precedait dans `queue` est abandonne (jamais joue, donc
+  /// pas ajoute a l'historique).
+  Future<void> playFromQueue(int index) async {
+    if (index < 0 || index >= queue.length) return;
+    if (currentTrack != null) _pushHistory(currentTrack!);
+    queue.removeRange(0, index);
+    final target = queue.removeAt(0);
+    await _playSingle(target);
+  }
+
+  /// "Ajouter a la file d'attente" (options d'un titre) : le place a la fin
+  /// de `queue`.
+  void addToQueue(Track track) {
+    queue.add(track);
+    unawaited(_savePlaybackState());
+    _notify();
+  }
+
+  void removeFromQueue(int index) {
+    if (index < 0 || index >= queue.length) return;
+    queue.removeAt(index);
+    unawaited(_savePlaybackState());
+    _notify();
+  }
+
+  /// Reordonnancement par glisser-deposer (voir QueueScreen) : `newIndex`
+  /// suit la convention de ReorderableListView.onReorder (index cible avant
+  /// le retrait de l'element deplace).
+  void reorderQueue(int oldIndex, int newIndex) {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final item = queue.removeAt(oldIndex);
+    queue.insert(newIndex, item);
+    unawaited(_savePlaybackState());
+    _notify();
   }
 
   void seek(Duration pos) {
@@ -912,6 +1055,16 @@ class AppState extends ChangeNotifier {
 
   void setMissingTracks(List<Map<String, dynamic>> tracks) {
     _music.setMissingTracks(tracks);
+    _notify();
+  }
+
+  /// Ajoute des titres manquants sans ecraser ceux d'un import CSV
+  /// precedent (contrairement a [setMissingTracks]) -- ils ne sont retires
+  /// que via [clearMissingTracks] (bouton "Effacer" de l'ecran dedie), donc
+  /// un nouvel import ne doit pas faire disparaitre les fantomes d'un import
+  /// anterieur de la liste "Titres likes".
+  void addMissingTracks(List<Map<String, dynamic>> tracks) {
+    _music.addMissingTracks(tracks);
     _notify();
   }
 
@@ -1134,19 +1287,33 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
+  /// Bascule le mode aleatoire : regenere la partie "contexte" de la file
+  /// (ce qui reste de _sourceOrder a jouer) dans le bon ordre -- melange si
+  /// on l'active, ordre d'origine si on le desactive -- tout en preservant
+  /// les titres ajoutes manuellement via "Ajouter a la file d'attente" qui
+  /// ne font pas partie de ce contexte (ils restent en tete, inchanges).
   Future<void> toggleShuffle() async {
-    await _audioHandler.toggleShuffle();
+    isShuffled = !isShuffled;
+    final playedIds = {
+      ..._history.map((t) => t.id),
+      if (currentTrack != null) currentTrack!.id,
+    };
+    var contextRemainder =
+        _sourceOrder.where((t) => !playedIds.contains(t.id)).toList();
+    if (isShuffled) contextRemainder.shuffle();
+    final manuallyQueued =
+        queue.where((t) => !_sourceOrder.any((s) => s.id == t.id)).toList();
+    queue = [...manuallyQueued, ...contextRemainder];
     unawaited(_saveShuffleLoopState());
     _notify();
   }
 
   Future<void> toggleLoopMode() async {
-    final next = {
+    loopMode = {
       LoopMode.off: LoopMode.all,
       LoopMode.all: LoopMode.one,
       LoopMode.one: LoopMode.off,
-    }[_audioHandler.loopMode]!;
-    await _audioHandler.setLoopMode(next);
+    }[loopMode]!;
     unawaited(_saveShuffleLoopState());
     _notify();
   }

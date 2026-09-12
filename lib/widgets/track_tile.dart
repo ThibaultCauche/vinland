@@ -24,6 +24,43 @@ class TrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Titre importe via CSV mais introuvable sur le NAS (voir
+    // AppState.likedTracksWithMissing) : pas de fichier reel, donc grise et
+    // non cliquable au lieu du rendu normal.
+    if (track.isPlaceholder) {
+      return ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF3E3E3E).withOpacity(0.5),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Icon(Icons.music_note, color: Colors.white24),
+        ),
+        title: Text(
+          track.title,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          '${track.artist} • ${track.album}',
+          style: const TextStyle(color: Colors.white24, fontSize: 12),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const Icon(Icons.error_outline,
+            color: Colors.orange, size: 18),
+      );
+    }
+
     // FIX: utilise le cache mémoire de MusicService au lieu de File.exists()
     final coverExists =
         context.read<MusicService>().coverExists(track.coverPath);

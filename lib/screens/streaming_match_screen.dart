@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../services/matching_service.dart';
 import '../widgets/app_background.dart';
 
 class StreamingMatchScreen extends StatefulWidget {
@@ -27,178 +28,11 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _performMatching());
   }
 
-  // ── NORMALISATIONS ──
-
-  /// Normalise pour comparaison : minuscule, retire espaces multiples
-  String _normalize(String text) {
-    if (text.isEmpty) return '';
-    var normalized = text.toLowerCase().trim();
-    // Supprimer accents
-    normalized = normalized
-        .replaceAll('é', 'e')
-        .replaceAll('è', 'e')
-        .replaceAll('ê', 'e')
-        .replaceAll('ë', 'e')
-        .replaceAll('à', 'a')
-        .replaceAll('â', 'a')
-        .replaceAll('ä', 'a')
-        .replaceAll('å', 'a')
-        .replaceAll('ù', 'u')
-        .replaceAll('û', 'u')
-        .replaceAll('ü', 'u')
-        .replaceAll('ô', 'o')
-        .replaceAll('ö', 'o')
-        .replaceAll('ø', 'o')
-        .replaceAll('î', 'i')
-        .replaceAll('ï', 'i')
-        .replaceAll('ç', 'c')
-        .replaceAll('ñ', 'n')
-        .replaceAll('æ', 'ae')
-        .replaceAll('œ', 'oe')
-        .replaceAll('ß', 'ss')
-        .replaceAll('ÿ', 'y');
-    // Caractères spéciaux → espaces
-    normalized = normalized.replaceAll(
-        RegExp(r'[!"#$%&()*+,\-./:;<=>?@\[\\\]^_`{|}~]'), ' ');
-    normalized = normalized.replaceAll("'", ' ');
-    // Espaces multiples → un seul
-    normalized = normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return normalized;
-  }
-
-  String _removeStopWords(String text) {
-    final stopWords = {
-      'the',
-      'a',
-      'an',
-      'and',
-      'or',
-      'as',
-      'at',
-      'by',
-      'for',
-      'in',
-      'of',
-      'on',
-      'to',
-      'with',
-      'de',
-      'la',
-      'le',
-      'les',
-      'et',
-      'des',
-      'du',
-      'un',
-      'une',
-      'au',
-      'aux',
-      'en',
-      'dans',
-      'i',
-      'you',
-      'he',
-      'she',
-      'it',
-      'we',
-      'they',
-      'me',
-      'my',
-      'your',
-      'his',
-      'her',
-      'its',
-    };
-    return text
-        .split(' ')
-        .where((w) => w.length > 2 && !stopWords.contains(w))
-        .join(' ');
-  }
-
-  /// Retire les featuring, parenthèses, suffixes de version
-  String _coreTitle(String title) {
-    var t = title.toLowerCase().trim();
-    // Retirer les parenthèses avec feat/ft/with/prod
-    t = t.replaceAll(
-        RegExp(r'\s*\(\s*(feat\.?|ft\.?|with|prod\.?|presents?)\s+[^)]*\)',
-            caseSensitive: false),
-        '');
-    t = t.replaceAll(
-        RegExp(r'\s*\[\s*(feat\.?|ft\.?|with|prod\.?|presents?)\s+[^\]]*\]',
-            caseSensitive: false),
-        '');
-    // Retirer les suffixes après tiret : versions, remix, etc.
-    t = t.replaceAll(
-        RegExp(
-            r'\s*[-–]\s*(.+remix|remix|edit|version|radio\s*edit|radio\s*mix|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|bonus\s*track|skit|intro|outro|interlude|theme|from\s+the\s+series\s+.*|from\s+the\s+.*soundtrack|from\s+the\s+.*motion\s*picture|original\s*score)\s*$',
-            caseSensitive: false),
-        '');
-    // Retirer les versions entre parenthèses à la fin
-    t = t.replaceAll(
-        RegExp(
-            r'\s*\(\s*\d{4}\s*(remaster|re-master|version|edit|mix)?\s*\)\s*$',
-            caseSensitive: false),
-        '');
-    t = t.replaceAll(
-        RegExp(
-            r'\s*\(\s*(.+remix|remix|edit|version|radio|live|acoustic|sped\s*up|slowed|reverb|instrumental|cover|demo|theme|from)\s*[^)]*\)\s*$',
-            caseSensitive: false),
-        '');
-    // Retirer "feat." / "ft." inline (tout ce qui suit)
-    t = t.replaceAll(
-        RegExp(r'\s+(feat\.?|ft\.?)\s+.*$', caseSensitive: false), '');
-
-    // Retirer les crochets restants
-    t = t.replaceAll(RegExp(r'\s*\[[^\]]*\]'), '');
-    // Retirer les parenthèses restantes
-    t = t.replaceAll(RegExp(r'\s*\([^)]*\)'), '');
-    final result = _normalize(t);
-    return result;
-  }
-
-  /// Normalise un nom d'artiste : retire "the ", séparateurs multiples
-  String _coreArtist(String artist) {
-    if (artist.isEmpty) return '';
-    var a = artist.toLowerCase().trim();
-    // Retirer "the " au début
-    a = a.replaceAll(RegExp(r'^the\s+'), '');
-    // Séparer par ; d'abord (format Spotify), puis & et ,
-    final parts =
-        a.split(';').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    if (parts.isEmpty) return '';
-
-    // Artistes "génériques" à ignorer comme principal
-    final genericNames = {
-      'arcane',
-      'league of legends',
-      'glee cast',
-      'k-pop demon hunters cast',
-      'cast of epic: the musical',
-      'teamfight tactics',
-      'riot games',
-      'fueled by ramen',
-      'warner records',
-      'universal music',
-      'sony music',
-      'atlantic records',
-      'columbia',
-      'epic',
-      'interscope',
-      'republic records',
-    };
-
-    String primary = parts[0];
-    if (genericNames.contains(primary) && parts.length > 1) {
-      primary = parts[1];
-    }
-
-    // Nettoyer le résultat
-    a = primary.replaceAll(RegExp(r'[&+,/-]'), ' ');
-    final result = _normalize(a);
-    return result;
-  }
-
   // ── MATCHING ──
+  // La normalisation et le matching flou (accents, feat/remix, Jaro-Winkler)
+  // vivent desormais dans MatchingService, partages avec DiscoveryService et
+  // les pages album/artiste pour que le resultat soit coherent partout dans
+  // l'app.
 
   void _performMatching() {
     final state = context.read<AppState>();
@@ -209,8 +43,8 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     final byTitle = <String, List<Track>>{};
     final byCoreTitle = <String, List<Track>>{};
     for (final t in localTracks) {
-      final nt = _normalize(t.title);
-      final ct = _coreTitle(t.title);
+      final nt = MatchingService.normalize(t.title);
+      final ct = MatchingService.coreTitle(t.title);
       byTitle.putIfAbsent(nt, () => []).add(t);
       byCoreTitle.putIfAbsent(ct, () => []).add(t);
     }
@@ -222,10 +56,10 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       final rawArtist = trackData['artist'] ?? '';
       if (rawTitle.isEmpty) continue;
 
-      final normTitle = _normalize(rawTitle);
-      final coreTitle = _coreTitle(rawTitle);
-      final normArtist = _normalize(rawArtist);
-      final coreArtist = _coreArtist(rawArtist);
+      final normTitle = MatchingService.normalize(rawTitle);
+      final coreTitle = MatchingService.coreTitle(rawTitle);
+      final normArtist = MatchingService.normalize(rawArtist);
+      final coreArtist = MatchingService.coreArtist(rawArtist);
 
       Track? match;
       double confidence = 0;
@@ -235,7 +69,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         final candidates = byTitle[normTitle]!;
         match = candidates.cast<Track?>().firstWhere(
               (c) =>
-                  c != null && _artistsMatch(normArtist, _normalize(c.artist)),
+                  c != null &&
+                  MatchingService.artistsMatch(
+                      normArtist, MatchingService.normalize(c.artist)),
               orElse: () => null,
             );
         if (match != null) {
@@ -250,7 +86,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         match = candidates.cast<Track?>().firstWhere(
               (c) =>
                   c != null &&
-                  _artistsMatchStrict(coreArtist, _coreArtist(c.artist)),
+                  MatchingService.artistsMatch(
+                      coreArtist, MatchingService.coreArtist(c.artist),
+                      strict: true),
               orElse: () => null,
             );
         if (match != null) {
@@ -264,7 +102,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         if (byCoreTitle.containsKey(coreTitle)) {
           final candidates = byCoreTitle[coreTitle]!;
           match = candidates.cast<Track?>().firstWhere(
-                (c) => c != null && _coreArtist(c.artist) == coreArtist,
+                (c) =>
+                    c != null &&
+                    MatchingService.coreArtist(c.artist) == coreArtist,
                 orElse: () => null,
               );
           if (match != null) {
@@ -276,18 +116,19 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
 
       // ═══ PASS 4 : Similarité Jaro-Winkler (pré-filtré par longueur) ═══
       if (match == null) {
-        final spotClean = _removeStopWords(coreTitle);
+        final spotClean = MatchingService.removeStopWords(coreTitle);
         if (spotClean.length > 5) {
           final spotLen = spotClean.length;
           for (final entry in byCoreTitle.entries) {
-            final localClean = _removeStopWords(entry.key);
+            final localClean = MatchingService.removeStopWords(entry.key);
             // Skip si longueur trop différente
             final localLen = localClean.length;
             if (localLen < spotLen * 0.6 || localLen > spotLen * 1.4) continue;
-            if (_jaroWinkler(spotClean, localClean) > 0.95) {
+            if (MatchingService.jaroWinkler(spotClean, localClean) > 0.95) {
               for (final candidate in entry.value) {
-                if (_artistsMatchStrict(
-                    coreArtist, _coreArtist(candidate.artist))) {
+                if (MatchingService.artistsMatch(
+                    coreArtist, MatchingService.coreArtist(candidate.artist),
+                    strict: true)) {
                   match = candidate;
                   confidence = 0.88;
                   pass4++;
@@ -304,13 +145,14 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       if (match == null && coreArtist.length > 2) {
         for (final entry in byCoreTitle.entries) {
           for (final candidate in entry.value) {
-            final candCoreArtist = _coreArtist(candidate.artist);
-            if (!_artistsMatchStrict(coreArtist, candCoreArtist)) continue;
+            final candCoreArtist = MatchingService.coreArtist(candidate.artist);
+            if (!MatchingService.artistsMatch(coreArtist, candCoreArtist,
+                strict: true)) continue;
 
-            final candCoreTitle = _coreTitle(candidate.title);
-            final sim = _jaroWinkler(
-              _removeStopWords(coreTitle),
-              _removeStopWords(candCoreTitle),
+            final candCoreTitle = MatchingService.coreTitle(candidate.title);
+            final sim = MatchingService.jaroWinkler(
+              MatchingService.removeStopWords(coreTitle),
+              MatchingService.removeStopWords(candCoreTitle),
             );
             if (sim > 0.95) {
               // Anti-préfixe: évite "TAKE ME" → "take me as i am"
@@ -370,88 +212,6 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
           'P1 exact: $pass1 | P2 core: $pass2 | P3 core strict: $pass3 | P4 fuzzy: $pass4 | P6 title only: $pass6\n'
           'Total: ${results.length} | Match: $matched | Missing: $unmatched';
     });
-  }
-
-  bool _artistsMatch(String a, String b) {
-    if (a.isEmpty || b.isEmpty) return false;
-    if (a == b) return true;
-    if (a.contains(b) || b.contains(a)) {
-      final minLen = a.length < b.length ? a.length : b.length;
-      if (minLen >= 2) return true;
-    }
-    final aWords = a.split(' ').where((w) => w.length > 2).toSet();
-    final bWords = b.split(' ').where((w) => w.length > 2).toSet();
-    if (aWords.isEmpty || bWords.isEmpty) return false;
-    final common = aWords.intersection(bWords);
-    return common.length >= aWords.length * 0.5 ||
-        common.length >= bWords.length * 0.5 ||
-        common.length >= 2;
-  }
-
-  bool _artistsMatchStrict(String a, String b) {
-    if (a.isEmpty || b.isEmpty) return false;
-    if (a == b) return true;
-    if (a.contains(b) || b.contains(a)) {
-      final minLen = a.length < b.length ? a.length : b.length;
-      if (minLen >= 2) return true;
-    }
-    final aWords = a.split(' ').where((w) => w.length > 1).toSet();
-    final bWords = b.split(' ').where((w) => w.length > 1).toSet();
-    if (aWords.isEmpty || bWords.isEmpty) return false;
-    final common = aWords.intersection(bWords);
-    // Au moins 70% des mots en commun
-    return common.length >= aWords.length * 0.7 ||
-        common.length >= bWords.length * 0.7;
-  }
-
-  double _jaroWinkler(String s1, String s2) {
-    if (s1 == s2) return 1.0;
-    if (s1.isEmpty || s2.isEmpty) return 0.0;
-
-    final len1 = s1.length, len2 = s2.length;
-    final matchDistance = ((len1 > len2 ? len1 : len2) / 2).floor() - 1;
-
-    final s1Matches = List.filled(len1, false);
-    final s2Matches = List.filled(len2, false);
-
-    int matches = 0;
-    for (int i = 0; i < len1; i++) {
-      final start = (i - matchDistance).clamp(0, len2 - 1);
-      final end = (i + matchDistance + 1).clamp(0, len2);
-      for (int j = start; j < end; j++) {
-        if (s2Matches[j] || s1[i] != s2[j]) continue;
-        s1Matches[i] = true;
-        s2Matches[j] = true;
-        matches++;
-        break;
-      }
-    }
-
-    if (matches == 0) return 0.0;
-
-    int transpositions = 0, k = 0;
-    for (int i = 0; i < len1; i++) {
-      if (!s1Matches[i]) continue;
-      while (!s2Matches[k]) k++;
-      if (s1[i] != s2[k]) transpositions++;
-      k++;
-    }
-
-    final jaro = ((matches / len1) +
-            (matches / len2) +
-            ((matches - transpositions / 2.0) / matches)) /
-        3.0;
-
-    int prefix = 0;
-    for (int i = 0; i < (len1 < len2 ? len1 : len2); i++) {
-      if (s1[i] == s2[i])
-        prefix++;
-      else
-        break;
-      if (prefix >= 4) break;
-    }
-
-    return jaro + (prefix * 0.1 * (1 - jaro));
   }
 
   DateTime? _parseDate(String? dateStr) {
@@ -844,9 +604,31 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     int duplicates = 0;
     final Set<String> processedIds = {};
     final List<Future<void>> toggleFutures = [];
+    final missing = <Map<String, dynamic>>[];
 
-    for (final match in _matches) {
-      if (match.matchedTrack == null) continue;
+    // La page "Titres likes" trie par date d'ajout (plus recent d'abord). On
+    // pose ici une date synthetique strictement decroissante, une par ligne
+    // du CSV (ligne 0 = la plus recente), plutot que de se fier a la colonne
+    // "date d'ajout" du fichier : elle est souvent absente, ou n'a qu'une
+    // precision a la journee -- ce qui cree des ex-aequo et melange l'ordre
+    // affiche. Ca garantit que l'ordre de la liste correspond exactement a
+    // l'ordre du fichier importe, y compris pour les titres manquants
+    // (intercales via la meme date, voir AppState.likedTracksWithMissing).
+    final importBase = DateTime.now();
+
+    for (var i = 0; i < _matches.length; i++) {
+      final match = _matches[i];
+      final importDate = importBase.subtract(Duration(milliseconds: i));
+
+      if (match.matchedTrack == null) {
+        missing.add({
+          'title': match.title,
+          'artist': match.artist,
+          'album': match.album,
+          'dateAdded': importDate.toIso8601String(),
+        });
+        continue;
+      }
 
       final trackId = match.matchedTrack!.id;
       if (processedIds.contains(trackId)) {
@@ -858,12 +640,10 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       if (match.matchedTrack!.isLiked) {
         already++;
       } else {
-        if (match.dateAdded != null) {
-          final trackIndex =
-              state.musicService.allTracks.indexWhere((t) => t.id == trackId);
-          if (trackIndex == -1) continue;
-          state.musicService.allTracks[trackIndex].dateAdded = match.dateAdded;
-        }
+        final trackIndex =
+            state.musicService.allTracks.indexWhere((t) => t.id == trackId);
+        if (trackIndex == -1) continue;
+        state.musicService.allTracks[trackIndex].dateAdded = importDate;
         toggleFutures.add(state.toggleLike(trackId));
         liked++;
       }
@@ -872,11 +652,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     await Future.wait(toggleFutures);
     await state.musicService.saveToCache();
 
-    final missing = _matches
-        .where((m) => m.matchedTrack == null)
-        .map((m) => {'title': m.title, 'artist': m.artist, 'album': m.album})
-        .toList();
-    state.setMissingTracks(missing);
+    state.addMissingTracks(missing);
 
     if (mounted) {
       final appState = context.read<AppState>();
