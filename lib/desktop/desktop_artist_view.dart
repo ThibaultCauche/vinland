@@ -8,6 +8,7 @@ import '../models/discovered_track.dart';
 import '../models/recent_play.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
+import '../services/matching_service.dart';
 import '../widgets/cover_image.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'desktop_track_row.dart';
@@ -63,8 +64,19 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   bool _loadingTopTracks = true;
   final _scrollController = SmoothScrollController();
 
+  // Nombre de titres reel par album Deezer (id -> nb_tracks), pour les
+  // albums locaux : l'endpoint liste des albums d'un artiste ne renvoie pas
+  // ce champ (contrairement a /album/{id} ou /search/album), donc on le
+  // recupere a part pour ne pas afficher le nombre de titres deja
+  // telecharges comme s'il s'agissait du total de l'album.
+  final Map<int, int> _trueTrackCounts = {};
+
+  AppState? _appState;
+  bool _wasSyncing = false;
+
   @override
   void dispose() {
+    _appState?.removeListener(_onAppStateChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -72,7 +84,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   @override
   void initState() {
     super.initState();
-    final cached = _deezerCache[_normalize(widget.artistName)];
+    final cached = _deezerCache[MatchingService.normalize(widget.artistName)];
     if (cached != null) {
       _discoveredArtist = cached.artist;
       _discoveredAlbums = cached.albums;
@@ -80,16 +92,63 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
       _loadingDeezer = false;
       _loadingTopTracks = false;
       if (!cached.deepMatched) _deepMatchAlbums();
+      _loadTrueTrackCounts();
     } else {
       _loadDeezerData();
     }
+  }
+
+  /// Complete le nombre de titres des albums locaux qui ont une
+  /// correspondance Deezer, via l'endpoint album unique (leger : pas besoin
+  /// de la tracklist complete, juste nb_tracks). Servi par le cache disque
+  /// de DiscoveryService, donc peu couteux meme rappele a chaque ouverture.
+  Future<void> _loadTrueTrackCounts() async {
+    final targets = _discoveredAlbums
+        .where((a) => a.isInLibrary && !_trueTrackCounts.containsKey(a.id))
+        .toList();
+    if (targets.isEmpty) return;
+
+    const batchSize = 5;
+    for (var i = 0; i < targets.length; i += batchSize) {
+      final batch = targets.skip(i).take(batchSize);
+      await Future.wait(batch.map((a) async {
+        final full = await _discovery.getAlbum(a.id);
+        if (full?.nbTracks != null) _trueTrackCounts[a.id] = full!.nbTracks!;
+      }));
+      if (mounted) setState(() {});
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final appState = context.read<AppState>();
+    if (!identical(appState, _appState)) {
+      _appState?.removeListener(_onAppStateChanged);
+      _appState = appState;
+      _wasSyncing = appState.isSyncing;
+      appState.addListener(_onAppStateChanged);
+    }
+  }
+
+  /// Si cette page a ete ouverte pendant que la bibliotheque NAS finissait
+  /// encore de charger, le statut "possede" calcule alors (isInLibrary) est
+  /// fige dans le cache de session et reste faux pour le reste de la
+  /// session -- on relance le calcul (recherche Deezer re-servie par son
+  /// propre cache disque, donc peu couteux) une fois la synchro terminee.
+  void _onAppStateChanged() {
+    final syncing = _appState?.isSyncing ?? false;
+    if (_wasSyncing && !syncing && mounted) {
+      _loadDeezerData();
+    }
+    _wasSyncing = syncing;
   }
 
   Future<void> _loadDeezerData() async {
     final artists = await _discovery.searchArtists(widget.artistName, limit: 5);
     DiscoveredArtist? match;
     for (final a in artists) {
-      if (_normalize(a.name) == _normalize(widget.artistName)) {
+      if (MatchingService.artistsMatch(a.name, widget.artistName)) {
         match = a;
         break;
       }
@@ -110,12 +169,13 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
         _loadingTopTracks = false;
       });
     }
-    _deezerCache[_normalize(widget.artistName)] = _ArtistCache(
+    _deezerCache[MatchingService.normalize(widget.artistName)] = _ArtistCache(
       artist: _discoveredArtist,
       albums: _discoveredAlbums,
       topTracks: _topTracks,
     );
     _deepMatchAlbums();
+    _loadTrueTrackCounts();
   }
 
   Future<void> _deepMatchAlbums() async {
@@ -124,11 +184,9 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
 
     final localAlbumSignatures = <String, Set<String>>{};
     for (final t in allLocalTracks) {
-      if (!_artistContains(t.artist, widget.artistName)) continue;
-      final albumKey = _normalize(t.album);
-      localAlbumSignatures
-          .putIfAbsent(albumKey, () => {})
-          .add(_normalize(t.title));
+      if (!MatchingService.artistsMatch(t.artist, widget.artistName)) continue;
+      final albumKey = MatchingService.normalize(t.album);
+      localAlbumSignatures.putIfAbsent(albumKey, () => {}).add(t.title);
     }
 
     final unmatched = _discoveredAlbums.where((a) => !a.isInLibrary).toList();
@@ -149,11 +207,8 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
 
             int matches = 0;
             for (final dt in deezerTracks) {
-              final dtTitle = _normalize(dt.title);
-              if (localTitles.any((lt) =>
-                  lt == dtTitle ||
-                  lt.contains(dtTitle) ||
-                  dtTitle.contains(lt))) {
+              if (localTitles
+                  .any((lt) => MatchingService.titlesMatch(lt, dt.title))) {
                 matches++;
               }
             }
@@ -175,7 +230,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
     }
 
     if (mounted) {
-      final key = _normalize(widget.artistName);
+      final key = MatchingService.normalize(widget.artistName);
       if (_deezerCache.containsKey(key)) {
         _deezerCache[key] = _ArtistCache(
           artist: _discoveredArtist,
@@ -188,31 +243,11 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
     }
   }
 
-  bool _artistContains(String? artistField, String search) {
-    if (artistField == null) return false;
-    final s = search.toLowerCase();
-    final f = artistField.toLowerCase();
-    if (f == s) return true;
-    if (f.contains(s)) return true;
-    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
-  }
-
   Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
-    final dtTitle = _normalize(dt.title);
     for (final t in candidates) {
-      final ltTitle = _normalize(t.title);
-      if (ltTitle == dtTitle) return t;
-      if (ltTitle.contains(dtTitle) || dtTitle.contains(ltTitle)) return t;
+      if (MatchingService.titlesMatch(t.title, dt.title)) return t;
     }
     return null;
-  }
-
-  String _normalize(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
   }
 
   DateTime? _parseReleaseDate(String? raw) {
@@ -238,15 +273,8 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   Widget build(BuildContext context) {
     return Selector<AppState, (List<Track>, List<Album>)>(
       selector: (_, state) {
-        bool artistMatch(String? artistField) {
-          if (artistField == null) return false;
-          final search = widget.artistName.toLowerCase();
-          final field = artistField.toLowerCase();
-          if (field == search) return true;
-          if (field.contains(search)) return true;
-          final parts = field.split(RegExp(r'[/&,]'));
-          return parts.any((p) => p.trim() == search);
-        }
+        bool artistMatch(String? artistField) =>
+            MatchingService.artistFieldContains(artistField, widget.artistName);
 
         final allTracks = state.allTracks;
         final tracks = allTracks.where((t) => artistMatch(t.artist)).toList();
@@ -274,10 +302,24 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
         final discoveredOnly =
             _discoveredAlbums.where((d) => !d.isInLibrary).toList();
 
+        // Album Deezer par titre normalise (pour retrouver, pour un album
+        // local partiellement possede, son nombre de titres reel).
+        final deezerByTitle = {
+          for (final d in _discoveredAlbums)
+            MatchingService.normalize(d.title): d
+        };
+
         final sortedAlbumEntries = <_ArtistAlbumEntry>[
           for (final a in localAlbums)
             _ArtistAlbumEntry.local(
-                a, a.year != null ? DateTime(a.year!) : null),
+              a,
+              a.year != null ? DateTime(a.year!) : null,
+              knownTotalTrackCount: () {
+                final match = deezerByTitle[MatchingService.normalize(a.title)];
+                if (match == null) return null;
+                return _trueTrackCounts[match.id] ?? match.nbTracks;
+              }(),
+            ),
           for (final a in discoveredOnly)
             _ArtistAlbumEntry.discovered(a, _parseReleaseDate(a.releaseDate)),
         ]..sort((a, b) {
@@ -389,6 +431,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                                 return _LocalAlbumCard(
                                   album: entry.local!,
                                   artistName: widget.artistName,
+                                  totalTrackCount: entry.knownTotalTrackCount,
                                   onTap: () => widget.onOpenAlbum(entry.local!,
                                       filterArtist: widget.artistName),
                                 );
@@ -431,6 +474,8 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                                   ? _LocalAlbumCard(
                                       album: entry.local!,
                                       artistName: widget.artistName,
+                                      totalTrackCount:
+                                          entry.knownTotalTrackCount,
                                       compact: true,
                                       onTap: () => widget.onOpenAlbum(
                                           entry.local!,
@@ -496,17 +541,25 @@ class _ArtistAlbumEntry {
   final Album? local;
   final DiscoveredAlbum? discovered;
   final DateTime? sortDate;
+  // Nombre de titres reel de l'album (cote Deezer) quand connu, pour un
+  // album local qui n'est possede que partiellement -- sans ca la vignette
+  // affichait le nombre de titres deja telecharges comme s'il s'agissait du
+  // total de l'album.
+  final int? knownTotalTrackCount;
 
-  _ArtistAlbumEntry.local(Album album, this.sortDate)
+  _ArtistAlbumEntry.local(Album album, this.sortDate,
+      {this.knownTotalTrackCount})
       : local = album,
         discovered = null;
 
   _ArtistAlbumEntry.discovered(DiscoveredAlbum album, this.sortDate)
       : local = null,
-        discovered = album;
+        discovered = album,
+        knownTotalTrackCount = null;
 
-  int get trackCount =>
-      local != null ? local!.trackIds.length : (discovered!.nbTracks ?? 2);
+  int get trackCount => local != null
+      ? (knownTotalTrackCount ?? local!.trackIds.length)
+      : (discovered!.nbTracks ?? 2);
 }
 
 class _PopularTrack {
@@ -761,17 +814,23 @@ class _LocalAlbumCard extends StatelessWidget {
   final String artistName;
   final bool compact;
   final VoidCallback onTap;
+  // Nombre de titres reel de l'album cote Deezer, quand connu -- affiche a
+  // la place du nombre de titres deja telecharges pour un album seulement
+  // partiellement possede (sinon la vignette laisse croire que l'album
+  // entier ne fait que N titres).
+  final int? totalTrackCount;
 
   const _LocalAlbumCard({
     required this.album,
     required this.artistName,
     required this.onTap,
     this.compact = false,
+    this.totalTrackCount,
   });
 
   @override
   Widget build(BuildContext context) {
-    final trackCount = album.trackIds.length;
+    final trackCount = totalTrackCount ?? album.trackIds.length;
 
     final cover = compact
         ? SizedBox(

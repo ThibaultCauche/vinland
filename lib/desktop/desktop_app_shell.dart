@@ -4,6 +4,7 @@ import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/playlist.dart';
+import 'desktop_album_view.dart';
 import 'desktop_artist_view.dart';
 import 'desktop_background.dart';
 import 'desktop_discovered_album_view.dart';
@@ -41,33 +42,11 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
 
   void _clearStack() => setState(() => _stack.clear());
 
-  bool _artistFieldMatches(String? artistField, String search) {
-    if (artistField == null) return false;
-    final s = search.toLowerCase();
-    final f = artistField.toLowerCase();
-    if (f == s) return true;
-    if (f.contains(s)) return true;
-    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
-  }
-
   void _openAlbum(Album album, {String? filterArtist}) {
-    final state = context.read<AppState>();
-    var tracks =
-        state.allTracks.where((t) => album.trackIds.contains(t.id)).toList();
-    if (filterArtist != null) {
-      tracks = tracks
-          .where((t) =>
-              _artistFieldMatches(t.artist, filterArtist) ||
-              _artistFieldMatches(t.albumArtist, filterArtist))
-          .toList();
-    }
-    _push((onBack) => DesktopCollectionView(
-          title: album.title,
-          subtitle: album.artist,
-          coverPath: album.coverPath,
-          tracks: tracks,
-          isLiked: album.isSaved,
-          onToggleLike: () => state.toggleLikeAlbum(album.id),
+    _push((onBack) => DesktopAlbumView(
+          key: ValueKey('album-${album.id}-${filterArtist ?? ''}'),
+          album: album,
+          filterArtist: filterArtist,
           onBack: onBack,
           onOpenArtist: _openArtist,
         ));
@@ -76,6 +55,8 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
   void _openDiscoveredAlbum(
       {DiscoveredAlbum? album, int? albumId, String? filterArtist}) {
     _push((onBack) => DesktopDiscoveredAlbumView(
+          key: ValueKey(
+              'discovered-album-${album?.id ?? albumId}-${filterArtist ?? ''}'),
           album: album,
           albumId: albumId,
           filterArtist: filterArtist,
@@ -89,6 +70,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
     final tracks =
         state.allTracks.where((t) => playlist.trackIds.contains(t.id)).toList();
     _push((onBack) => DesktopCollectionView(
+          key: ValueKey('playlist-${playlist.id}'),
           title: playlist.name,
           subtitle: '${playlist.trackIds.length} titre(s)',
           coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
@@ -101,8 +83,9 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
 
   void _openLikedSongs() {
     final state = context.read<AppState>();
-    final tracks = state.likedTracks;
+    final tracks = state.likedTracksWithMissing;
     _push((onBack) => DesktopCollectionView(
+          key: const ValueKey('liked-songs'),
           title: 'Titres likes',
           subtitle: 'Vos titres favoris',
           coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
@@ -115,6 +98,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
 
   void _openArtist(String artistName) {
     _push((onBack) => DesktopArtistView(
+          key: ValueKey('artist-$artistName'),
           artistName: artistName,
           onBack: onBack,
           onOpenAlbum: _openAlbum,
@@ -131,8 +115,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
     _push((onBack) => DesktopFriendProfileView(friend: friend, onBack: onBack));
   }
 
-  Widget get _content {
-    if (_stack.isNotEmpty) return _stack.last;
+  Widget get _baseContent {
     switch (_tab) {
       case DesktopNavTab.home:
         return DesktopHomeView(
@@ -156,6 +139,21 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
       case DesktopNavTab.friends:
         return DesktopFriendsView(onOpenFriend: _openFriendProfile);
     }
+  }
+
+  /// Empile tous les ecrans traverses (onglet courant + pile de navigation
+  /// locale) dans un IndexedStack plutot que de ne monter que le dernier :
+  /// sans ca, ouvrir un album depuis la page artiste demontait entierement
+  /// cette derniere (perte du ScrollController, retour tout en haut de la
+  /// page une fois l'album referme) puisque Flutter detruit l'Element d'un
+  /// widget qui cesse d'etre renvoye par build(), meme si le meme objet
+  /// Widget reste garde en memoire dans _stack.
+  Widget get _contentStack {
+    if (_stack.isEmpty) return _baseContent;
+    return IndexedStack(
+      index: _stack.length,
+      children: [_baseContent, ..._stack],
+    );
   }
 
   @override
@@ -209,7 +207,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
                       // la TopBar/barre de lecture plutot que derriere.
                       child: Stack(
                         children: [
-                          Positioned.fill(child: _content),
+                          Positioned.fill(child: _contentStack),
                           Positioned(
                             top: DesktopGlass.titleBarHeight + 8,
                             left: 0,

@@ -8,6 +8,7 @@ import '../models/discovered_artist.dart';
 import '../models/discovered_track.dart';
 import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
+import '../services/matching_service.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/cover_image.dart';
 import 'album_screen.dart';
@@ -47,10 +48,16 @@ class _ArtistScreenState extends State<ArtistScreen> {
   int _deepMatchProgress = 0;
   int _deepMatchTotal = 0;
 
+  // Nombre de titres reel par album Deezer (id -> nb_tracks) : l'endpoint
+  // liste des albums d'un artiste ne renvoie pas ce champ (contrairement a
+  // /album/{id} ou /search/album), donc on le recupere a part pour ne pas
+  // afficher le nombre de titres deja telecharges comme total de l'album.
+  final Map<int, int> _trueTrackCounts = {};
+
   @override
   void initState() {
     super.initState();
-    final cached = _deezerCache[_normalize(widget.artistName)];
+    final cached = _deezerCache[MatchingService.normalize(widget.artistName)];
     if (cached != null) {
       _discoveredArtist = cached.artist;
       _discoveredAlbums = cached.albums;
@@ -58,8 +65,26 @@ class _ArtistScreenState extends State<ArtistScreen> {
       _loadingDeezer = false;
       _loadingTopTracks = false;
       if (!cached.deepMatched) _deepMatchAlbums();
+      _loadTrueTrackCounts();
     } else {
       _loadDeezerData();
+    }
+  }
+
+  Future<void> _loadTrueTrackCounts() async {
+    final targets = _discoveredAlbums
+        .where((a) => a.isInLibrary && !_trueTrackCounts.containsKey(a.id))
+        .toList();
+    if (targets.isEmpty) return;
+
+    const batchSize = 5;
+    for (var i = 0; i < targets.length; i += batchSize) {
+      final batch = targets.skip(i).take(batchSize);
+      await Future.wait(batch.map((a) async {
+        final full = await _discovery.getAlbum(a.id);
+        if (full?.nbTracks != null) _trueTrackCounts[a.id] = full!.nbTracks!;
+      }));
+      if (mounted) setState(() {});
     }
   }
 
@@ -67,7 +92,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     final artists = await _discovery.searchArtists(widget.artistName, limit: 5);
     DiscoveredArtist? match;
     for (final a in artists) {
-      if (_normalize(a.name) == _normalize(widget.artistName)) {
+      if (MatchingService.artistsMatch(a.name, widget.artistName)) {
         match = a;
         break;
       }
@@ -87,12 +112,13 @@ class _ArtistScreenState extends State<ArtistScreen> {
         _loadingDeezer = false;
         _loadingTopTracks = false; // ← ici, APRÈS le Future.wait
       });
-    _deezerCache[_normalize(widget.artistName)] = _ArtistCache(
+    _deezerCache[MatchingService.normalize(widget.artistName)] = _ArtistCache(
       artist: _discoveredArtist,
       albums: _discoveredAlbums,
       topTracks: _topTracks,
     );
     _deepMatchAlbums();
+    _loadTrueTrackCounts();
   }
 
   Future<void> _deepMatchAlbums() async {
@@ -101,11 +127,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
     final localAlbumSignatures = <String, Set<String>>{};
     for (final t in allLocalTracks) {
-      if (!_artistContains(t.artist, widget.artistName)) continue;
-      final albumKey = _normalize(t.album);
-      localAlbumSignatures
-          .putIfAbsent(albumKey, () => {})
-          .add(_normalize(t.title));
+      if (!MatchingService.artistsMatch(t.artist, widget.artistName)) continue;
+      final albumKey = MatchingService.normalize(t.album);
+      localAlbumSignatures.putIfAbsent(albumKey, () => {}).add(t.title);
     }
 
     final unmatched = _discoveredAlbums.where((a) => !a.isInLibrary).toList();
@@ -138,11 +162,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
 
             int matches = 0;
             for (final dt in deezerTracks) {
-              final dtTitle = _normalize(dt.title);
-              if (localTitles.any((lt) =>
-                  lt == dtTitle ||
-                  lt.contains(dtTitle) ||
-                  dtTitle.contains(lt))) {
+              if (localTitles
+                  .any((lt) => MatchingService.titlesMatch(lt, dt.title))) {
                 matches++;
               }
             }
@@ -168,7 +189,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
     if (mounted) {
       setState(() {
         _deepMatching = false;
-        final key = _normalize(widget.artistName);
+        final key = MatchingService.normalize(widget.artistName);
         if (_deezerCache.containsKey(key)) {
           _deezerCache[key] = _ArtistCache(
             artist: _discoveredArtist,
@@ -181,33 +202,12 @@ class _ArtistScreenState extends State<ArtistScreen> {
     }
   }
 
-  /// Verifie si l'artiste recherche est present dans le champ artiste (principal ou featuring)
-  bool _artistContains(String? artistField, String search) {
-    if (artistField == null) return false;
-    final s = search.toLowerCase();
-    final f = artistField.toLowerCase();
-    if (f == s) return true;
-    if (f.contains(s)) return true;
-    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
-  }
-
   /// Trouve la track locale correspondant a une track Deezer
   Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
-    final dtTitle = _normalize(dt.title);
     for (final t in candidates) {
-      final ltTitle = _normalize(t.title);
-      if (ltTitle == dtTitle) return t;
-      if (ltTitle.contains(dtTitle) || dtTitle.contains(ltTitle)) return t;
+      if (MatchingService.titlesMatch(t.title, dt.title)) return t;
     }
     return null;
-  }
-
-  String _normalize(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
   }
 
   /// Parse une date Deezer ("YYYY-MM-DD" ou juste "YYYY") en DateTime.
@@ -234,15 +234,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
   Widget build(BuildContext context) {
     return Selector<AppState, (List<Track>, List<Album>)>(
       selector: (_, state) {
-        bool artistMatch(String? artistField) {
-          if (artistField == null) return false;
-          final search = widget.artistName.toLowerCase();
-          final field = artistField.toLowerCase();
-          if (field == search) return true;
-          if (field.contains(search)) return true;
-          final parts = field.split(RegExp(r'[/&,]'));
-          return parts.any((p) => p.trim() == search);
-        }
+        bool artistMatch(String? artistField) =>
+            MatchingService.artistFieldContains(artistField, widget.artistName);
 
         final allTracks = state.allTracks;
         final tracks = allTracks.where((t) => artistMatch(t.artist)).toList();
@@ -277,12 +270,26 @@ class _ArtistScreenState extends State<ArtistScreen> {
         final discoveredOnly =
             _discoveredAlbums.where((d) => !d.isInLibrary).toList();
 
+        // Album Deezer par titre normalise (pour retrouver, pour un album
+        // local partiellement possede, son nombre de titres reel).
+        final deezerByTitle = {
+          for (final d in _discoveredAlbums)
+            MatchingService.normalize(d.title): d
+        };
+
         // Albums locaux + Deezer tries par date de sortie decroissante
         // (les albums sans date connue sont relegues a la fin).
         final sortedAlbumEntries = <_ArtistAlbumEntry>[
           for (final a in localAlbums)
             _ArtistAlbumEntry.local(
-                a, a.year != null ? DateTime(a.year!) : null),
+              a,
+              a.year != null ? DateTime(a.year!) : null,
+              knownTotalTrackCount: () {
+                final match = deezerByTitle[MatchingService.normalize(a.title)];
+                if (match == null) return null;
+                return _trueTrackCounts[match.id] ?? match.nbTracks;
+              }(),
+            ),
           for (final a in discoveredOnly)
             _ArtistAlbumEntry.discovered(a, _parseReleaseDate(a.releaseDate)),
         ]..sort((a, b) {
@@ -469,6 +476,23 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (_deepMatching) ...[
+                          const SizedBox(width: 12),
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white38,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Vérification $_deepMatchProgress/$_deepMatchTotal',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -491,6 +515,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             album: entry.local!,
                             state: state,
                             artistName: widget.artistName,
+                            totalTrackCount: entry.knownTotalTrackCount,
                           );
                         } else {
                           return _DiscoveredAlbumCard(
@@ -547,6 +572,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                                   album: entry.local!,
                                   state: state,
                                   artistName: widget.artistName,
+                                  totalTrackCount: entry.knownTotalTrackCount,
                                   compact: true,
                                 )
                               : _DiscoveredAlbumCard(
@@ -615,20 +641,28 @@ class _ArtistAlbumEntry {
   final Album? local;
   final DiscoveredAlbum? discovered;
   final DateTime? sortDate;
+  // Nombre de titres reel de l'album (cote Deezer) quand connu, pour un
+  // album local qui n'est possede que partiellement -- sans ca la vignette
+  // affichait le nombre de titres deja telecharges comme s'il s'agissait du
+  // total de l'album.
+  final int? knownTotalTrackCount;
 
-  _ArtistAlbumEntry.local(Album album, this.sortDate)
+  _ArtistAlbumEntry.local(Album album, this.sortDate,
+      {this.knownTotalTrackCount})
       : local = album,
         discovered = null;
 
   _ArtistAlbumEntry.discovered(DiscoveredAlbum album, this.sortDate)
       : local = null,
-        discovered = album;
+        discovered = album,
+        knownTotalTrackCount = null;
 
   /// Nombre de titres. Pour un album Deezer sans compte connu, on suppose
   /// que ce n'est pas un single (evite de le releguer a tort dans la rangee
   /// "Singles" faute d'info).
-  int get trackCount =>
-      local != null ? local!.trackIds.length : (discovered!.nbTracks ?? 2);
+  int get trackCount => local != null
+      ? (knownTotalTrackCount ?? local!.trackIds.length)
+      : (discovered!.nbTracks ?? 2);
 }
 
 /// Pair : track Deezer + track locale correspondante (ou null)
@@ -729,18 +763,23 @@ class _LocalAlbumCard extends StatelessWidget {
   final AppState state;
   final String artistName;
   final bool compact;
+  // Nombre de titres reel de l'album cote Deezer, quand connu -- affiche a
+  // la place du nombre de titres deja telecharges pour un album seulement
+  // partiellement possede.
+  final int? totalTrackCount;
 
   const _LocalAlbumCard({
     required this.album,
     required this.state,
     required this.artistName,
     this.compact = false,
+    this.totalTrackCount,
   });
 
   @override
   Widget build(BuildContext context) {
-    final albumTracks =
-        state.allTracks.where((t) => t.album == album.title).toList();
+    final trackCount = totalTrackCount ??
+        state.allTracks.where((t) => t.album == album.title).length;
 
     final cover = compact
         ? SizedBox(
@@ -770,7 +809,7 @@ class _LocalAlbumCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            compact ? 'Single' : '${albumTracks.length} titres',
+            compact ? 'Single' : '$trackCount titres',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],

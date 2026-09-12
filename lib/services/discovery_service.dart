@@ -1,9 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models/discovered_artist.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_track.dart';
 import '../models/track.dart';
+import 'matching_service.dart';
 import 'music_service.dart';
 
 class DiscoveryService {
@@ -13,6 +19,55 @@ class DiscoveryService {
 
   final String _baseUrl = 'https://api.deezer.com';
   final MusicService _music = MusicService();
+
+  // ── CACHE DISQUE ──
+  // Les metadonnees Deezer (recherche album/artiste, tracklists) changent
+  // rarement -- sans ce cache, chaque ouverture d'un ecran album/artiste
+  // refaisait les memes appels reseau a chaque fois, ce qui rendait ces
+  // pages lentes a s'afficher meme en revisitant un contenu deja vu.
+  static const Duration _cacheTtl = Duration(days: 7);
+  final Map<String, Map<String, dynamic>> _memoryCache = {};
+  Directory? _cacheDir;
+
+  Future<Directory> _getCacheDir() async {
+    final existing = _cacheDir;
+    if (existing != null) return existing;
+    final appDir = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(appDir.path, 'deezer_cache'));
+    await dir.create(recursive: true);
+    _cacheDir = dir;
+    return dir;
+  }
+
+  String _cacheKey(String endpoint, Map<String, String> params) {
+    final sortedEntries = params.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final raw =
+        '$endpoint?${sortedEntries.map((e) => '${e.key}=${e.value}').join('&')}';
+    return md5.convert(utf8.encode(raw)).toString();
+  }
+
+  Future<Map<String, dynamic>?> _readDiskCache(String key) async {
+    try {
+      final dir = await _getCacheDir();
+      final file = File(p.join(dir.path, '$key.json'));
+      if (!await file.exists()) return null;
+      final stat = await file.stat();
+      if (DateTime.now().difference(stat.modified) > _cacheTtl) return null;
+      final content = jsonDecode(await file.readAsString());
+      return content is Map<String, dynamic> ? content : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _writeDiskCache(String key, Map<String, dynamic> data) async {
+    try {
+      final dir = await _getCacheDir();
+      final file = File(p.join(dir.path, '$key.json'));
+      await file.writeAsString(jsonEncode(data));
+    } catch (_) {}
+  }
 
   Future<List<DiscoveredArtist>> searchArtists(String query,
       {int limit = 10}) async {
@@ -86,33 +141,32 @@ class DiscoveryService {
     final localTracks = _music.allTracks;
     final localAlbums = _music.albums;
 
-    // Index : artiste normalisé → liste de tracks locales
+    // Index : artiste "coeur" → liste de tracks locales (evite un scan
+    // complet de la bibliotheque pour le fallback de chaque album Deezer).
     final tracksByArtist = <String, List<Track>>{};
     for (final t in localTracks) {
-      final artist = _normalize(t.artist);
+      final artist = MatchingService.coreArtist(t.artist);
       tracksByArtist.putIfAbsent(artist, () => []).add(t);
     }
 
     for (final album in albums) {
-      final normalizedArtist = _normalize(album.artistName);
-      final normalizedTitle = _normalize(album.title);
+      final coreArtist = MatchingService.coreArtist(album.artistName);
 
       // 1. Match par nom d'album local
       album.isInLibrary = localAlbums.any((a) {
-        return _artistsMatch(_normalize(a.artist), normalizedArtist) &&
-            _albumsMatch(_normalize(a.title), normalizedTitle);
+        return MatchingService.artistsMatch(a.artist, album.artistName) &&
+            MatchingService.albumsMatch(a.title, album.title);
       });
 
       // 2. Fallback : match par tracks locales (même nom d'album approximatif)
       if (!album.isInLibrary) {
-        final artistTracks = tracksByArtist[normalizedArtist] ?? [];
-        // Regroupe les tracks locales par nom d'album
+        final artistTracks = tracksByArtist[coreArtist] ?? [];
         final localAlbumNames = <String>{};
         for (final t in artistTracks) {
-          localAlbumNames.add(_normalize(t.album));
+          localAlbumNames.add(t.album);
         }
         album.isInLibrary = localAlbumNames.any((name) {
-          return _albumsMatch(name, normalizedTitle);
+          return MatchingService.albumsMatch(name, album.title);
         });
       }
     }
@@ -122,10 +176,6 @@ class DiscoveryService {
     final localTracks = _music.allTracks;
 
     for (final track in tracks) {
-      final normalizedArtist = _normalize(track.artistName);
-      final normalizedTitle = _normalize(track.title);
-      final normalizedAlbum = _normalize(track.albumName);
-
       // Deezer laisse parfois l'album vide pour un titre (compilation, live,
       // single mal catalogue) -- DiscoveredTrack retombe alors sur "Inconnu",
       // qui ne correspondra jamais au vrai nom d'album tague localement. Dans
@@ -134,10 +184,10 @@ class DiscoveryService {
       // valeur d'album.
       final albumIsPlaceholder = track.albumName == 'Inconnu';
       track.isInLibrary = localTracks.any((t) {
-        return _artistsMatch(_normalize(t.artist), normalizedArtist) &&
+        return MatchingService.artistsMatch(t.artist, track.artistName) &&
             (albumIsPlaceholder ||
-                _albumsMatch(_normalize(t.album), normalizedAlbum)) &&
-            _titlesMatch(_normalize(t.title), normalizedTitle);
+                MatchingService.albumsMatch(t.album, track.albumName)) &&
+            MatchingService.titlesMatch(t.title, track.title);
       });
     }
   }
@@ -152,14 +202,12 @@ class DiscoveryService {
     if (deezerTracks.isEmpty) return false;
 
     final localTracks = _music.allTracks.where((t) {
-      return _artistsMatch(_normalize(t.artist), _normalize(album.artistName));
+      return MatchingService.artistsMatch(t.artist, album.artistName);
     }).toList();
 
     int matches = 0;
     for (final dt in deezerTracks) {
-      final dtTitle = _normalize(dt.title);
-      if (localTracks
-          .any((lt) => _titlesMatch(_normalize(lt.title), dtTitle))) {
+      if (localTracks.any((lt) => MatchingService.titlesMatch(lt.title, dt.title))) {
         matches++;
       }
     }
@@ -167,118 +215,28 @@ class DiscoveryService {
     return matches / deezerTracks.length >= minMatchRatio;
   }
 
-  // ── MATCHING LOGIC ──
-
-  bool _artistsMatch(String a, String b) {
-    if (a == b) return true;
-    if (a.isEmpty || b.isEmpty) return false;
-    if (a.contains(b) || b.contains(a)) return true;
-
-    final partsA = a
-        .split(RegExp(r'[/&,]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    final partsB = b
-        .split(RegExp(r'[/&,]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-
-    for (final pa in partsA) {
-      for (final pb in partsB) {
-        if (pa == pb || pa.contains(pb) || pb.contains(pa)) return true;
-      }
-    }
-    return false;
-  }
-
-  bool _albumsMatch(String a, String b) {
-    if (a == b) return true;
-    if (a.isEmpty || b.isEmpty) return false;
-    if (a.contains(b) || b.contains(a)) return true;
-
-    final coreA = _extractCoreTitle(a);
-    final coreB = _extractCoreTitle(b);
-
-    if (coreA == coreB) return true;
-    if (coreA.isEmpty || coreB.isEmpty) return false;
-    if (coreA.contains(coreB) || coreB.contains(coreA)) return true;
-
-    return _similarity(a, b) > 0.50;
-  }
-
-  bool _titlesMatch(String a, String b) {
-    if (a == b) return true;
-    // Pas de raccourci par contains() ici (contrairement a _artistsMatch) :
-    // "Around the World" est un prefixe litteral de "Around the World Radio
-    // Edit"/"Around the World Motorbass Vice Mix" une fois normalise (les
-    // parentheses sont supprimees par _normalize), alors que ce sont des
-    // enregistrements differents -- un contains() les aurait tous fait
-    // passer pour possedes des qu'un seul etait telecharge. La similarite
-    // Levenshtein est sensible a la longueur : un titre nettement plus long
-    // a cause d'un suffixe de version tombe naturellement sous le seuil.
-    return _similarity(a, b) > 0.70;
-  }
-
-  String _extractCoreTitle(String title) {
-    var core = title.toLowerCase();
-    core = core.replaceAll(
-        RegExp(
-            r'^(vol\.?|volume|season|part|act|episode|ep)\s*\d*\s*[:\-–—]\s*'),
-        '');
-    core = core.replaceAll(RegExp(r'\(.*?\)'), '');
-    core = core.replaceAll(
-        RegExp(
-            r'\b(original|soundtrack|score|music|from|the|series|animated|of|ost|motion|picture)\b'),
-        '');
-    return _normalize(core);
-  }
-
-  String _normalize(String text) {
-    return text
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  double _similarity(String a, String b) {
-    if (a.isEmpty || b.isEmpty) return 0;
-    if (a == b) return 1.0;
-    final dist = _levenshtein(a, b);
-    final maxLen = a.length > b.length ? a.length : b.length;
-    return 1.0 - (dist / maxLen);
-  }
-
-  int _levenshtein(String a, String b) {
-    final matrix = List.generate(
-      a.length + 1,
-      (i) => List.filled(b.length + 1, 0),
-    );
-    for (var i = 0; i <= a.length; i++) matrix[i][0] = i;
-    for (var j = 0; j <= b.length; j++) matrix[0][j] = j;
-    for (var i = 1; i <= a.length; i++) {
-      for (var j = 1; j <= b.length; j++) {
-        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
-        matrix[i][j] = [
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        ].reduce((x, y) => x < y ? x : y);
-      }
-    }
-    return matrix[a.length][b.length];
-  }
-
   Future<Map<String, dynamic>> _get(
       String endpoint, Map<String, String> params) async {
+    final key = _cacheKey(endpoint, params);
+
+    final memoryHit = _memoryCache[key];
+    if (memoryHit != null) return memoryHit;
+
+    final diskHit = await _readDiskCache(key);
+    if (diskHit != null) {
+      _memoryCache[key] = diskHit;
+      return diskHit;
+    }
+
     final uri =
         Uri.parse('$_baseUrl$endpoint').replace(queryParameters: params);
     try {
       final response = await http.get(uri).timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        _memoryCache[key] = data;
+        unawaited(_writeDiskCache(key, data));
+        return data;
       }
     } catch (e) {
       print('DiscoveryService error: $e');
