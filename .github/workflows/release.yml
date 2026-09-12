@@ -28,6 +28,46 @@ jobs:
           channel: stable
           cache: true
 
+      # metadata_god extrait un tar.gz contenant un symlink pendant la
+      # config CMake ; sans le mode developpeur Windows, l'extraction echoue
+      # ("Cannot extract through symlink") faute de droit de creer des
+      # symlinks.
+      - name: Enable Windows Developer Mode
+        shell: pwsh
+        run: |
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+
+      # lib/config/*.dart sont gitignores (secrets/URLs internes au NAS) et
+      # n'existent donc pas dans le checkout CI : on les regenere ici a
+      # partir des secrets du repo, avec exactement la forme attendue par le
+      # code (voir les memes fichiers en local pour la doc de chaque const).
+      - name: Write local config files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path lib/config | Out-Null
+          Set-Content -NoNewline -Encoding utf8 -Path lib/config/credentials.dart -Value @"
+          const String kNavidromeUrl = '';
+          const String kNavidromeUser = '';
+          const String kNavidromePass = '';
+          "@
+          Set-Content -NoNewline -Encoding utf8 -Path lib/config/discord_config.dart -Value @"
+          const String kDiscordFeedbackWebhookUrl = '$env:DISCORD_FEEDBACK_WEBHOOK_URL';
+          "@
+          Set-Content -NoNewline -Encoding utf8 -Path lib/config/avatar_config.dart -Value @"
+          const String kAvatarServiceBaseUrl = '$env:AVATAR_SERVICE_BASE_URL';
+          const String kAvatarServiceApiKey = '$env:AVATAR_SERVICE_API_KEY';
+          "@
+          Set-Content -NoNewline -Encoding utf8 -Path lib/config/download_worker_config.dart -Value @"
+          const String kDownloadWorkerServiceBaseUrl = '$env:DOWNLOAD_WORKER_BASE_URL';
+          const String kDownloadWorkerServiceApiKey = '$env:DOWNLOAD_WORKER_API_KEY';
+          "@
+        env:
+          DISCORD_FEEDBACK_WEBHOOK_URL: ${{ secrets.DISCORD_FEEDBACK_WEBHOOK_URL }}
+          AVATAR_SERVICE_BASE_URL: ${{ secrets.AVATAR_SERVICE_BASE_URL }}
+          AVATAR_SERVICE_API_KEY: ${{ secrets.AVATAR_SERVICE_API_KEY }}
+          DOWNLOAD_WORKER_BASE_URL: ${{ secrets.DOWNLOAD_WORKER_BASE_URL }}
+          DOWNLOAD_WORKER_API_KEY: ${{ secrets.DOWNLOAD_WORKER_API_KEY }}
+
       - run: flutter pub get
 
       - run: flutter build windows --release
@@ -64,13 +104,47 @@ jobs:
 
       - name: Decode release keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/vinland-release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/vinland-release.jks"
           cat > android/key.properties <<EOF
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
           storeFile=$RUNNER_TEMP/vinland-release.jks
           EOF
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+
+      # lib/config/*.dart sont gitignores (secrets/URLs internes au NAS) et
+      # n'existent donc pas dans le checkout CI : on les regenere ici a
+      # partir des secrets du repo, avec exactement la forme attendue par le
+      # code (voir les memes fichiers en local pour la doc de chaque const).
+      - name: Write local config files
+        run: |
+          mkdir -p lib/config
+          cat > lib/config/credentials.dart <<'EOF'
+          const String kNavidromeUrl = '';
+          const String kNavidromeUser = '';
+          const String kNavidromePass = '';
+          EOF
+          cat > lib/config/discord_config.dart <<EOF
+          const String kDiscordFeedbackWebhookUrl = '$DISCORD_FEEDBACK_WEBHOOK_URL';
+          EOF
+          cat > lib/config/avatar_config.dart <<EOF
+          const String kAvatarServiceBaseUrl = '$AVATAR_SERVICE_BASE_URL';
+          const String kAvatarServiceApiKey = '$AVATAR_SERVICE_API_KEY';
+          EOF
+          cat > lib/config/download_worker_config.dart <<EOF
+          const String kDownloadWorkerServiceBaseUrl = '$DOWNLOAD_WORKER_BASE_URL';
+          const String kDownloadWorkerServiceApiKey = '$DOWNLOAD_WORKER_API_KEY';
+          EOF
+        env:
+          DISCORD_FEEDBACK_WEBHOOK_URL: ${{ secrets.DISCORD_FEEDBACK_WEBHOOK_URL }}
+          AVATAR_SERVICE_BASE_URL: ${{ secrets.AVATAR_SERVICE_BASE_URL }}
+          AVATAR_SERVICE_API_KEY: ${{ secrets.AVATAR_SERVICE_API_KEY }}
+          DOWNLOAD_WORKER_BASE_URL: ${{ secrets.DOWNLOAD_WORKER_BASE_URL }}
+          DOWNLOAD_WORKER_API_KEY: ${{ secrets.DOWNLOAD_WORKER_API_KEY }}
 
       - run: flutter pub get
 
