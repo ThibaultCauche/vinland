@@ -1,0 +1,106 @@
+name: Release
+
+# Se declenche a chaque tag pousse au format vX.Y.Z (ex: git tag v1.1.0 &&
+# git push --tags). Build Windows + Android, puis publie une Release GitHub
+# avec les deux fichiers attaches. C'est ce que UpdateCheckService (dans
+# l'app) interroge pour proposer la mise a jour : il cherche un asset dont le
+# nom contient "windows" et finit par ".zip" pour l'auto-update Windows.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.2'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build windows --release
+
+      # Zippe le CONTENU du dossier Release (pas le dossier lui-meme) : le
+      # script d'auto-update (self_updater_service.dart) fait un
+      # Expand-Archive direct dans le dossier d'install existant, un zip avec
+      # un sous-dossier imbrique casserait le remplacement des fichiers.
+      - name: Zip Windows build
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "vinland-windows-$tag.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: vinland-windows-*.zip
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Decode release keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/vinland-release.jks"
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=$RUNNER_TEMP/vinland-release.jks
+          EOF
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - name: Rename APK
+        run: |
+          tag="${{ github.ref_name }}"
+          cp build/app/outputs/flutter-apk/app-release.apk "vinland-android-$tag.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: vinland-android-*.apk
+
+  publish-release:
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            vinland-windows-*.zip
+            vinland-android-*.apk

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
 import '../models/friend_profile.dart';
+import '../models/collab_playlist.dart';
 import '../services/music_service.dart';
 import '../services/audio_handler.dart';
 import '../screens/artist_screen.dart';
@@ -19,12 +21,28 @@ import '../services/secure_storage.dart';
 import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
+import '../services/jam_service.dart';
+import '../services/avatar_service.dart';
+import '../desktop/desktop_theme.dart';
+import '../theme/mobile_theme.dart';
+import '../theme/solid_color_effect.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppState extends ChangeNotifier {
   final MusicService _music = MusicService();
   final VinlandAudioHandler _audioHandler;
+  final JamService _jam = JamService();
+
+  bool get isJamActive => _jam.isActive;
+  bool get isJamHost => _jam.isHost;
+  String? get jamSessionId => _jam.sessionId;
+  int jamParticipantCount = 0;
+  StreamSubscription? _jamStateSub;
+  StreamSubscription? _jamHostLeftSub;
+  StreamSubscription? _jamCountSub;
+  Timer? _jamHeartbeat;
+  bool _applyingJamState = false;
 
   // Player state
   Track? currentTrack;
@@ -43,6 +61,10 @@ class AppState extends ChangeNotifier {
   bool get isCurrentTrackLiked =>
       currentTrack != null &&
       _music.likedTracks.any((t) => t.id == currentTrack!.id);
+  bool get isCurrentTrackSuperLiked =>
+      currentTrack != null &&
+      _music.likedTracks
+          .any((t) => t.id == currentTrack!.id && t.superLiked);
 
   // Getters
   List<Track> get allTracks => _music.navidromeTracks;
@@ -76,6 +98,64 @@ class AppState extends ChangeNotifier {
   MusicService get musicService => _music;
   bool get isLocalMode => false;
   Color? dominantColor;
+
+  // Etageres "suggestions" de l'accueil (Ecoutes cette semaine, Artistes du
+  // moment, Decouverte, Nouveautes du NAS) : calculees une fois et mises en
+  // cache ici plutot que recalculees a chaque build de HomeScreen/
+  // DesktopHomeView a partir de allTracks/albums -- voir _refreshHomeShelves.
+  List<Track> homeWeeklyTracks = [];
+  List<(String artist, String? coverPath)> homeTopArtists = [];
+  List<Album> homeDiscoveryAlbums = [];
+  List<Album> homeNewOnServerAlbums = [];
+
+  /// Recalcule les etageres "suggestions" de l'accueil. Volontairement PAS
+  /// appele a chaque lot recu pendant une synchro (voir le garde dans
+  /// _notify) : sinon, comme allTracks/albums grossissent en continu le
+  /// temps que la synchro se termine, ces suggestions (notamment le melange
+  /// aleatoire de "Decouverte", cense rester stable sur une journee)
+  /// changeaient sans arret pendant tout le chargement au lieu de rester
+  /// stables, remplacant ce qui etait deja affiche a l'utilisateur.
+  void _refreshHomeShelves() {
+    final tracks = allTracks;
+    final albumsList = albums;
+
+    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
+    final recent = tracks
+        .where((t) =>
+            t.playCount > 0 &&
+            t.lastPlayed != null &&
+            t.lastPlayed!.isAfter(weekAgo))
+        .toList()
+      ..sort((a, b) => b.playCount.compareTo(a.playCount));
+    homeWeeklyTracks = recent.take(10).toList();
+
+    final playsByArtist = <String, int>{};
+    final coverByArtist = <String, String?>{};
+    for (final t in tracks) {
+      if (t.playCount <= 0) continue;
+      playsByArtist.update(t.artist, (v) => v + t.playCount,
+          ifAbsent: () => t.playCount);
+      coverByArtist.putIfAbsent(t.artist, () => t.coverPath);
+    }
+    final artistNames = playsByArtist.keys.toList()
+      ..sort((a, b) => playsByArtist[b]!.compareTo(playsByArtist[a]!));
+    homeTopArtists =
+        artistNames.take(10).map((a) => (a, coverByArtist[a])).toList();
+
+    final tracksById = {for (final t in tracks) t.id: t};
+    final notLiked = albumsList.where((a) {
+      if (a.isSaved) return false;
+      return a.trackIds.every((id) => tracksById[id]?.isLiked != true);
+    }).toList();
+    final today = DateTime.now();
+    final seed = today.year * 10000 + today.month * 100 + today.day;
+    homeDiscoveryAlbums =
+        (List<Album>.of(notLiked)..shuffle(Random(seed))).take(10).toList();
+
+    final withDate = albumsList.where((a) => a.addedToServerAt != null).toList()
+      ..sort((a, b) => b.addedToServerAt!.compareTo(a.addedToServerAt!));
+    homeNewOnServerAlbums = withDate.take(10).toList();
+  }
 
   // Vrai tant que le tout premier chargement (cache local + tentative de
   // connexion Navidrome) n'est pas termine : evite un flash de l'ecran de
@@ -155,6 +235,7 @@ class AppState extends ChangeNotifier {
         isPlaying = playing;
         _notify();
       }
+      _broadcastJamState();
     });
     _audioHandler.player.currentIndexStream.listen((index) {
       if (index != null && index >= 0 && index < queue.length) {
@@ -164,14 +245,19 @@ class AppState extends ChangeNotifier {
           currentTrack = newTrack;
           _updateDominantColor(newTrack.coverPath);
           _music.recordPlay(newTrack.id);
+          _music.updateNowPlaying(newTrack.id,
+              jamSessionId: isJamHost ? jamSessionId : null);
           _notify();
         }
       }
+      _broadcastJamState();
     });
 
     // File terminee (dernier titre fini, pas de boucle) : au lieu de couper
-    // brutalement, on enchaine sur des titres du meme artiste puis, a
-    // defaut, les titres les plus ecoutes de la bibliotheque.
+    // brutalement, on reboucle sur la meme file (playlist/titres likes/album
+    // lances) plutot que de devier vers un autre contenu (cf. le retour des
+    // beta testeurs : la lecture "quittait" leur liste pour jouer des titres
+    // du meme artiste sans prevenir).
     _audioHandler.player.completedStream.listen((_) {
       _continueQueueAutomatically();
     });
@@ -186,38 +272,20 @@ class AppState extends ChangeNotifier {
 
     _autoContinuing = true;
     try {
-      final next = _buildContinuationQueue();
-      if (next.isNotEmpty) {
-        await playTrack(next.first, trackList: next);
-      }
+      await playTrack(queue.first, trackList: queue);
     } finally {
       _autoContinuing = false;
     }
   }
 
-  /// Titres du meme artiste (non deja ecoutes dans la file qui vient de
-  /// finir) en priorite, sinon les titres les plus ecoutes de la
-  /// bibliotheque, pour eviter une coupure brutale de la lecture.
-  List<Track> _buildContinuationQueue() {
-    final playedIds = queue.map((t) => t.id).toSet();
-    final artist = currentTrack?.artist;
-
-    var pool = artist == null
-        ? <Track>[]
-        : _music.allTracks
-            .where((t) => t.artist == artist && !playedIds.contains(t.id))
-            .toList();
-
-    if (pool.isEmpty) {
-      pool = _music.allTracks.where((t) => !playedIds.contains(t.id)).toList();
-    }
-
-    pool.sort((a, b) => b.playCount.compareTo(a.playCount));
-    return pool.take(20).toList();
-  }
-
   /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee
   void _notify() {
+    // Les etageres "suggestions" de l'accueil ne doivent pas se recalculer a
+    // chaque lot recu pendant une synchro (allTracks/albums grossissent
+    // alors en continu) -- voir _refreshHomeShelves. Une fois la synchro
+    // terminee, _isSyncing repasse a false AVANT ce _notify() final, donc le
+    // dernier recalcul avec les donnees completes a bien lieu.
+    if (!_isSyncing) _refreshHomeShelves();
     _notifyDebounce?.cancel();
     _notifyDebounce = Timer(const Duration(milliseconds: 50), () {
       if (!_isDisposed) notifyListeners();
@@ -269,6 +337,16 @@ class AppState extends ChangeNotifier {
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     _autoDownloadLikes = prefs.getBool(_keyAutoDownloadLikes) ?? false;
+    _desktopThemeMode = await DesktopTheme.loadMode();
+    _desktopThemeColor = await DesktopTheme.loadColor();
+    _desktopCoverBlurSigma = await DesktopTheme.loadBlurSigma();
+    _mobileThemeMode = await MobileTheme.loadMode();
+    _mobileThemeColor = await MobileTheme.loadColor();
+    _mobileCoverBlurSigma = await MobileTheme.loadBlurSigma();
+    _mobileSolidEffect = await MobileTheme.loadSolidEffect();
+    _desktopSolidEffect = await DesktopTheme.loadSolidEffect();
+    _mobilePinnedCoverPath = await MobileTheme.loadPinnedCover();
+    _desktopPinnedCoverPath = await DesktopTheme.loadPinnedCover();
 
     // Pre-charge le dernier nom d'utilisateur Navidrome connu (lecture locale,
     // pas de reseau) pour scoper le cache musical AVANT l'authentification :
@@ -283,18 +361,29 @@ class AppState extends ChangeNotifier {
     _useNavidrome = _music.navidromeTracks.isNotEmpty;
     await _restorePlaybackState(prefs);
 
+    // Charge les identifiants (I/O local sur le secure storage, pas de
+    // reseau) AVANT le premier rendu : sinon hasCredentials/isLoggedIn
+    // restent faux le temps de cette lecture et l'ecran de connexion
+    // s'affiche brievement avant de basculer sur la home -- flash visible
+    // a chaque lancement alors que l'utilisateur est bien "reste connecte".
+    await _navidrome.loadStoredCredentials();
+
     // Rien de plus a attendre pour afficher l'app : "rester connecte" veut
-    // dire ne jamais bloquer l'affichage (ni l'ecran de connexion) sur un
-    // ping reseau. La reconnexion/resynchro Navidrome se fait en fond.
+    // dire ne jamais bloquer l'affichage sur un ping reseau. L'authentification
+    // live (jusqu'a 10s si le NAS est lent/injoignable) et la resynchro se
+    // font en fond.
     _isInitializing = false;
     _notify();
 
-    unawaited(_navidrome.loadCredentials().then((navidromeOk) {
+    unawaited(_navidrome.authenticate().then((navidromeOk) {
       if (navidromeOk) {
-        _music.syncWithNavidrome().then((_) {
-          _useNavidrome = _music.navidromeTracks.isNotEmpty;
-          _notify();
-        });
+        // Rafraichit d'abord les URLs des titres deja en cache (pas de reseau,
+        // instantane) : sans ca, covers/lecture restent casses le temps que
+        // _performSync termine si l'URL de serveur a change depuis le dernier
+        // lancement (voir MusicService.refreshNavidromeTrackUrls).
+        _music.refreshNavidromeTrackUrls();
+        _notify();
+        unawaited(_performSync());
       } else {
         _notify();
       }
@@ -304,6 +393,149 @@ class AppState extends ChangeNotifier {
   }
 
   UpdateInfo? updateInfo;
+
+  // Theme du fond desktop (voir desktop/desktop_theme.dart) : solide (couleur
+  // RGB choisie par l'utilisateur), cover floutee, ou fenetre transparente
+  // (experimental, depend du support de flutter_acrylic sur la machine).
+  DesktopThemeMode _desktopThemeMode = DesktopThemeMode.solid;
+  DesktopThemeMode get desktopThemeMode => _desktopThemeMode;
+  Color _desktopThemeColor = DesktopTheme.defaultColor;
+  Color get desktopThemeColor => _desktopThemeColor;
+
+  Future<void> setDesktopThemeMode(DesktopThemeMode mode) async {
+    _desktopThemeMode = mode;
+    await DesktopTheme.saveMode(mode);
+    _notify();
+  }
+
+  Future<void> setDesktopThemeColor(Color color) async {
+    _desktopThemeColor = color;
+    await DesktopTheme.saveColor(color);
+    _notify();
+  }
+
+  double _desktopCoverBlurSigma = DesktopTheme.defaultBlurSigma;
+  double get desktopCoverBlurSigma => _desktopCoverBlurSigma;
+
+  Future<void> setDesktopCoverBlurSigma(double sigma) async {
+    _desktopCoverBlurSigma = sigma;
+    await DesktopTheme.saveBlurSigma(sigma);
+    _notify();
+  }
+
+  SolidColorEffect _desktopSolidEffect = SolidColorEffect.flat;
+  SolidColorEffect get desktopSolidEffect => _desktopSolidEffect;
+
+  Future<void> setDesktopSolidEffect(SolidColorEffect effect) async {
+    _desktopSolidEffect = effect;
+    await DesktopTheme.saveSolidEffect(effect);
+    _notify();
+  }
+
+  String? _desktopPinnedCoverPath;
+  String? get desktopPinnedCoverPath => _desktopPinnedCoverPath;
+
+  Future<void> setDesktopPinnedCoverPath(String? path) async {
+    _desktopPinnedCoverPath = path;
+    await DesktopTheme.savePinnedCover(path);
+    _notify();
+  }
+
+  // Theme du fond mobile (voir theme/mobile_theme.dart) : equivalent du theme
+  // desktop ci-dessus, sans le mode transparent (pas de sens sur une app
+  // mobile toujours plein ecran).
+  MobileThemeMode _mobileThemeMode = MobileThemeMode.solid;
+  MobileThemeMode get mobileThemeMode => _mobileThemeMode;
+  Color _mobileThemeColor = MobileTheme.defaultColor;
+  Color get mobileThemeColor => _mobileThemeColor;
+
+  Future<void> setMobileThemeMode(MobileThemeMode mode) async {
+    _mobileThemeMode = mode;
+    await MobileTheme.saveMode(mode);
+    _notify();
+  }
+
+  Future<void> setMobileThemeColor(Color color) async {
+    _mobileThemeColor = color;
+    await MobileTheme.saveColor(color);
+    _notify();
+  }
+
+  double _mobileCoverBlurSigma = MobileTheme.defaultBlurSigma;
+  double get mobileCoverBlurSigma => _mobileCoverBlurSigma;
+
+  Future<void> setMobileCoverBlurSigma(double sigma) async {
+    _mobileCoverBlurSigma = sigma;
+    await MobileTheme.saveBlurSigma(sigma);
+    _notify();
+  }
+
+  SolidColorEffect _mobileSolidEffect = SolidColorEffect.flat;
+  SolidColorEffect get mobileSolidEffect => _mobileSolidEffect;
+
+  Future<void> setMobileSolidEffect(SolidColorEffect effect) async {
+    _mobileSolidEffect = effect;
+    await MobileTheme.saveSolidEffect(effect);
+    _notify();
+  }
+
+  String? _mobilePinnedCoverPath;
+  String? get mobilePinnedCoverPath => _mobilePinnedCoverPath;
+
+  Future<void> setMobilePinnedCoverPath(String? path) async {
+    _mobilePinnedCoverPath = path;
+    await MobileTheme.savePinnedCover(path);
+    _notify();
+  }
+
+  // Photo de profil (voir services/avatar_service.dart) : incrementee a
+  // chaque upload reussi pour invalider le cache d'image (meme URL, fichier
+  // remplace cote serveur -- voir UserAvatar.cacheBust).
+  int _avatarVersion = 0;
+  int get avatarVersion => _avatarVersion;
+
+  Future<bool> uploadMyAvatar(File file) async {
+    final username = userName;
+    if (username == null) return false;
+    final ok =
+        await AvatarService().uploadAvatar(username: username, file: file);
+    if (ok) {
+      _avatarVersion++;
+      _notify();
+    }
+    return ok;
+  }
+
+  // Visible feedback de la synchro Navidrome : sans ca, un premier lancement
+  // (cache local vide) sur un reseau lent/injoignable affiche une app
+  // silencieusement vide, indiscernable d'un vrai bug pour l'utilisateur
+  // (voir le compte-rendu d'un ami testeur : "aucune musique, aucune
+  // recommandation" alors que la vraie cause etait une synchro qui n'avait
+  // pas fini, ou avait echoue, sans aucun signal a l'ecran).
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
+
+  /// Vrai seulement apres une synchro terminee (pas au tout premier
+  /// chargement) qui n'a ramene aucun titre -- signal qu'il y a probablement
+  /// un souci de connexion au serveur plutot qu'une bibliotheque vide.
+  bool _lastSyncEmpty = false;
+  bool get lastSyncEmpty => _lastSyncEmpty;
+
+  Future<void> _performSync() async {
+    _isSyncing = true;
+    _notify();
+    try {
+      // onProgress : la bibliotheque (allTracks/albums) se remplit lot par
+      // lot pendant la synchro -- _notify() est deja debounce (50ms), donc
+      // ca ne fait pas plus de rebuilds qu'une barre de progression normale.
+      await _music.syncWithNavidrome(onProgress: _notify);
+      _lastSyncEmpty = _music.navidromeTracks.isEmpty;
+    } finally {
+      _useNavidrome = _music.navidromeTracks.isNotEmpty;
+      _isSyncing = false;
+      _notify();
+    }
+  }
 
   Future<void> checkForUpdate() async {
     updateInfo = await UpdateCheckService().checkForUpdate();
@@ -371,6 +603,11 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _isDisposed = true;
     _notifyDebounce?.cancel();
+    _jamHeartbeat?.cancel();
+    _jamStateSub?.cancel();
+    _jamHostLeftSub?.cancel();
+    _jamCountSub?.cancel();
+    unawaited(_jam.leave());
     _audioHandler.player.dispose();
     super.dispose();
   }
@@ -407,6 +644,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
+    // Participant d'une session Jam (pas hote) : suit passivement l'etat
+    // recu du relais (voir _applyJamState), ne pilote jamais la lecture
+    // lui-meme -- sauf l'appel interne fait par _applyJamState, qui doit
+    // pouvoir passer.
+    if (isJamActive && !isJamHost && !_applyingJamState) return;
     currentTrack = track;
     queue = trackList ?? [track];
     currentIndex = queue.indexWhere((t) => t.id == track.id);
@@ -440,11 +682,19 @@ class AppState extends ChangeNotifier {
     await _audioHandler.loadAndPlay(items, currentIndex);
     isPlaying = true;
     await _music.recordPlay(track.id);
+    // Voir NavidromeService.scrobble : fait remonter la lecture au NAS pour
+    // que la regle de suppression des morceaux peu ecoutes puisse s'appuyer
+    // dessus. Ids locaux/hors-Navidrome (assets, imports) n'ont pas
+    // d'equivalent cote serveur, on ne les envoie pas.
+    if (track.id.startsWith('navidrome_')) {
+      unawaited(_navidrome.scrobble(track.id));
+    }
     unawaited(_savePlaybackState());
     _notify();
   }
 
   void togglePlayPause() {
+    if (isJamActive && !isJamHost && !_applyingJamState) return;
     // Redemarrage de l'app : le mini-player affiche le dernier titre joue
     // mais aucune source audio n'a encore ete chargee dans le player. Un
     // simple play()/pause() sur un player vide ne fait rien : il faut
@@ -463,16 +713,117 @@ class AppState extends ChangeNotifier {
   }
 
   void nextTrack() {
+    if (isJamActive && !isJamHost) return;
     _audioHandler.skipToNext();
   }
 
   void previousTrack() {
+    if (isJamActive && !isJamHost) return;
     _audioHandler.skipToPrevious();
   }
 
   void seek(Duration pos) {
+    if (isJamActive && !isJamHost && !_applyingJamState) return;
     _audioHandler.seek(pos);
     _notify();
+  }
+
+  /// Demarre une session Jam en tant qu'hote : pilote la lecture normalement,
+  /// diffuse son etat (titre/position/lecture-pause) aux participants via le
+  /// relais (voir jam_relay/) a chaque changement et toutes les 5s pour
+  /// rattraper la derive. Renvoie le sessionId a partager, ou null en cas
+  /// d'echec (relais injoignable).
+  Future<String?> startJamSession() async {
+    final id = _jam.generateSessionId();
+    final ok = await _jam.host(id);
+    if (!ok) return null;
+    _jamCountSub?.cancel();
+    _jamCountSub = _jam.participantCountStream.listen((count) {
+      jamParticipantCount = count;
+      _notify();
+    });
+    _jamHeartbeat?.cancel();
+    _jamHeartbeat =
+        Timer.periodic(const Duration(seconds: 5), (_) => _broadcastJamState());
+    _broadcastJamState();
+    if (currentTrack != null) {
+      _music.updateNowPlaying(currentTrack!.id, jamSessionId: id);
+    }
+    _notify();
+    return id;
+  }
+
+  /// Rejoint une session Jam existante : suit passivement l'etat de l'hote
+  /// (voir _applyJamState), les actions de lecture locales sont ignorees
+  /// tant que la session est active (cf. playTrack/togglePlayPause/etc.).
+  Future<bool> joinJamSession(String sessionId) async {
+    final ok = await _jam.join(sessionId);
+    if (!ok) return false;
+    _jamStateSub?.cancel();
+    _jamStateSub = _jam.stateStream.listen(_applyJamState);
+    _jamHostLeftSub?.cancel();
+    _jamHostLeftSub = _jam.hostLeftStream.listen((_) {
+      leaveJamSession();
+    });
+    _notify();
+    return true;
+  }
+
+  Future<void> leaveJamSession() async {
+    final wasHost = isJamHost;
+    _jamHeartbeat?.cancel();
+    _jamHeartbeat = null;
+    await _jamStateSub?.cancel();
+    _jamStateSub = null;
+    await _jamHostLeftSub?.cancel();
+    _jamHostLeftSub = null;
+    await _jamCountSub?.cancel();
+    _jamCountSub = null;
+    await _jam.leave();
+    jamParticipantCount = 0;
+    if (wasHost && currentTrack != null) {
+      _music.updateNowPlaying(currentTrack!.id);
+    }
+    _notify();
+  }
+
+  void _broadcastJamState() {
+    if (!_jam.isActive || !_jam.isHost) return;
+    final track = currentTrack;
+    if (track == null) return;
+    _jam.sendState(
+      trackId: track.id,
+      positionMs: position.inMilliseconds,
+      isPlaying: isPlaying,
+    );
+  }
+
+  /// Applique l'etat recu de l'hote (voir joinJamSession) : change de titre
+  /// si besoin, rattrape la position (compensee du delai de transit reseau
+  /// via le timestamp d'envoi), aligne play/pause. _applyingJamState laisse
+  /// passer ces appels a travers les gardes de playTrack/seek/etc. qui
+  /// bloquent sinon toute action de lecture locale pendant une session suivie.
+  Future<void> _applyJamState(JamStateMessage msg) async {
+    _applyingJamState = true;
+    try {
+      if (currentTrack?.id != msg.trackId) {
+        final track = _findTrackById(msg.trackId);
+        if (track != null) {
+          await playTrack(track, trackList: [track]);
+        }
+      }
+      final latencyMs =
+          (DateTime.now().millisecondsSinceEpoch - msg.ts).clamp(0, 5000);
+      await _audioHandler.player
+          .seek(Duration(milliseconds: msg.positionMs + latencyMs));
+      if (msg.isPlaying && !isPlaying) {
+        await _audioHandler.play();
+      } else if (!msg.isPlaying && isPlaying) {
+        await _audioHandler.pause();
+      }
+    } finally {
+      _applyingJamState = false;
+    }
   }
 
   Track? _findTrackById(String id) {
@@ -484,6 +835,17 @@ class AppState extends ChangeNotifier {
 
   Future<void> toggleLike(String trackId) async {
     await _music.toggleLike(trackId);
+    if (_autoDownloadLikes) {
+      final track = _findTrackById(trackId);
+      if (track != null && track.isLiked) {
+        unawaited(downloadTrackOffline(track));
+      }
+    }
+    _notify();
+  }
+
+  Future<void> toggleSuperLike(String trackId) async {
+    await _music.toggleSuperLike(trackId);
     if (_autoDownloadLikes) {
       final track = _findTrackById(trackId);
       if (track != null && track.isLiked) {
@@ -509,6 +871,21 @@ class AppState extends ChangeNotifier {
     await _music.createPlaylist(name);
     _notify();
   }
+
+  Future<String?> createCollabPlaylist(String name) async {
+    final groupId = await _music.createCollabPlaylist(name);
+    _notify();
+    return groupId;
+  }
+
+  Future<bool> joinCollabPlaylist(String groupId, String name) async {
+    final ok = await _music.joinCollabPlaylist(groupId, name);
+    _notify();
+    return ok;
+  }
+
+  Future<CollabPlaylistView> fetchCollabPlaylist(String groupId) =>
+      _music.fetchCollabPlaylist(groupId);
 
   Future<void> addToPlaylist(String playlistId, String trackId) async {
     await _music.addToPlaylist(playlistId, trackId);
@@ -567,6 +944,20 @@ class AppState extends ChangeNotifier {
     _notify();
   }
 
+  bool get shareRecentPlaysWithFriends => _music.shareRecentPlaysWithFriends;
+
+  Future<void> setShareRecentPlaysWithFriends(bool value) async {
+    await _music.setShareRecentPlaysWithFriends(value);
+    _notify();
+  }
+
+  bool get shareNowPlayingWithFriends => _music.shareNowPlayingWithFriends;
+
+  Future<void> setShareNowPlayingWithFriends(bool value) async {
+    await _music.setShareNowPlayingWithFriends(value);
+    _notify();
+  }
+
   Future<void> setPlaylistPublic(String playlistId, bool public) async {
     await _music.setPlaylistPublic(playlistId, public);
     _notify();
@@ -578,7 +969,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 6 dernier(e)s album/playlist/artiste ecoute(e)s, comme sur Spotify.
-  List<RecentPlay> get recentPlays => _music.recentPlays.take(6).toList();
+  List<RecentPlay> get recentPlays => _music.recentPlays.take(8).toList();
 
   void recordRecentPlay(RecentPlay entry) {
     _music.recordRecentPlay(entry);
@@ -678,7 +1069,7 @@ class AppState extends ChangeNotifier {
     _useNavidrome = enabled;
     if (enabled && !_navidrome.isConnected) {
       final ok = await _navidrome.loadCredentials();
-      if (ok) await _music.syncWithNavidrome();
+      if (ok) await _performSync();
     }
     _notify();
   }
@@ -696,18 +1087,25 @@ class AppState extends ChangeNotifier {
       _useNavidrome = _music.navidromeTracks.isNotEmpty;
       // La synchro complete (des centaines d'albums) peut prendre longtemps :
       // on ne bloque pas l'ecran de connexion dessus, elle continue en fond
-      // une fois que l'utilisateur est deja entre dans l'app.
-      unawaited(_music.syncWithNavidrome().then((_) {
-        _useNavidrome = _music.navidromeTracks.isNotEmpty;
-        _notify();
-      }));
+      // une fois que l'utilisateur est deja entre dans l'app. isSyncing
+      // reste visible a l'ecran pendant ce temps (voir _performSync).
+      unawaited(_performSync());
     }
     _notify();
     return ok;
   }
 
   Future<void> syncNavidrome() async {
-    await _music.syncWithNavidrome();
+    await _performSync();
+  }
+
+  /// Rafraichissement rapide (quelques albums recents, pas toute la
+  /// bibliotheque) apres un telechargement automatique -- voir
+  /// MusicService.syncRecentlyAdded. Ne passe pas par _isSyncing/_performSync :
+  /// contrairement a une synchro complete, celui-ci ne rend rien injouable
+  /// pendant son execution, donc pas besoin du signal "synchro en cours".
+  Future<void> syncRecentlyAdded() async {
+    await _music.syncRecentlyAdded();
     _notify();
   }
 

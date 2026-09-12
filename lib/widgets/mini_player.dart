@@ -1,20 +1,25 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import 'player_screen.dart';
+import 'cover_image.dart';
+import 'like_heart_button.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (Track?, Color?, bool)>(
-      selector: (_, state) =>
-          (state.currentTrack, state.dominantColor, state.isPlaying),
+    return Selector<AppState, (Track?, Color?, bool, bool)>(
+      selector: (_, state) => (
+        state.currentTrack,
+        state.dominantColor,
+        state.isPlaying,
+        state.isJamActive
+      ),
       builder: (context, data, child) {
-        final (track, dominantColor, isPlaying) = data;
+        final (track, dominantColor, isPlaying, isJamActive) = data;
         if (track == null) {
           return const SizedBox(height: 64);
         }
@@ -58,15 +63,39 @@ class MiniPlayer extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              track.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                if (isJamActive)
+                                  Container(
+                                    margin: const EdgeInsets.only(right: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1DB954),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'JAM',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(
+                                  child: Text(
+                                    track.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                             Text(
                               track.artist,
@@ -99,7 +128,7 @@ class MiniPlayer extends StatelessWidget {
                     ],
                   ),
                 ),
-                const _MiniProgressBar(),
+                RepaintBoundary(child: _MiniProgressBar(track: track)),
               ],
             ),
           ),
@@ -115,22 +144,28 @@ class _LikeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, bool>(
-      selector: (_, state) => state.isCurrentTrackLiked,
-      builder: (context, isLiked, _) => IconButton(
-        icon: Icon(
-          isLiked ? Icons.favorite : Icons.favorite_border,
-          color: isLiked ? const Color(0xFF1DB954) : Colors.white,
+    return Selector<AppState, (bool, bool)>(
+      selector: (_, state) =>
+          (state.isCurrentTrackLiked, state.isCurrentTrackSuperLiked),
+      builder: (context, data, _) {
+        final (isLiked, isSuperLiked) = data;
+        return LikeHeartButton(
+          liked: isLiked,
+          superLiked: isSuperLiked,
           size: 22,
-        ),
-        onPressed: () => context.read<AppState>().toggleLike(trackId),
-      ),
+          idleColor: Colors.white,
+          onTap: () => context.read<AppState>().toggleLike(trackId),
+          onLongPress: () =>
+              context.read<AppState>().toggleSuperLike(trackId),
+        );
+      },
     );
   }
 }
 
 class _MiniProgressBar extends StatelessWidget {
-  const _MiniProgressBar();
+  final Track track;
+  const _MiniProgressBar({required this.track});
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +178,16 @@ class _MiniProgressBar extends StatelessWidget {
       ),
       builder: (context, posSnap) {
         final position = posSnap.data ?? Duration.zero;
-        final duration = player.duration ?? Duration.zero;
+        // La duree connue via les metadonnees NAS (fiable) est preferee a
+        // celle remontee en direct par le moteur de lecture : sur
+        // Windows/Linux (media_kit/libmpv), un flux transcode par Navidrome
+        // sans Content-Length force libmpv a re-estimer la duree au fur et
+        // a mesure du telechargement (elle grimpe par paliers de ~10s), ce
+        // qui faisait sauter la barre de progression pendant les premieres
+        // secondes de lecture.
+        final duration = track.duration.inMilliseconds > 0
+            ? track.duration
+            : (player.duration ?? Duration.zero);
         final double progress = duration.inMilliseconds > 0
             ? position.inMilliseconds / duration.inMilliseconds
             : 0.0;
@@ -188,10 +232,10 @@ class _MiniCover extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(4),
           image: DecorationImage(
-            image: path.startsWith('http')
-                ? NetworkImage(path) as ImageProvider
-                : FileImage(File(path)),
+            image:
+                coverImageProvider(context, path: path, width: 40, height: 40),
             fit: BoxFit.cover,
+            onError: (_, __) {},
           ),
         ),
       );

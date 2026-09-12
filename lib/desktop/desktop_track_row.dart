@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/track.dart';
+import '../widgets/cover_image.dart';
 import 'glass.dart';
 
-/// Ligne de titre façon reference : cover, titre/artiste, ecoutes, duree,
+/// Ligne de titre façon reference : cover, titre/artiste(s), album, duree,
 /// like puis menu, avec un survol legerement eclairci.
 class DesktopTrackRow extends StatefulWidget {
   final Track track;
@@ -11,6 +11,11 @@ class DesktopTrackRow extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onLike;
   final VoidCallback onMore;
+  // Optionnels : sans eux la colonne album / les noms d'artiste restent de
+  // simples textes non cliquables (cas des ecrans qui n'ont pas encore de
+  // navigation album/artiste cablee vers cette ligne).
+  final VoidCallback? onOpenAlbum;
+  final void Function(String artistName)? onOpenArtist;
 
   const DesktopTrackRow({
     super.key,
@@ -19,6 +24,8 @@ class DesktopTrackRow extends StatefulWidget {
     required this.onLike,
     required this.onMore,
     this.isPlaying = false,
+    this.onOpenAlbum,
+    this.onOpenArtist,
   });
 
   @override
@@ -32,6 +39,14 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
   Widget build(BuildContext context) {
     final track = widget.track;
     final path = track.coverPath;
+    // Plusieurs artistes (feat., collaborations) separes individuellement
+    // pour rester cliquables un par un, meme regex que desktop_player_bar.
+    final artistNames = track.artist
+        .split(RegExp(r'[/&,]'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (artistNames.isEmpty) artistNames.add(track.artist);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -57,15 +72,16 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
                   borderRadius: BorderRadius.circular(6),
                   image: path != null
                       ? DecorationImage(
-                          image: path.startsWith('http')
-                              ? NetworkImage(path) as ImageProvider
-                              : FileImage(File(path)),
+                          image: coverImageProvider(context,
+                              path: path, width: 40, height: 40),
                           fit: BoxFit.cover,
+                          onError: (_, __) {},
                         )
                       : null,
                 ),
                 child: path == null
-                    ? const Icon(Icons.music_note, color: Colors.white54, size: 18)
+                    ? const Icon(Icons.music_note,
+                        color: Colors.white54, size: 18)
                     : null,
               ),
               const SizedBox(width: 14),
@@ -80,25 +96,43 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: widget.isPlaying ? DesktopGlass.accent : Colors.white,
+                        color: widget.isPlaying
+                            ? DesktopGlass.accent
+                            : Colors.white,
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    Text(
-                      track.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < artistNames.length; i++) ...[
+                          if (i > 0)
+                            const Text(', ',
+                                style: TextStyle(
+                                    color: Colors.white54, fontSize: 12)),
+                          Flexible(
+                            child: _HoverableText(
+                              text: artistNames[i],
+                              style: const TextStyle(
+                                  color: Colors.white54, fontSize: 12),
+                              onTap: widget.onOpenArtist == null
+                                  ? null
+                                  : () => widget.onOpenArtist!(artistNames[i]),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
               ),
               Expanded(
                 flex: 2,
-                child: Text(
-                  formatPlayCount(track.playCount),
+                child: _HoverableText(
+                  text: track.album,
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  onTap: widget.onOpenAlbum,
                 ),
               ),
               SizedBox(
@@ -125,6 +159,46 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Texte souligne au survol quand cliquable (artiste -> page artiste, album
+/// -> page album), comme un lien -- meme widget que desktop_player_bar.
+class _HoverableText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final VoidCallback? onTap;
+
+  const _HoverableText({
+    required this.text,
+    required this.style,
+    required this.onTap,
+  });
+
+  @override
+  State<_HoverableText> createState() => _HoverableTextState();
+}
+
+class _HoverableTextState extends State<_HoverableText> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = widget.onTap != null && _hover
+        ? widget.style.copyWith(decoration: TextDecoration.underline)
+        : widget.style;
+
+    final text = Text(widget.text,
+        maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+
+    if (widget.onTap == null) return text;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(onTap: widget.onTap, child: text),
     );
   }
 }

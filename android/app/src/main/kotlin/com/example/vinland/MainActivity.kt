@@ -2,11 +2,20 @@ package com.example.vinland // adapte ton package
 
 import android.os.Bundle
 import androidx.core.view.WindowCompat
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 
-class MainActivity: FlutterActivity() {
+// Herite d'AudioServiceActivity (pas FlutterActivity) : c'est ce qui branche
+// cette activite sur le FlutterEngine partage gere par AudioServicePlugin
+// (celui qui continue de tourner pour la lecture en fond), au lieu d'un
+// engine independant. Necessaire aussi pour que cette classe soit reellement
+// instanciee : voir AndroidManifest.xml, qui doit declarer .MainActivity (et
+// non com.ryanheise.audioservice.AudioServiceActivity directement) comme
+// activite LAUNCHER, sinon configureFlutterEngine() ci-dessous n'est jamais
+// appele et ni le cache MAIN_ENGINE_ID ni le channel Bluetooth ne sont
+// jamais mis en place.
+class MainActivity: AudioServiceActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)

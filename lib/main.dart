@@ -3,10 +3,12 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' hide Track;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 import 'providers/app_state.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -22,6 +24,8 @@ import 'widgets/player_screen.dart';
 import 'services/music_service.dart';
 import 'models/track.dart';
 import 'desktop/desktop_app_shell.dart';
+import 'desktop/desktop_theme.dart';
+import 'widgets/app_background.dart';
 
 /// Vinland tourne en shell "verre" desktop sur Windows/macOS/Linux (visuel
 /// inspire de https://www.behance.net/gallery/174341245/Spotify-Visual-Ui),
@@ -63,6 +67,31 @@ Future<void> main() async {
       // Necessaire sur Android 13+ pour que la notification de lecture
       // (et donc le foreground service audio) puisse s'afficher correctement.
       await Permission.notification.request();
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      // Fenetre sans bordure/barre de titre native (la barre custom avec ses
+      // propres boutons vit dans DesktopTitleBar) + fond de fenetre
+      // transparent : DesktopBackground n'a alors plus qu'a laisser passer
+      // les zones sans contenu pour voir litteralement le bureau/ce qu'il y
+      // a derriere, au lieu de simuler ca avec une cover floutee.
+      await windowManager.ensureInitialized();
+      await acrylic.Window.initialize();
+      const windowOptions = WindowOptions(
+        size: Size(1280, 800),
+        minimumSize: Size(1000, 650),
+        center: true,
+        backgroundColor: Colors.transparent,
+        titleBarStyle: TitleBarStyle.hidden,
+      );
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+      // Applique l'effet de fenetre correspondant au theme choisi par
+      // l'utilisateur (Parametres > Apparence) -- transparent uniquement
+      // pour le theme "transparent", desactive sinon. Voir desktop_theme.dart.
+      await DesktopTheme.applyWindowEffect(await DesktopTheme.loadMode());
     }
 
     // just_audio ne declare aucune implementation Windows/Linux : sur ces
@@ -145,6 +174,7 @@ class VinlandApp extends StatelessWidget {
         child: MaterialApp(
           title: 'Vinland',
           debugShowCheckedModeBanner: false,
+          scrollBehavior: _VinlandScrollBehavior(),
           theme: ThemeData.dark().copyWith(
             scaffoldBackgroundColor: const Color(0xFF121212),
           ),
@@ -179,8 +209,13 @@ class AppShell extends StatelessWidget {
         state.currentTrack,
       ),
       builder: (context, data, child) {
-        final (isInitializing, isLoggedIn, currentTab, currentOverlay, currentTrack) =
-            data;
+        final (
+          isInitializing,
+          isLoggedIn,
+          currentTab,
+          currentOverlay,
+          currentTrack
+        ) = data;
 
         // Chargement du cache local + tentative de connexion Navidrome au
         // demarrage : evite un flash de l'ecran de connexion pendant que le
@@ -255,13 +290,17 @@ class _MobileAppShell extends StatelessWidget {
         }
       },
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         extendBody: true,
         extendBodyBehindAppBar: true,
-        body: Stack(
-          children: [
-            screens[currentTab],
-            if (currentOverlay != null) Positioned.fill(child: currentOverlay!),
-          ],
+        body: AppBackground(
+          child: Stack(
+            children: [
+              screens[currentTab],
+              if (currentOverlay != null)
+                Positioned.fill(child: currentOverlay!),
+            ],
+          ),
         ),
         bottomNavigationBar: currentOverlay is PlayerScreen
             ? null
@@ -293,6 +332,22 @@ class _MobileAppShell extends StatelessWidget {
                 ),
               ),
       ),
+    );
+  }
+}
+
+/// Comportement de scroll partage par toute l'app : physique "bouncing"
+/// partout (rebond doux en fin de liste au lieu d'un arret sec) pour une
+/// sensation plus fluide en parcourant l'app. Le lissage de la molette de
+/// souris (le vrai objet de la demande) est gere separement, vue par vue,
+/// par SmoothMouseScroll (voir lib/widgets/smooth_scroll.dart) : Flutter ne
+/// l'anime jamais par defaut, molette ou pas, donc ca ne peut pas se
+/// configurer globalement ici.
+class _VinlandScrollBehavior extends MaterialScrollBehavior {
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics(
+      parent: AlwaysScrollableScrollPhysics(),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../widgets/app_background.dart';
 
 class ImportReviewScreen extends StatefulWidget {
   final List<String> filePaths;
@@ -61,9 +62,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     final selectedCount = _selected.where((s) => s).length;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title:
             const Text('Vérification', style: TextStyle(color: Colors.white)),
@@ -82,33 +83,36 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1DB954)))
-          : Column(
-              children: [
-                _buildStatsCard(),
-                if (_previewTracks.isNotEmpty) ...[
-                  _buildValidationWarning(),
-                  _buildSelectAllBar(selectedCount),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: _previewTracks.length,
-                      itemBuilder: (context, index) => _buildReviewTile(index),
-                    ),
-                  ),
-                ],
-                if (_previewTracks.isEmpty && !_isLoading)
-                  const Expanded(
-                    child: Center(
-                      child: Text(
-                        'Aucun fichier musical trouvé',
-                        style: TextStyle(color: Colors.white38, fontSize: 16),
+      body: AppBackground(
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF1DB954)))
+            : Column(
+                children: [
+                  _buildStatsCard(),
+                  if (_previewTracks.isNotEmpty) ...[
+                    _buildValidationWarning(),
+                    _buildSelectAllBar(selectedCount),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: _previewTracks.length,
+                        itemBuilder: (context, index) =>
+                            _buildReviewTile(index),
                       ),
                     ),
-                  ),
-              ],
-            ),
+                  ],
+                  if (_previewTracks.isEmpty && !_isLoading)
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Aucun fichier musical trouvé',
+                          style: TextStyle(color: Colors.white38, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+      ),
     );
   }
 

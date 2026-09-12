@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
+import '../widgets/smooth_scroll.dart';
+import '../widgets/cover_image.dart';
 import 'glass.dart';
 
 enum _LibrarySection { playlists, albums }
@@ -27,6 +28,13 @@ class DesktopLibraryView extends StatefulWidget {
 
 class _DesktopLibraryViewState extends State<DesktopLibraryView> {
   _LibrarySection _section = _LibrarySection.playlists;
+  final _scrollController = SmoothScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,61 +43,71 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
       builder: (context, data, __) {
         final (playlists, albums) = data;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Bibliotheque',
-                style: TextStyle(
-                    color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _SegmentButton(
-                  label: 'Playlists (${playlists.length})',
-                  active: _section == _LibrarySection.playlists,
-                  onTap: () => setState(() => _section = _LibrarySection.playlists),
-                ),
-                const SizedBox(width: 8),
-                _SegmentButton(
-                  label: 'Albums (${albums.length})',
-                  active: _section == _LibrarySection.albums,
-                  onTap: () => setState(() => _section = _LibrarySection.albums),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: _section == _LibrarySection.playlists
-                  ? _grid(
-                      count: playlists.length,
-                      builder: (i) {
-                        final pl = playlists[i];
-                        return _GridTile(
-                          title: pl.name,
-                          subtitle: '${pl.trackIds.length} titre(s)',
-                          coverPath: null,
-                          icon: Icons.queue_music,
-                          onTap: () => widget.onOpenPlaylist(pl),
-                        );
-                      },
-                      empty: 'Aucune playlist',
-                    )
-                  : _grid(
-                      count: albums.length,
-                      builder: (i) {
-                        final album = albums[i];
-                        return _GridTile(
-                          title: album.title,
-                          subtitle: album.artist,
-                          coverPath: album.coverPath,
-                          icon: Icons.album,
-                          onTap: () => widget.onOpenAlbum(album),
-                        );
-                      },
-                      empty: 'Aucun album like',
-                    ),
-            ),
-          ],
+        // top: DesktopGlass.topInset -- meme raison que DesktopSearchView :
+        // le titre fixe de cette page doit demarrer sous la TopBar flottante
+        // du shell plutot que de s'y superposer.
+        return Padding(
+          padding: const EdgeInsets.only(top: DesktopGlass.topInset),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Bibliotheque',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  _SegmentButton(
+                    label: 'Playlists (${playlists.length})',
+                    active: _section == _LibrarySection.playlists,
+                    onTap: () =>
+                        setState(() => _section = _LibrarySection.playlists),
+                  ),
+                  const SizedBox(width: 8),
+                  _SegmentButton(
+                    label: 'Albums (${albums.length})',
+                    active: _section == _LibrarySection.albums,
+                    onTap: () =>
+                        setState(() => _section = _LibrarySection.albums),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: _section == _LibrarySection.playlists
+                    ? _grid(
+                        count: playlists.length,
+                        builder: (i) {
+                          final pl = playlists[i];
+                          return _GridTile(
+                            title: pl.name,
+                            subtitle: '${pl.trackIds.length} titre(s)',
+                            coverPath: null,
+                            icon: Icons.queue_music,
+                            onTap: () => widget.onOpenPlaylist(pl),
+                          );
+                        },
+                        empty: 'Aucune playlist',
+                      )
+                    : _grid(
+                        count: albums.length,
+                        builder: (i) {
+                          final album = albums[i];
+                          return _GridTile(
+                            title: album.title,
+                            subtitle: album.artist,
+                            coverPath: album.coverPath,
+                            icon: Icons.album,
+                            onTap: () => widget.onOpenAlbum(album),
+                          );
+                        },
+                        empty: 'Aucun album like',
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -101,9 +119,12 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
     required String empty,
   }) {
     if (count == 0) {
-      return Center(child: Text(empty, style: const TextStyle(color: Colors.white38)));
+      return Center(
+          child: Text(empty, style: const TextStyle(color: Colors.white38)));
     }
     return GridView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.only(bottom: DesktopGlass.playerBarReserve),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 5,
         childAspectRatio: 0.8,
@@ -120,12 +141,15 @@ class _SegmentButton extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  const _SegmentButton({required this.label, required this.active, required this.onTap});
+  const _SegmentButton(
+      {required this.label, required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: active ? Colors.white.withOpacity(0.16) : Colors.white.withOpacity(0.05),
+      color: active
+          ? Colors.white.withOpacity(0.16)
+          : Colors.white.withOpacity(0.05),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -163,29 +187,35 @@ class _GridTile extends StatelessWidget {
     final path = coverPath;
     final exists = context.read<AppState>().coverExists(path);
 
-    return GestureDetector(
+    return DesktopHoverable(
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-                image: exists && path != null
-                    ? DecorationImage(
-                        image: path.startsWith('http')
-                            ? NetworkImage(path) as ImageProvider
-                            : FileImage(File(path)),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: !exists
-                  ? Icon(icon, color: Colors.white54, size: 40)
-                  : null,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final double side =
+                    constraints.maxWidth.isFinite ? constraints.maxWidth : 200;
+                return Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+                    image: exists && path != null
+                        ? DecorationImage(
+                            image: coverImageProvider(context,
+                                path: path, width: side, height: side),
+                            fit: BoxFit.cover,
+                            onError: (_, __) {},
+                          )
+                        : null,
+                  ),
+                  child: !exists
+                      ? Icon(icon, color: Colors.white54, size: 40)
+                      : null,
+                );
+              },
             ),
           ),
           const SizedBox(height: 8),
@@ -193,7 +223,9 @@ class _GridTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
           Text(subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

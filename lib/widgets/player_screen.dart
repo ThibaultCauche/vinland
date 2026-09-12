@@ -94,7 +94,7 @@ class PlayerScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const PlayerSlider(),
+                    const RepaintBoundary(child: PlayerSlider()),
                     const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,

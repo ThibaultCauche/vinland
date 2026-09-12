@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/streaming_import_service.dart';
+import '../widgets/app_background.dart';
 import 'streaming_match_screen.dart';
 
 class StreamingImportScreen extends StatefulWidget {
@@ -18,128 +19,130 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Importer depuis un service',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildSectionTitle('1. Plateformes supportees'),
-          const SizedBox(height: 8),
-          _buildPlatformCard(
-            icon: Icons.music_note,
-            title: 'Spotify',
-            subtitle: 'Export CSV via Exportify',
-            color: const Color(0xFF1DB954),
-          ),
-          _buildPlatformCard(
-            icon: Icons.play_circle_fill,
-            title: 'YouTube Music',
-            subtitle: 'Export JSON via Google Takeout',
-            color: Colors.red,
-          ),
-          _buildPlatformCard(
-            icon: Icons.audiotrack,
-            title: 'Deezer / Tidal / Apple Music',
-            subtitle: 'Export CSV via SongShift ou outils tiers',
-            color: Colors.orange,
-          ),
-          _buildPlatformCard(
-            icon: Icons.format_list_bulleted,
-            title: 'Autre service',
-            subtitle: 'Utilisez notre template CSV universel',
-            color: Colors.blue,
-          ),
-          const SizedBox(height: 32),
-          _buildSectionTitle('2. Selectionner votre fichier'),
-          const SizedBox(height: 8),
-          _buildPlatformCard(
-            icon: Icons.cloud_upload,
-            title: 'Choisir un fichier',
-            subtitle: 'JSON ou CSV depuis n\'importe quel service',
-            onTap: _pickFile,
-          ),
-          const SizedBox(height: 32),
-          _buildSectionTitle('3. Pas d\'export ? Utilisez le template'),
-          const SizedBox(height: 8),
-          Card(
-            color: const Color(0xFF1E1E1E),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Color(0xFF2A2A2A)),
+      body: PlatformBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _buildSectionTitle('1. Plateformes supportees'),
+            const SizedBox(height: 8),
+            _buildPlatformCard(
+              icon: Icons.music_note,
+              title: 'Spotify',
+              subtitle: 'Export CSV via Exportify',
+              color: const Color(0xFF1DB954),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Si votre service ne propose pas d\'export, '
-                    'remplissez ce template CSV :',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF121212),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF2A2A2A)),
+            _buildPlatformCard(
+              icon: Icons.play_circle_fill,
+              title: 'YouTube Music',
+              subtitle: 'Export JSON via Google Takeout',
+              color: Colors.red,
+            ),
+            _buildPlatformCard(
+              icon: Icons.audiotrack,
+              title: 'Deezer / Tidal / Apple Music',
+              subtitle: 'Export CSV via SongShift ou outils tiers',
+              color: Colors.orange,
+            ),
+            _buildPlatformCard(
+              icon: Icons.format_list_bulleted,
+              title: 'Autre service',
+              subtitle: 'Utilisez notre template CSV universel',
+              color: Colors.blue,
+            ),
+            const SizedBox(height: 32),
+            _buildSectionTitle('2. Selectionner votre fichier'),
+            const SizedBox(height: 8),
+            _buildPlatformCard(
+              icon: Icons.cloud_upload,
+              title: 'Choisir un fichier',
+              subtitle: 'JSON ou CSV depuis n\'importe quel service',
+              onTap: _pickFile,
+            ),
+            const SizedBox(height: 32),
+            _buildSectionTitle('3. Pas d\'export ? Utilisez le template'),
+            const SizedBox(height: 8),
+            Card(
+              color: const Color(0xFF1E1E1E),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFF2A2A2A)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Si votre service ne propose pas d\'export, '
+                      'remplissez ce template CSV :',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
-                    child: SelectableText(
-                      StreamingImportService.csvTemplate,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        fontFamily: 'monospace',
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF121212),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF2A2A2A)),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _downloadTemplate,
-                      icon: const Icon(Icons.download, size: 18),
-                      label: const Text('Telecharger le template'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1DB954),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      child: SelectableText(
+                        StreamingImportService.csvTemplate,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                          fontFamily: 'monospace',
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _downloadTemplate,
+                        icon: const Icon(Icons.download, size: 18),
+                        label: const Text('Telecharger le template'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1DB954),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 32),
-          _buildSectionTitle('4. Formats acceptes'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFormatChip('.json (Spotify, YouTube Music)'),
-              _buildFormatChip('.csv (universel)'),
-              _buildFormatChip('.txt (CSV brut)'),
-            ],
-          ),
-          if (_isLoading) ...[
             const SizedBox(height: 32),
-            const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1DB954)),
+            _buildSectionTitle('4. Formats acceptes'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildFormatChip('.json (Spotify, YouTube Music)'),
+                _buildFormatChip('.csv (universel)'),
+                _buildFormatChip('.txt (CSV brut)'),
+              ],
             ),
+            if (_isLoading) ...[
+              const SizedBox(height: 32),
+              const Center(
+                child: CircularProgressIndicator(color: Color(0xFF1DB954)),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -352,67 +355,69 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Analyse en cours...',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_error != null) ...[
-              const Icon(Icons.error_outline, color: Colors.red, size: 64),
-              const SizedBox(height: 24),
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1DB954),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Retour'),
-              ),
-            ] else ...[
-              SizedBox(
-                width: 120,
-                height: 120,
-                child: CircularProgressIndicator(
-                  color: const Color(0xFF1DB954),
-                  strokeWidth: 8,
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                '$_parsedCount',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 48,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'titres analyses',
-                style: const TextStyle(color: Colors.white54, fontSize: 16),
-              ),
-              if (_isDone) ...[
+      body: PlatformBackground(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_error != null) ...[
+                const Icon(Icons.error_outline, color: Colors.red, size: 64),
                 const SizedBox(height: 24),
-                const Text(
-                  'Redirection...',
-                  style: TextStyle(color: Color(0xFF1DB954), fontSize: 14),
+                Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
                 ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1DB954),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Retour'),
+                ),
+              ] else ...[
+                SizedBox(
+                  width: 120,
+                  height: 120,
+                  child: CircularProgressIndicator(
+                    color: const Color(0xFF1DB954),
+                    strokeWidth: 8,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  '$_parsedCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'titres analyses',
+                  style: const TextStyle(color: Colors.white54, fontSize: 16),
+                ),
+                if (_isDone) ...[
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Redirection...',
+                    style: TextStyle(color: Color(0xFF1DB954), fontSize: 14),
+                  ),
+                ],
               ],
             ],
-          ],
+          ),
         ),
       ),
     );

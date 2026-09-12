@@ -1,14 +1,17 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
+import '../providers/app_state.dart';
 import '../services/music_service.dart';
+import 'cover_image.dart';
+import 'like_heart_button.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
   final VoidCallback onTap;
   final VoidCallback? onLike;
   final VoidCallback? onMore;
+  final bool isPlaying;
 
   const TrackTile({
     super.key,
@@ -16,6 +19,7 @@ class TrackTile extends StatelessWidget {
     required this.onTap,
     this.onLike,
     this.onMore,
+    this.isPlaying = false,
   });
 
   @override
@@ -33,10 +37,10 @@ class TrackTile extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(4),
                 image: DecorationImage(
-                  image: track.coverPath!.startsWith('http')
-                      ? NetworkImage(track.coverPath!) as ImageProvider
-                      : FileImage(File(track.coverPath!)),
+                  image: coverImageProvider(context,
+                      path: track.coverPath!, width: 48, height: 48),
                   fit: BoxFit.cover,
+                  onError: (_, __) {},
                 ),
               ),
             )
@@ -51,8 +55,8 @@ class TrackTile extends StatelessWidget {
             ),
       title: Text(
         track.title,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: isPlaying ? const Color(0xFF1DB954) : Colors.white,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
@@ -69,13 +73,13 @@ class TrackTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (onLike != null)
-            IconButton(
-              icon: Icon(
-                track.isLiked ? Icons.favorite : Icons.favorite_border,
-                color: track.isLiked ? const Color(0xFF1DB954) : Colors.white54,
-                size: 20,
-              ),
-              onPressed: onLike,
+            LikeHeartButton(
+              liked: track.isLiked,
+              superLiked: track.superLiked,
+              size: 20,
+              onTap: onLike!,
+              onLongPress: () =>
+                  context.read<AppState>().toggleSuperLike(track.id),
             ),
           if (onMore != null)
             IconButton(

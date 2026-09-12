@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
+import '../cover_image.dart';
 
 class PlayerCover extends StatelessWidget {
   final String? coverPath;
@@ -11,18 +11,19 @@ class PlayerCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = coverPath;
     final exists = context.read<AppState>().coverExists(coverPath);
+    final side = MediaQuery.of(context).size.width - 48;
 
     if (exists && path != null) {
       return Container(
         width: double.infinity,
-        height: MediaQuery.of(context).size.width - 48,
+        height: side,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           image: DecorationImage(
-            image: path.startsWith('http')
-                ? NetworkImage(path) as ImageProvider
-                : FileImage(File(path)),
+            image: coverImageProvider(context,
+                path: path, width: side, height: side),
             fit: BoxFit.cover,
+            onError: (_, __) {},
           ),
           boxShadow: [
             BoxShadow(
@@ -36,7 +37,7 @@ class PlayerCover extends StatelessWidget {
     }
     return Container(
       width: double.infinity,
-      height: MediaQuery.of(context).size.width - 48,
+      height: side,
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(12),

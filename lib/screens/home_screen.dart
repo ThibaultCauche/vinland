@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -13,6 +11,9 @@ import 'playlist_screen.dart';
 import '../screens/missing_tracks_screen.dart';
 import '../services/music_service.dart';
 import '../widgets/update_banner.dart';
+import '../widgets/sync_status_banner.dart';
+import '../widgets/cover_image.dart';
+import '../widgets/user_avatar.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -20,20 +21,45 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState,
-        (List<Album>, List<Track>, String?, List<Map<String, dynamic>>)>(
+    // Les etageres viennent de AppState (pre-calculees, stables pendant une
+    // synchro -- voir AppState._refreshHomeShelves) plutot que recalculees
+    // ici a partir de albums/allTracks, qui grossissent en continu pendant
+    // le chargement.
+    return Selector<
+        AppState,
+        (
+          List<Track>,
+          List<(String, String?)>,
+          List<Album>,
+          List<Album>,
+          String?,
+          List<Map<String, dynamic>>,
+          int
+        )>(
       selector: (_, state) => (
-        state.albums,
-        state.allTracks,
+        state.homeWeeklyTracks,
+        state.homeTopArtists,
+        state.homeDiscoveryAlbums,
+        state.homeNewOnServerAlbums,
         state.userName,
         state.missingTracks,
+        state.avatarVersion,
       ),
       builder: (context, data, child) {
-        final (albums, allTracks, userName, missingTracks) = data;
+        final (
+          weeklyTracks,
+          topArtists,
+          discoveryAlbums,
+          newOnServer,
+          userName,
+          missingTracks,
+          avatarVersion
+        ) = data;
         final state = context.read<AppState>();
         return SafeArea(
           bottom: false,
           child: CustomScrollView(
+            key: const Key('mobileHomeScrollView'),
             slivers: [
               SliverToBoxAdapter(
                 child: Padding(
@@ -43,21 +69,16 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       GestureDetector(
                         onTap: () => _showProfileMenu(context),
-                        child: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: const Color(0xFF3E3E3E),
-                          child: Text(
-                            userName?.substring(0, 1).toUpperCase() ?? 'U',
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 14),
-                          ),
+                        child: UserAvatar(
+                          username: userName ?? 'U',
+                          size: 36,
+                          cacheBust: avatarVersion,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: GestureDetector(
-                          onTap: () =>
-                              state.pushOverlay(const SearchScreen()),
+                          onTap: () => state.pushOverlay(const SearchScreen()),
                           child: Container(
                             height: 40,
                             decoration: BoxDecoration(
@@ -85,16 +106,17 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SliverToBoxAdapter(child: UpdateBanner()),
+              const SliverToBoxAdapter(child: SyncStatusBanner()),
               _buildSectionTitle('Récemment écouté'),
               _buildRecentlyPlayed(state),
               _buildSectionTitle('Écoutés cette semaine'),
-              _buildWeeklyTracks(state, allTracks),
+              _buildWeeklyTracks(state, weeklyTracks),
               _buildSectionTitle('Artistes du moment'),
-              _buildTopArtists(state, allTracks),
+              _buildTopArtists(state, topArtists),
               _buildSectionTitle('Découverte'),
-              _buildDiscovery(state, albums, allTracks),
+              _buildDiscovery(state, discoveryAlbums),
               _buildSectionTitle('Nouveautés du NAS'),
-              _buildNewOnServer(state, albums),
+              _buildNewOnServer(state, newOnServer),
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
@@ -198,46 +220,23 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// Albums presents sur le NAS mais pas encore likes (ni l'album, ni aucun
-  /// de ses titres individuellement), dans un ordre melange stable sur une
-  /// journee (change chaque jour, pas a chaque rebuild) pour donner un cote
-  /// "decouverte" plutot qu'aleatoire a chaque frame.
-  Widget _buildDiscovery(
-      AppState state, List<Album> albums, List<Track> allTracks) {
-    final tracksById = {for (final t in allTracks) t.id: t};
-
-    // Un album n'est "a decouvrir" que si aucun de ses titres n'est deja
-    // like : un album non-like dont tous les titres sont likes individuellement
-    // n'a rien de nouveau a proposer.
-    final notLiked = albums.where((a) {
-      if (a.isSaved) return false;
-      return a.trackIds.every((id) => tracksById[id]?.isLiked != true);
-    }).toList();
-
-    if (notLiked.isEmpty) {
+  /// Albums presents sur le NAS mais pas encore likes (voir
+  /// AppState._refreshHomeShelves pour le calcul, stable tant qu'aucune
+  /// synchro n'est en cours).
+  Widget _buildDiscovery(AppState state, List<Album> picks) {
+    if (picks.isEmpty) {
       return _buildEmpty('Tout est déjà liké !');
     }
-
-    final today = DateTime.now();
-    final seed = today.year * 10000 + today.month * 100 + today.day;
-    final picks = (List<Album>.of(notLiked)..shuffle(Random(seed)))
-        .take(10)
-        .toList();
-
     return _buildAlbumShelf(state, picks);
   }
 
   /// Derniers albums ajoutes au NAS (base sur la date d'ajout Navidrome des
   /// titres qui les composent).
-  Widget _buildNewOnServer(AppState state, List<Album> albums) {
-    final withDate = albums.where((a) => a.addedToServerAt != null).toList()
-      ..sort((a, b) => b.addedToServerAt!.compareTo(a.addedToServerAt!));
-
-    if (withDate.isEmpty) {
+  Widget _buildNewOnServer(AppState state, List<Album> picks) {
+    if (picks.isEmpty) {
       return _buildEmpty('Aucune date d\'ajout disponible (resynchronisez)');
     }
-
-    return _buildAlbumShelf(state, withDate.take(10).toList());
+    return _buildAlbumShelf(state, picks);
   }
 
   Widget _buildAlbumShelf(AppState state, List<Album> picks) {
@@ -294,19 +293,10 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Titres les plus ecoutes au cours des 7 derniers jours.
-  Widget _buildWeeklyTracks(AppState state, List<Track> allTracks) {
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-    final recent = allTracks
-        .where((t) =>
-            t.playCount > 0 && t.lastPlayed != null && t.lastPlayed!.isAfter(weekAgo))
-        .toList()
-      ..sort((a, b) => b.playCount.compareTo(a.playCount));
-
-    if (recent.isEmpty) {
+  Widget _buildWeeklyTracks(AppState state, List<Track> picks) {
+    if (picks.isEmpty) {
       return _buildEmpty('Pas encore assez d\'écoutes cette semaine');
     }
-
-    final picks = recent.take(10).toList();
 
     return SliverToBoxAdapter(
       child: SizedBox(
@@ -361,24 +351,11 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Artistes cumulant le plus d'ecoutes dans la bibliotheque locale.
-  Widget _buildTopArtists(AppState state, List<Track> allTracks) {
-    final playsByArtist = <String, int>{};
-    final coverByArtist = <String, String?>{};
-    for (final t in allTracks) {
-      if (t.playCount <= 0) continue;
-      playsByArtist.update(t.artist, (v) => v + t.playCount,
-          ifAbsent: () => t.playCount);
-      coverByArtist.putIfAbsent(t.artist, () => t.coverPath);
-    }
-
-    final artists = playsByArtist.keys.toList()
-      ..sort((a, b) => playsByArtist[b]!.compareTo(playsByArtist[a]!));
-
-    if (artists.isEmpty) {
+  Widget _buildTopArtists(
+      AppState state, List<(String artist, String? coverPath)> picks) {
+    if (picks.isEmpty) {
       return _buildEmpty('Écoutez de la musique pour voir vos artistes ici');
     }
-
-    final picks = artists.take(10).toList();
 
     return SliverToBoxAdapter(
       child: SizedBox(
@@ -388,8 +365,7 @@ class HomeScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: picks.length,
           itemBuilder: (context, index) {
-            final artist = picks[index];
-            final coverPath = coverByArtist[artist];
+            final (artist, coverPath) = picks[index];
             return Padding(
               padding: const EdgeInsets.only(right: 16),
               child: SizedBox(
@@ -403,7 +379,8 @@ class HomeScreen extends StatelessWidget {
                         child: SizedBox(
                           width: 88,
                           height: 88,
-                          child: _DiscoveryCover(coverPath: coverPath),
+                          child:
+                              _DiscoveryCover(coverPath: coverPath, size: 88),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -429,8 +406,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _openRecentPlay(
-      BuildContext context, AppState state, RecentPlay entry) {
+  void _openRecentPlay(BuildContext context, AppState state, RecentPlay entry) {
     switch (entry.type) {
       case RecentPlayType.album:
         final albums = state.albums.where((a) => a.id == entry.id);
@@ -472,12 +448,10 @@ class HomeScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFF3E3E3E),
-                  child: Text(
-                    state.userName?.substring(0, 1).toUpperCase() ?? 'U',
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                leading: UserAvatar(
+                  username: state.userName ?? 'U',
+                  size: 40,
+                  cacheBust: state.avatarVersion,
                 ),
                 title: Text(
                   state.userName ?? 'Utilisateur',
@@ -538,7 +512,8 @@ class HomeScreen extends StatelessWidget {
 
 class _DiscoveryCover extends StatelessWidget {
   final String? coverPath;
-  const _DiscoveryCover({this.coverPath});
+  final double size;
+  const _DiscoveryCover({this.coverPath, this.size = 130});
 
   @override
   Widget build(BuildContext context) {
@@ -551,10 +526,10 @@ class _DiscoveryCover extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         image: exists && path != null
             ? DecorationImage(
-                image: path.startsWith('http')
-                    ? NetworkImage(path) as ImageProvider
-                    : FileImage(File(path)),
+                image: coverImageProvider(context,
+                    path: path, width: size, height: size),
                 fit: BoxFit.cover,
+                onError: (_, __) {},
               )
             : null,
       ),
@@ -600,10 +575,10 @@ class _RecentPlayCover extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: _shape,
           image: DecorationImage(
-            image: path.startsWith('http')
-                ? NetworkImage(path) as ImageProvider
-                : FileImage(File(path)),
+            image:
+                coverImageProvider(context, path: path, width: 56, height: 56),
             fit: BoxFit.cover,
+            onError: (_, __) {},
           ),
         ),
       );

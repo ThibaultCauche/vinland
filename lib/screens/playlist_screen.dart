@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -7,6 +6,7 @@ import '../models/track.dart';
 import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/download_button.dart';
+import '../widgets/cover_image.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
 import '../models/album.dart';
@@ -19,7 +19,8 @@ class PlaylistScreen extends StatelessWidget {
   /// n'est proposee, seule la lecture et le like des titres restent possibles.
   final bool readOnly;
 
-  const PlaylistScreen({super.key, required this.playlist, this.readOnly = false});
+  const PlaylistScreen(
+      {super.key, required this.playlist, this.readOnly = false});
 
   @override
   Widget build(BuildContext context) {
@@ -44,9 +45,9 @@ class PlaylistScreen extends StatelessWidget {
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: Colors.transparent,
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -113,8 +114,7 @@ class PlaylistScreen extends StatelessWidget {
                       onPressed: tracks.isNotEmpty
                           ? () {
                               recordRecent();
-                              state.playTrack(tracks.first,
-                                  trackList: tracks);
+                              state.playTrack(tracks.first, trackList: tracks);
                             }
                           : null,
                       icon: const Icon(Icons.play_arrow),
@@ -157,15 +157,19 @@ class PlaylistScreen extends StatelessWidget {
                     : ListView.builder(
                         padding: const EdgeInsets.only(bottom: 100),
                         itemCount: tracks.length,
-                        itemBuilder: (context, i) => TrackTile(
-                          track: tracks[i],
-                          onTap: () {
-                            recordRecent();
-                            state.playTrack(tracks[i], trackList: tracks);
-                          },
-                          onLike: () => state.toggleLike(tracks[i].id),
-                          onMore: () =>
-                              _showTrackOptions(context, tracks[i], readOnly: readOnly),
+                        itemBuilder: (context, i) => Selector<AppState, Track?>(
+                          selector: (_, s) => s.currentTrack,
+                          builder: (context, currentTrack, __) => TrackTile(
+                            track: tracks[i],
+                            isPlaying: currentTrack?.id == tracks[i].id,
+                            onTap: () {
+                              recordRecent();
+                              state.playTrack(tracks[i], trackList: tracks);
+                            },
+                            onLike: () => state.toggleLike(tracks[i].id),
+                            onMore: () => _showTrackOptions(context, tracks[i],
+                                readOnly: readOnly),
+                          ),
                         ),
                       ),
               ),
@@ -230,10 +234,8 @@ class PlaylistScreen extends StatelessWidget {
             ),
             const Divider(color: Color(0xFF2A2A2A), height: 1),
             ListTile(
-              leading: Icon(
-                  playlist.isPublic ? Icons.public : Icons.public_off,
-                  color: Colors.white,
-                  size: 26),
+              leading: Icon(playlist.isPublic ? Icons.public : Icons.public_off,
+                  color: Colors.white, size: 26),
               title: Text(
                   playlist.isPublic
                       ? 'Rendre privee'
@@ -275,7 +277,8 @@ class PlaylistScreen extends StatelessWidget {
     );
   }
 
-  void _showTrackOptions(BuildContext context, Track track, {bool readOnly = false}) {
+  void _showTrackOptions(BuildContext context, Track track,
+      {bool readOnly = false}) {
     final state = context.read<AppState>();
     showModalBottomSheet(
       context: context,
@@ -375,10 +378,10 @@ class _BottomSheetHeader extends StatelessWidget {
               color: const Color(0xFF2A2A2A),
               image: exists && path != null
                   ? DecorationImage(
-                      image: path.startsWith('http')
-                          ? NetworkImage(path) as ImageProvider
-                          : FileImage(File(path)),
+                      image: coverImageProvider(context,
+                          path: path, width: 48, height: 48),
                       fit: BoxFit.cover,
+                      onError: (_, __) {},
                     )
                   : null,
             ),

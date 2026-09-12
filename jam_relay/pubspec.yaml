@@ -1,0 +1,19 @@
+name: jam_relay
+description: >
+  Relais WebSocket pour l'ecoute synchronisee ("Jam") de Vinland. Service
+  independant de l'app Flutter, a heberger sur le NAS a cote de Navidrome :
+  ne fait que rediffuser aux membres d'une session l'etat de lecture envoye
+  par l'hote (aucune logique metier, pas d'acces au NAS/a la musique).
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  shelf: ^1.4.1
+  shelf_web_socket: ^2.0.0
+  web_socket_channel: ^3.0.1
+
+dev_dependencies:
+  lints: ^4.0.0

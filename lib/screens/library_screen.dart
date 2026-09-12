@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -10,6 +11,7 @@ import '../models/playlist.dart';
 import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/download_button.dart';
+import '../widgets/cover_image.dart';
 import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
 import 'streaming_import_screen.dart';
@@ -17,6 +19,7 @@ import '../services/music_service.dart';
 import 'album_screen.dart';
 import 'artist_screen.dart';
 import 'playlist_screen.dart';
+import 'collab_playlist_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -92,7 +95,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                     ),
                     IconButton(
                       icon: const Icon(Icons.playlist_add, color: Colors.white),
-                      onPressed: () => _showCreatePlaylistDialog(context),
+                      onPressed: () => _showCreatePlaylistOptions(context),
                     ),
                   ],
                 ),
@@ -218,21 +221,25 @@ class _LibraryScreenState extends State<LibraryScreen>
         controller: _scrollControllers[0],
         padding: const EdgeInsets.only(bottom: 100),
         itemCount: filtered.length,
-        itemBuilder: (context, i) => TrackTile(
-          track: filtered[i],
-          onTap: () {
-            state.recordRecentPlay(RecentPlay(
-              type: RecentPlayType.playlist,
-              id: kLikedSongsRecentId,
-              title: 'Titres likés',
-              subtitle:
-                  '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
-              playedAt: DateTime.now(),
-            ));
-            state.playTrack(filtered[i], trackList: filtered);
-          },
-          onLike: () => state.toggleLike(filtered[i].id),
-          onMore: () => _showTrackOptions(context, filtered[i]),
+        itemBuilder: (context, i) => Selector<AppState, Track?>(
+          selector: (_, s) => s.currentTrack,
+          builder: (context, currentTrack, __) => TrackTile(
+            track: filtered[i],
+            isPlaying: currentTrack?.id == filtered[i].id,
+            onTap: () {
+              state.recordRecentPlay(RecentPlay(
+                type: RecentPlayType.playlist,
+                id: kLikedSongsRecentId,
+                title: 'Titres likés',
+                subtitle:
+                    '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''}',
+                playedAt: DateTime.now(),
+              ));
+              state.playTrack(filtered[i], trackList: filtered);
+            },
+            onLike: () => state.toggleLike(filtered[i].id),
+            onMore: () => _showTrackOptions(context, filtered[i]),
+          ),
         ),
       ),
     );
@@ -359,7 +366,9 @@ class _LibraryScreenState extends State<LibraryScreen>
                 color: const Color(0xFF2A2A2A),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Icon(Icons.queue_music, color: Colors.white54),
+              child: Icon(
+                  pl.collabGroupId != null ? Icons.groups : Icons.queue_music,
+                  color: Colors.white54),
             ),
             title: Text(
               pl.name,
@@ -367,7 +376,9 @@ class _LibraryScreenState extends State<LibraryScreen>
                   color: Colors.white, fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
-              '${pl.trackIds.length} titre${pl.trackIds.length > 1 ? 's' : ''}',
+              pl.collabGroupId != null
+                  ? 'Collaborative'
+                  : '${pl.trackIds.length} titre${pl.trackIds.length > 1 ? 's' : ''}',
               style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
             trailing: IconButton(
@@ -375,7 +386,9 @@ class _LibraryScreenState extends State<LibraryScreen>
               onPressed: () => _showPlaylistOptions(context, pl),
             ),
             onTap: () {
-              state.pushOverlay(PlaylistScreen(playlist: pl));
+              state.pushOverlay(pl.collabGroupId != null
+                  ? CollabPlaylistScreen(playlist: pl)
+                  : PlaylistScreen(playlist: pl));
             },
           );
         },
@@ -741,6 +754,221 @@ class _LibraryScreenState extends State<LibraryScreen>
     }
   }
 
+  void _showCreatePlaylistOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.playlist_add, color: Colors.white),
+              title: const Text('Nouvelle playlist',
+                  style: TextStyle(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCreatePlaylistDialog(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.groups, color: Colors.white),
+              title: const Text('Nouvelle playlist collaborative',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Tes amis peuvent y ajouter des titres',
+                  style: TextStyle(color: Colors.white54)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showCreateCollabPlaylistDialog(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_add, color: Colors.white),
+              title: const Text('Rejoindre une playlist collaborative',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Avec un code partage par un ami',
+                  style: TextStyle(color: Colors.white54)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showJoinCollabPlaylistDialog(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCreateCollabPlaylistDialog(BuildContext context) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Nouvelle playlist collaborative',
+            style: TextStyle(color: Colors.white)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Nom de la playlist',
+            hintStyle: TextStyle(color: Colors.white38),
+            border: UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF2A2A2A)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.isEmpty) return;
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final groupId = await context
+                  .read<AppState>()
+                  .createCollabPlaylist(controller.text);
+              navigator.pop();
+              if (groupId == null) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Echec de la creation (connexion NAS ?)'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              if (!context.mounted) return;
+              _showCollabCodeDialog(context, groupId);
+            },
+            child:
+                const Text('Creer', style: TextStyle(color: Color(0xFF1DB954))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCollabCodeDialog(BuildContext context, String groupId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Playlist creee !',
+            style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Partage ce code a tes amis pour qu\'ils la rejoignent :',
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              groupId,
+              style: const TextStyle(
+                color: Color(0xFF1DB954),
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: groupId));
+              Navigator.pop(context);
+            },
+            child: const Text('Copier et fermer',
+                style: TextStyle(color: Color(0xFF1DB954))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showJoinCollabPlaylistDialog(BuildContext context) {
+    final codeController = TextEditingController();
+    final nameController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Rejoindre une playlist collaborative',
+            style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: codeController,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Code partage par ton ami',
+                hintStyle: TextStyle(color: Colors.white38),
+                border: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF2A2A2A)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: 'Nom de la playlist (comme chez toi)',
+                hintStyle: TextStyle(color: Colors.white38),
+                border: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Color(0xFF2A2A2A)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child:
+                const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () async {
+              final code = codeController.text.trim();
+              final name = nameController.text.trim();
+              if (code.isEmpty || name.isEmpty) return;
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final ok =
+                  await context.read<AppState>().joinCollabPlaylist(code, name);
+              navigator.pop();
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(ok
+                      ? 'Playlist rejointe !'
+                      : 'Code invalide ou connexion NAS impossible'),
+                  backgroundColor: ok ? const Color(0xFF2A2A2A) : Colors.red,
+                ),
+              );
+            },
+            child: const Text('Rejoindre',
+                style: TextStyle(color: Color(0xFF1DB954))),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showCreatePlaylistDialog(BuildContext context) {
     final controller = TextEditingController();
     showDialog(
@@ -791,25 +1019,28 @@ class _AlbumCoverGrid extends StatelessWidget {
     final path = coverPath;
     final exists = context.read<MusicService>().coverExists(path);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(8),
-        image: exists && path != null
-            ? DecorationImage(
-                image: path.startsWith('http')
-                    ? NetworkImage(path) as ImageProvider
-                    : FileImage(File(path)),
-                fit: BoxFit.cover,
+    return LayoutBuilder(builder: (context, constraints) {
+      final side = constraints.biggest.shortestSide;
+      return Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(8),
+          image: exists && path != null
+              ? DecorationImage(
+                  image: coverImageProvider(context,
+                      path: path, width: side, height: side),
+                  fit: BoxFit.cover,
+                  onError: (_, __) {},
+                )
+              : null,
+        ),
+        child: exists != true
+            ? const Center(
+                child: Icon(Icons.album, color: Colors.white54, size: 48),
               )
             : null,
-      ),
-      child: exists != true
-          ? const Center(
-              child: Icon(Icons.album, color: Colors.white54, size: 48),
-            )
-          : null,
-    );
+      );
+    });
   }
 }
 
@@ -841,10 +1072,10 @@ class _BottomSheetHeader extends StatelessWidget {
               color: const Color(0xFF2A2A2A),
               image: exists && path != null
                   ? DecorationImage(
-                      image: path.startsWith('http')
-                          ? NetworkImage(path) as ImageProvider
-                          : FileImage(File(path)),
+                      image: coverImageProvider(context,
+                          path: path, width: 48, height: 48),
                       fit: BoxFit.cover,
+                      onError: (_, __) {},
                     )
                   : null,
             ),

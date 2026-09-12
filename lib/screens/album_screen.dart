@@ -12,6 +12,7 @@ import '../models/discovered_album.dart';
 import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
 import '../widgets/download_button.dart';
+import '../widgets/cover_image.dart';
 import 'artist_screen.dart';
 
 class AlbumScreen extends StatefulWidget {
@@ -159,12 +160,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
       final exact = byTitle[dtTitle];
       final match = exact ??
           localTracks.cast<Track?>().firstWhere(
-                (t) {
-                  final lt = _normalize(t!.title);
-                  return lt.contains(dtTitle) || dtTitle.contains(lt);
-                },
-                orElse: () => null,
-              );
+            (t) {
+              final lt = _normalize(t!.title);
+              return lt.contains(dtTitle) || dtTitle.contains(lt);
+            },
+            orElse: () => null,
+          );
 
       if (match != null) {
         usedKeys.add(_normalize(match.title));
@@ -277,6 +278,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                       return _AlbumTrackTile(
                         index: index,
                         track: track,
+                        isPlaying: appState.currentTrack?.id == track.id,
                         onTap: () {
                           _recordRecent(appState);
                           appState.playTrack(track, trackList: albumTracks);
@@ -343,10 +345,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 ],
                 image: exists && coverPath != null
                     ? DecorationImage(
-                        image: coverPath.startsWith('http')
-                            ? NetworkImage(coverPath) as ImageProvider
-                            : FileImage(File(coverPath)),
+                        image: coverImageProvider(context,
+                            path: coverPath,
+                            width: screenWidth * 0.60,
+                            height: screenWidth * 0.60),
                         fit: BoxFit.cover,
+                        onError: (_, __) {},
                       )
                     : null,
                 color: const Color(0xFF2A2A2A),
@@ -693,9 +697,9 @@ class _SmallAvatar extends StatelessWidget {
     if (exists && path != null) {
       return CircleAvatar(
         radius: 12,
-        backgroundImage: path.startsWith('http')
-            ? NetworkImage(path) as ImageProvider
-            : FileImage(File(path)),
+        backgroundImage:
+            coverImageProvider(context, path: path, width: 24, height: 24),
+        onBackgroundImageError: (_, __) {},
       );
     }
     return const CircleAvatar(
@@ -772,6 +776,7 @@ class _AlbumTrackTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLike;
   final VoidCallback onMore;
+  final bool isPlaying;
 
   const _AlbumTrackTile({
     required this.index,
@@ -779,6 +784,7 @@ class _AlbumTrackTile extends StatelessWidget {
     required this.onTap,
     required this.onLike,
     required this.onMore,
+    this.isPlaying = false,
   });
 
   @override
@@ -792,14 +798,17 @@ class _AlbumTrackTile extends StatelessWidget {
           children: [
             SizedBox(
               width: 32,
-              child: Text(
-                '${index + 1}',
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 14,
-                ),
-                textAlign: TextAlign.center,
-              ),
+              child: isPlaying
+                  ? const Icon(Icons.graphic_eq,
+                      color: Color(0xFF1DB954), size: 16)
+                  : Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -808,8 +817,8 @@ class _AlbumTrackTile extends StatelessWidget {
                 children: [
                   Text(
                     track.title,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: isPlaying ? const Color(0xFF1DB954) : Colors.white,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                       letterSpacing: -0.3,
@@ -946,10 +955,10 @@ class _BottomSheetHeader extends StatelessWidget {
               color: const Color(0xFF2A2A2A),
               image: exists && path != null
                   ? DecorationImage(
-                      image: path.startsWith('http')
-                          ? NetworkImage(path) as ImageProvider
-                          : FileImage(File(path)),
+                      image: coverImageProvider(context,
+                          path: path, width: 48, height: 48),
                       fit: BoxFit.cover,
+                      onError: (_, __) {},
                     )
                   : null,
             ),

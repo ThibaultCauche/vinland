@@ -7,6 +7,7 @@ import '../models/track.dart';
 import '../models/recent_play.dart';
 import '../services/navidrome_service.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/user_avatar.dart';
 import 'playlist_screen.dart';
 
 /// Profil d'un ami : titres likes en premier (comme une page d'artiste),
@@ -30,7 +31,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
       return;
     }
     setState(() => _loadingPlaylistId = true);
-    final trackIds = await NavidromeService().fetchPlaylistSongIds(playlist.serverId!);
+    final trackIds =
+        await NavidromeService().fetchPlaylistSongIds(playlist.serverId!);
     setState(() => _loadingPlaylistId = false);
     if (!mounted) return;
     final refreshed = Playlist(
@@ -58,6 +60,11 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
             .whereType<Track>()
             .toList();
         final preview = likedTracks.take(5).toList();
+        final recentTracks = (friend.recentPlaysPlaylist?.trackIds ?? [])
+            .map((id) => byId[id])
+            .whereType<Track>()
+            .toList();
+        final recentPreview = recentTracks.take(5).toList();
 
         void recordRecent() {
           state.recordRecentPlay(RecentPlay(
@@ -70,9 +77,9 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: Colors.transparent,
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -89,7 +96,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      _FriendAvatar(username: friend.username),
+                      UserAvatar(username: friend.username, size: 80),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -104,11 +111,42 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''} likes · ${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}',
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 14),
-                            ),
+                            Builder(builder: (context) {
+                              final nowPlayingTrack =
+                                  friend.nowPlayingTrackId == null
+                                      ? null
+                                      : byId[friend.nowPlayingTrackId];
+                              if (nowPlayingTrack != null) {
+                                return Text(
+                                  '🎧 ${nowPlayingTrack.title} · ${nowPlayingTrack.artist}',
+                                  style: const TextStyle(
+                                      color: Color(0xFF1DB954), fontSize: 13),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                );
+                              }
+                              return Text(
+                                '${likedTracks.length} titre${likedTracks.length > 1 ? 's' : ''} likes · ${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}',
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 14),
+                              );
+                            }),
+                            if (friend.jamSessionId != null) ...[
+                              const SizedBox(height: 10),
+                              ElevatedButton.icon(
+                                onPressed: () =>
+                                    state.joinJamSession(friend.jamSessionId!),
+                                icon: const Icon(Icons.groups, size: 18),
+                                label: const Text('Rejoindre le Jam'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1DB954),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -116,7 +154,6 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   ),
                 ),
               ),
-
               if (likedTracks.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -153,7 +190,6 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                     ),
                   ),
                 ),
-
               if (preview.isNotEmpty) ...[
                 SliverToBoxAdapter(
                   child: Padding(
@@ -171,7 +207,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                         ),
                         if (likedTracks.length > preview.length)
                           TextButton(
-                            onPressed: () => _openPlaylist(friend.likesPlaylist!),
+                            onPressed: () =>
+                                _openPlaylist(friend.likesPlaylist!),
                             child: const Text('Voir tout',
                                 style: TextStyle(color: Color(0xFF1DB954))),
                           ),
@@ -183,20 +220,74 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) => TrackTile(
-                        track: preview[index],
-                        onTap: () {
-                          recordRecent();
-                          state.playTrack(preview[index], trackList: likedTracks);
-                        },
-                        onLike: () => state.toggleLike(preview[index].id),
+                      (context, index) => Selector<AppState, Track?>(
+                        selector: (_, s) => s.currentTrack,
+                        builder: (context, currentTrack, __) => TrackTile(
+                          track: preview[index],
+                          isPlaying: currentTrack?.id == preview[index].id,
+                          onTap: () {
+                            recordRecent();
+                            state.playTrack(preview[index],
+                                trackList: likedTracks);
+                          },
+                          onLike: () => state.toggleLike(preview[index].id),
+                        ),
                       ),
                       childCount: preview.length,
                     ),
                   ),
                 ),
               ],
-
+              if (recentPreview.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Ecoute recemment',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (recentTracks.length > recentPreview.length)
+                          TextButton(
+                            onPressed: () =>
+                                _openPlaylist(friend.recentPlaysPlaylist!),
+                            child: const Text('Voir tout',
+                                style: TextStyle(color: Color(0xFF1DB954))),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => Selector<AppState, Track?>(
+                        selector: (_, s) => s.currentTrack,
+                        builder: (context, currentTrack, __) => TrackTile(
+                          track: recentPreview[index],
+                          isPlaying:
+                              currentTrack?.id == recentPreview[index].id,
+                          onTap: () {
+                            recordRecent();
+                            state.playTrack(recentPreview[index],
+                                trackList: recentTracks);
+                          },
+                          onLike: () =>
+                              state.toggleLike(recentPreview[index].id),
+                        ),
+                      ),
+                      childCount: recentPreview.length,
+                    ),
+                  ),
+                ),
+              ],
               if (friend.playlists.isNotEmpty) ...[
                 const SliverToBoxAdapter(
                   child: Padding(
@@ -227,8 +318,9 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   ),
                 ),
               ],
-
-              if (likedTracks.isEmpty && friend.playlists.isEmpty)
+              if (likedTracks.isEmpty &&
+                  recentTracks.isEmpty &&
+                  friend.playlists.isEmpty)
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.all(32),
@@ -238,7 +330,6 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                     ),
                   ),
                 ),
-
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
@@ -268,39 +359,11 @@ class _FriendPlaylistTile extends StatelessWidget {
         child: const Icon(Icons.queue_music, color: Colors.white54, size: 24),
       ),
       title: Text(playlist.name,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w500)),
       subtitle: Text('${playlist.trackIds.length} titre(s)',
           style: const TextStyle(color: Colors.white54, fontSize: 13)),
       trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-    );
-  }
-}
-
-class _FriendAvatar extends StatelessWidget {
-  final String username;
-  const _FriendAvatar({required this.username});
-
-  static const _colors = [
-    Color(0xFF1DB954),
-    Color(0xFFE91E63),
-    Color(0xFF2196F3),
-    Color(0xFFFF9800),
-    Color(0xFF9C27B0),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colors[username.hashCode.abs() % _colors.length];
-    final initial = username.isNotEmpty ? username[0].toUpperCase() : '?';
-    return Container(
-      width: 80,
-      height: 80,
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(40)),
-      child: Center(
-        child: Text(initial,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-      ),
     );
   }
 }

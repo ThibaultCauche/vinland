@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../models/search_history_item.dart';
 import '../services/discovery_service.dart';
 import '../services/search_history_service.dart';
+import '../widgets/cover_image.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import '../screens/discovered_album_screen.dart';
@@ -140,8 +141,10 @@ class _SearchScreenState extends State<SearchScreen>
         borderRadius: BorderRadius.circular(isArtist ? 24 : 4),
         image: item.imageUrl != null
             ? DecorationImage(
-                image: NetworkImage(item.imageUrl!),
+                image: coverImageProvider(context,
+                    path: item.imageUrl!, width: 48, height: 48),
                 fit: BoxFit.cover,
+                onError: (_, __) {},
               )
             : null,
       ),
@@ -164,7 +167,7 @@ class _SearchScreenState extends State<SearchScreen>
         _localTracks.isNotEmpty || _artists.isNotEmpty || _albums.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -356,8 +359,10 @@ class _SearchScreenState extends State<SearchScreen>
               image:
                   track.coverPath != null && track.coverPath!.startsWith('http')
                       ? DecorationImage(
-                          image: NetworkImage(track.coverPath!),
+                          image: coverImageProvider(context,
+                              path: track.coverPath!, width: 48, height: 48),
                           fit: BoxFit.cover,
+                          onError: (_, __) {},
                         )
                       : null,
             ),
@@ -413,8 +418,11 @@ class _SearchScreenState extends State<SearchScreen>
             radius: 24,
             backgroundColor: const Color(0xFF3E3E3E),
             backgroundImage: artist.pictureUrl != null
-                ? NetworkImage(artist.pictureUrl!)
+                ? coverImageProvider(context,
+                    path: artist.pictureUrl!, width: 48, height: 48)
                 : null,
+            onBackgroundImageError:
+                artist.pictureUrl != null ? (_, __) {} : null,
             child: artist.pictureUrl == null
                 ? const Icon(Icons.person, color: Colors.white54)
                 : null,
@@ -526,23 +534,29 @@ class _AlbumCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(8),
-                  image: coverUrl != null
-                      ? DecorationImage(
-                          image: NetworkImage(coverUrl!),
-                          fit: BoxFit.cover,
-                        )
+              child: LayoutBuilder(builder: (context, constraints) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A2A),
+                    borderRadius: BorderRadius.circular(8),
+                    image: coverUrl != null
+                        ? DecorationImage(
+                            image: coverImageProvider(context,
+                                path: coverUrl!,
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight),
+                            fit: BoxFit.cover,
+                            onError: (_, __) {},
+                          )
+                        : null,
+                  ),
+                  child: coverUrl == null
+                      ? const Center(
+                          child: Icon(Icons.album,
+                              color: Colors.white54, size: 48))
                       : null,
-                ),
-                child: coverUrl == null
-                    ? const Center(
-                        child:
-                            Icon(Icons.album, color: Colors.white54, size: 48))
-                    : null,
-              ),
+                );
+              }),
             ),
             const SizedBox(height: 8),
             Text(

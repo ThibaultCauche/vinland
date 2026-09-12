@@ -44,7 +44,14 @@ class NavidromeService {
     return sanitized;
   }
 
-  Future<bool> loadCredentials() async {
+  /// Charge les identifiants stockes localement (ou le repli
+  /// credentials.dart) en memoire, sans authentifier aupres du NAS -- pur
+  /// I/O local (secure storage), donc rapide et sans dependance reseau.
+  /// Permet a AppState.initialize() de peupler hasCredentials (et donc
+  /// isLoggedIn) avant le premier rendu, pour eviter le flash de l'ecran de
+  /// connexion pendant que l'authentification live (potentiellement lente,
+  /// voir authenticate()) se termine en tache de fond.
+  Future<void> loadStoredCredentials() async {
     final creds = await SecureStorage.getCredentials();
     final storedUrl = creds['url'];
     _baseUrl = storedUrl != null ? _sanitizeUrl(storedUrl) : null;
@@ -60,11 +67,21 @@ class NavidromeService {
       // Corrige une URL deja sauvegardee avec un slash final.
       await SecureStorage.saveCredentials(_baseUrl!, _username!, _password!);
     }
+  }
 
+  /// Authentifie aupres du NAS avec les identifiants deja charges en
+  /// memoire (voir loadStoredCredentials()). Appel reseau, peut prendre
+  /// jusqu'a 10s (timeout) si le NAS est lent/injoignable.
+  Future<bool> authenticate() async {
     if (_baseUrl != null && _username != null && _password != null) {
       return await _authenticate();
     }
     return false;
+  }
+
+  Future<bool> loadCredentials() async {
+    await loadStoredCredentials();
+    return await authenticate();
   }
 
   Future<bool> saveCredentials(
@@ -102,7 +119,8 @@ class NavidromeService {
     // qu'apres confirmation du serveur, sinon isConnected (qui se base sur
     // _token != null) reste vrai meme apres un refus explicite (identifiants
     // invalides = reponse HTTP 200 avec status "failed", pas une exception).
-    final candidateToken = md5.convert(utf8.encode(_password! + _salt!)).toString();
+    final candidateToken =
+        md5.convert(utf8.encode(_password! + _salt!)).toString();
 
     final url = Uri.parse(
       '$_baseUrl/rest/ping.view?u=$_username&t=$candidateToken&s=$_salt&v=1.16.1&c=vinland&f=json',
@@ -144,7 +162,12 @@ class NavidromeService {
         .replace(queryParameters: params);
   }
 
-  Future<List<Track>> fetchAllTracks() async {
+  /// [onBatch] est appele avec les titres de chaque lot d'albums des qu'il
+  /// arrive (avant la fin de la synchro complete) : permet a l'appelant
+  /// d'afficher la bibliotheque progressivement au lieu d'attendre les 1500+
+  /// albums d'un coup.
+  Future<List<Track>> fetchAllTracks(
+      {void Function(List<Track> batch)? onBatch}) async {
     if (!isConnected) return [];
     final albums = await fetchAlbums();
     final List<Track> allTracks = [];
@@ -152,23 +175,69 @@ class NavidromeService {
     // Recupere les titres de plusieurs albums en parallele (au lieu d'un
     // aller-retour HTTP sequentiel par album) : divise significativement le
     // temps de resynchro au demarrage sur une bibliotheque de centaines
-    // d'albums.
-    const batchSize = 8;
+    // d'albums. Taille de lot relevee de 8 a 16 (~2x moins d'allers-retours
+    // sequentiels sur 1500+ albums) : au-dela, des handshakes TLS
+    // concurrents sur le tunnel Tailscale ont commence a echouer
+    // ("Connection terminated during handshake") -- fetchAlbumTracks
+    // reessaie maintenant sur echec, mais reduire la casse en amont reste
+    // preferable a compter sur les retries.
+    const batchSize = 16;
     for (var i = 0; i < albums.length; i += batchSize) {
       final batch = albums.skip(i).take(batchSize);
       final results = await Future.wait(batch.map((album) => fetchAlbumTracks(
             album['id'] as String,
             albumArtist: album['artist']?.toString(),
           )));
+      final batchTracks = <Track>[];
       for (final tracks in results) {
-        allTracks.addAll(tracks);
+        batchTracks.addAll(tracks);
       }
+      allTracks.addAll(batchTracks);
+      onBatch?.call(batchTracks);
       print(
           'PROGRESSION: ${(i + batchSize).clamp(0, albums.length)}/${albums.length} albums, ${allTracks.length} tracks');
     }
 
     print('TOTAL TRACKS: ${allTracks.length}');
     return allTracks;
+  }
+
+  /// Les [count] albums les plus recemment ajoutes (getAlbumList2?type=newest),
+  /// un seul aller-retour HTTP -- utilise pour rafraichir juste ce qu'un
+  /// telechargement vient d'ajouter sans refaire une synchro complete de
+  /// toute la bibliotheque (voir MusicService.syncRecentlyAdded).
+  Future<List<Map<String, dynamic>>> fetchRecentAlbums({int count = 5}) async {
+    if (!isConnected) return [];
+    try {
+      final response = await http
+          .get(_buildUri('getAlbumList2.view', extra: {
+            'type': 'newest',
+            'size': '$count',
+          }))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body);
+      final albumList =
+          data['subsonic-response']?['albumList2']?['album'] as List?;
+      if (albumList == null) return [];
+
+      return albumList
+          .map((album) => {
+                'id': album['id'],
+                'name': album['name'],
+                'artist': album['artist'],
+                'coverArt': album['coverArt'],
+                'songCount': album['songCount'],
+                'duration': album['duration'],
+                'year': album['year'],
+                'genre': album['genre'],
+              })
+          .toList();
+    } catch (e) {
+      print('fetchRecentAlbums error: $e');
+      return [];
+    }
   }
 
   Future<List<Map<String, dynamic>>> fetchAlbums() async {
@@ -226,8 +295,13 @@ class NavidromeService {
     return albums;
   }
 
+  /// Reessaie sur echec transitoire (ex: "Connection terminated during
+  /// handshake", observe quand plusieurs dizaines de requetes ouvrent une
+  /// TLS handshake en meme temps sur le tunnel Tailscale) : sans retry, un
+  /// album qui echoue silencieusement perd tous ses titres pour cette
+  /// synchro -- pire que la lenteur qu'on cherche a corriger.
   Future<List<Track>> fetchAlbumTracks(String albumId,
-      {String? albumArtist}) async {
+      {String? albumArtist, int retriesLeft = 2}) async {
     if (!isConnected) return [];
     try {
       final response = await http
@@ -238,11 +312,17 @@ class NavidromeService {
         final songs =
             data['subsonic-response']?['album']?['song'] as List? ?? [];
         return songs
-            .map((json) => _mapSubsonicTrack(json, albumArtist: albumArtist))
+            .map((json) => _mapSubsonicTrack(json,
+                albumArtist: albumArtist, albumId: albumId))
             .toList();
       }
     } catch (e) {
-      print('fetchAlbumTracks error: $e');
+      if (retriesLeft > 0) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        return fetchAlbumTracks(albumId,
+            albumArtist: albumArtist, retriesLeft: retriesLeft - 1);
+      }
+      print('fetchAlbumTracks error (album $albumId, no more retries): $e');
     }
     return [];
   }
@@ -272,7 +352,7 @@ class NavidromeService {
     return '$_baseUrl/rest/getCoverArt.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland';
   }
 
-  Track _mapSubsonicTrack(dynamic json, {String? albumArtist}) {
+  Track _mapSubsonicTrack(dynamic json, {String? albumArtist, String? albumId}) {
     final id = json['id']?.toString() ?? '';
     final durationSec = json['duration'] ?? 180;
     return Track(
@@ -287,7 +367,12 @@ class NavidromeService {
       filePath: getStreamUrl(id),
       coverPath: getCoverUrl(id),
       isLiked: json['starred'] != null,
-      albumId: json['parent']?.toString(),
+      // json['parent'] est l'ID du dossier physique sur le NAS, pas l'ID
+      // d'album ID3 -- ne correspond pas forcement a l'ID attendu par
+      // star.view/getStarred2 (cause du bug "liker un album ne marche pas").
+      // On utilise l'ID d'album deja connu et fiable (celui utilise pour
+      // l'appel getAlbum.view qui a produit ce titre).
+      albumId: albumId ?? json['parent']?.toString(),
       albumArtist: albumArtist ?? json['albumArtist']?.toString(),
       year: json['year'] is int
           ? json['year'] as int
@@ -295,7 +380,27 @@ class NavidromeService {
       addedToServerAt: json['created'] != null
           ? DateTime.tryParse(json['created'].toString())
           : null,
+      genre: json['genre']?.toString(),
     );
+  }
+
+  /// Signale une lecture a Navidrome (scrobble.view, submission=true) : sans
+  /// ca, playCount/date de derniere ecoute ne sont connus que localement par
+  /// utilisateur (MusicService.recordPlay), jamais remontes au NAS. La regle
+  /// de suppression automatique des morceaux peu ecoutes (voir download-worker)
+  /// en a besoin pour savoir ce qui a reellement ete joue, tous appareils
+  /// confondus.
+  Future<void> scrobble(String trackId) async {
+    if (!isConnected) return;
+    final cleanId = trackId.replaceFirst('navidrome_', '');
+    try {
+      await http
+          .get(_buildUri('scrobble.view',
+              extra: {'id': cleanId, 'submission': 'true'}))
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      print('scrobble error: $e');
+    }
   }
 
   Future<bool> starTrack(String trackId) async {
@@ -411,8 +516,7 @@ class NavidromeService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final raw =
-            data['subsonic-response']?['playlists']?['playlist'] as List? ??
-                [];
+            data['subsonic-response']?['playlists']?['playlist'] as List? ?? [];
         return raw
             .map((pl) => {
                   'id': pl['id']?.toString() ?? '',
@@ -511,7 +615,8 @@ class NavidromeService {
       final uri = _buildUri('updatePlaylist.view');
       final params = Map<String, String>.from(uri.queryParameters);
       final queryParts = <String>[];
-      params.forEach((k, v) => queryParts.add('$k=${Uri.encodeQueryComponent(v)}'));
+      params.forEach(
+          (k, v) => queryParts.add('$k=${Uri.encodeQueryComponent(v)}'));
       queryParts.add('playlistId=${Uri.encodeQueryComponent(playlistId)}');
       for (var i = currentClean.length - 1; i >= 0; i--) {
         queryParts.add('songIndexToRemove=$i');
@@ -519,8 +624,10 @@ class NavidromeService {
       for (final id in cleanTrackIds) {
         queryParts.add('songIdToAdd=${Uri.encodeQueryComponent(id)}');
       }
-      final fullUri = Uri.parse('$_baseUrl/rest/updatePlaylist.view?${queryParts.join('&')}');
-      final response = await http.get(fullUri).timeout(const Duration(seconds: 20));
+      final fullUri = Uri.parse(
+          '$_baseUrl/rest/updatePlaylist.view?${queryParts.join('&')}');
+      final response =
+          await http.get(fullUri).timeout(const Duration(seconds: 20));
       return response.statusCode == 200;
     } catch (e) {
       print('replacePlaylistSongs error: $e');

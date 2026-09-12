@@ -22,6 +22,19 @@ class Playlist {
   /// via son champ "comment", pas par son nom (modifiable par l'utilisateur).
   final bool isLikesMirror;
 
+  /// Vrai pour la playlist auto-generee qui miroite les derniers titres
+  /// ecoutes de son proprietaire (voir MusicService._syncRecentPlaysMirror),
+  /// meme mecanisme qu'isLikesMirror.
+  final bool isRecentPlaysMirror;
+
+  /// Identifiant de groupe partage par les sous-listes d'une playlist
+  /// "collaborative" (une par contributeur, chacune sur son propre compte
+  /// Navidrome car l'API n'autorise pas l'edition d'une playlist par
+  /// quelqu'un d'autre que son proprietaire) : stocke cote serveur dans le
+  /// champ "comment" sous la forme "vinland:collab:<uuid>", comme
+  /// isLikesMirror/isRecentPlaysMirror. Null = playlist normale.
+  final String? collabGroupId;
+
   Playlist({
     required this.id,
     required this.name,
@@ -32,6 +45,8 @@ class Playlist {
     this.isPublic = false,
     this.ownerUsername,
     this.isLikesMirror = false,
+    this.isRecentPlaysMirror = false,
+    this.collabGroupId,
   })  : trackIds = trackIds ?? [],
         createdAt = createdAt ?? DateTime.now();
 
@@ -46,6 +61,8 @@ class Playlist {
         'serverId': serverId,
         'isPublic': isPublic,
         'isLikesMirror': isLikesMirror,
+        'isRecentPlaysMirror': isRecentPlaysMirror,
+        'collabGroupId': collabGroupId,
       };
 
   factory Playlist.fromJson(Map<String, dynamic> json) {
@@ -64,6 +81,8 @@ class Playlist {
       serverId: json['serverId']?.toString(),
       isPublic: json['isPublic'] == true,
       isLikesMirror: json['isLikesMirror'] == true,
+      isRecentPlaysMirror: json['isRecentPlaysMirror'] == true,
+      collabGroupId: json['collabGroupId']?.toString(),
     );
   }
 }

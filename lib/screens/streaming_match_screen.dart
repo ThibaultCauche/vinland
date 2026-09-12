@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../widgets/app_background.dart';
 
 class StreamingMatchScreen extends StatefulWidget {
   final List<Map<String, String>> tracks;
@@ -507,9 +508,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
     final newLikes = uniqueMatchedIds.length - alreadyLiked;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('Correspondances',
             style: TextStyle(color: Colors.white)),
@@ -526,64 +527,66 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             ),
         ],
       ),
-      body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: PlatformBackground(
+        child: _isLoading
+            ? const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF1DB954)),
+                    SizedBox(height: 16),
+                    Text('Recherche des correspondances...',
+                        style: TextStyle(color: Colors.white54)),
+                  ],
+                ),
+              )
+            : Column(
                 children: [
-                  CircularProgressIndicator(color: Color(0xFF1DB954)),
-                  SizedBox(height: 16),
-                  Text('Recherche des correspondances...',
-                      style: TextStyle(color: Colors.white54)),
+                  // ── DEBUG INFO ──
+                  if (_debugInfo != null)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E1E1E),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _debugInfo!,
+                        style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 11,
+                            fontFamily: 'monospace'),
+                      ),
+                    ),
+                  _buildSummary(matched.length, unmatched.length, alreadyLiked,
+                      duplicates.length),
+                  _buildFilterBar(
+                      matched.length, unmatched.length, duplicates.length),
+                  Expanded(
+                    child: _filteredMatches.isEmpty
+                        ? Center(
+                            child: Text(
+                              _showMissingOnly
+                                  ? 'Aucun titre manquant'
+                                  : _showDuplicatesOnly
+                                      ? 'Aucun doublon'
+                                      : 'Aucune correspondance',
+                              style: const TextStyle(color: Colors.white38),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: _filteredMatches.length,
+                            itemBuilder: (context, index) => _buildMatchTile(
+                                _filteredMatches[index],
+                                duplicateIds.contains(
+                                    _filteredMatches[index].matchedTrack?.id)),
+                          ),
+                  ),
                 ],
               ),
-            )
-          : Column(
-              children: [
-                // ── DEBUG INFO ──
-                if (_debugInfo != null)
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _debugInfo!,
-                      style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 11,
-                          fontFamily: 'monospace'),
-                    ),
-                  ),
-                _buildSummary(matched.length, unmatched.length, alreadyLiked,
-                    duplicates.length),
-                _buildFilterBar(
-                    matched.length, unmatched.length, duplicates.length),
-                Expanded(
-                  child: _filteredMatches.isEmpty
-                      ? Center(
-                          child: Text(
-                            _showMissingOnly
-                                ? 'Aucun titre manquant'
-                                : _showDuplicatesOnly
-                                    ? 'Aucun doublon'
-                                    : 'Aucune correspondance',
-                            style: const TextStyle(color: Colors.white38),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _filteredMatches.length,
-                          itemBuilder: (context, index) => _buildMatchTile(
-                              _filteredMatches[index],
-                              duplicateIds.contains(
-                                  _filteredMatches[index].matchedTrack?.id)),
-                        ),
-                ),
-              ],
-            ),
+      ),
     );
   }
 

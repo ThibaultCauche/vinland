@@ -126,9 +126,17 @@ class DiscoveryService {
       final normalizedTitle = _normalize(track.title);
       final normalizedAlbum = _normalize(track.albumName);
 
+      // Deezer laisse parfois l'album vide pour un titre (compilation, live,
+      // single mal catalogue) -- DiscoveredTrack retombe alors sur "Inconnu",
+      // qui ne correspondra jamais au vrai nom d'album tague localement. Dans
+      // ce cas on ne compare que artiste+titre plutot que de bloquer
+      // indefiniment le match sur un champ qui n'a jamais ete une vraie
+      // valeur d'album.
+      final albumIsPlaceholder = track.albumName == 'Inconnu';
       track.isInLibrary = localTracks.any((t) {
         return _artistsMatch(_normalize(t.artist), normalizedArtist) &&
-            _albumsMatch(_normalize(t.album), normalizedAlbum) &&
+            (albumIsPlaceholder ||
+                _albumsMatch(_normalize(t.album), normalizedAlbum)) &&
             _titlesMatch(_normalize(t.title), normalizedTitle);
       });
     }
@@ -202,7 +210,14 @@ class DiscoveryService {
 
   bool _titlesMatch(String a, String b) {
     if (a == b) return true;
-    if (a.contains(b) || b.contains(a)) return true;
+    // Pas de raccourci par contains() ici (contrairement a _artistsMatch) :
+    // "Around the World" est un prefixe litteral de "Around the World Radio
+    // Edit"/"Around the World Motorbass Vice Mix" une fois normalise (les
+    // parentheses sont supprimees par _normalize), alors que ce sont des
+    // enregistrements differents -- un contains() les aurait tous fait
+    // passer pour possedes des qu'un seul etait telecharge. La similarite
+    // Levenshtein est sensible a la longueur : un titre nettement plus long
+    // a cause d'un suffixe de version tombe naturellement sous le seuil.
     return _similarity(a, b) > 0.70;
   }
 

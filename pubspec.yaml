@@ -1,7 +1,7 @@
 name: vinland
 description: Lecteur de musique personnel
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -35,6 +35,10 @@ dependencies:
   diacritic: ^0.1.6
   package_info_plus: ^9.0.1
   url_launcher: ^6.3.2
+  window_manager: ^0.5.2
+  flutter_acrylic: ^1.1.4
+  flutter_colorpicker: ^1.1.0
+  web_socket_channel: ^2.4.0
 
 dependency_overrides:
   # VS 2026's MSVC now hard-errors on the deprecated /await experimental

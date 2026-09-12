@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/friend_profile.dart';
+import '../models/track.dart';
+import '../widgets/user_avatar.dart';
 import 'friend_profile_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -23,12 +25,13 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Consumer<AppState>(
       builder: (context, state, child) {
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: Colors.transparent,
             elevation: 0,
             title: const Text('Amis',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.white),
@@ -52,8 +55,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
                           final friend = state.friends[i];
                           return _FriendTile(
                             friend: friend,
-                            onTap: () => state
-                                .pushOverlay(FriendProfileScreen(friend: friend)),
+                            onTap: () => state.pushOverlay(
+                                FriendProfileScreen(friend: friend)),
                           );
                         },
                       ),
@@ -115,47 +118,60 @@ class _FriendTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final likedCount = friend.likesPlaylist?.trackIds.length ?? 0;
     final parts = <String>[];
-    if (likedCount > 0) parts.add('$likedCount titre${likedCount > 1 ? 's' : ''} lik${likedCount > 1 ? 'es' : 'e'}');
+    if (likedCount > 0)
+      parts.add(
+          '$likedCount titre${likedCount > 1 ? 's' : ''} lik${likedCount > 1 ? 'es' : 'e'}');
     if (friend.playlists.isNotEmpty) {
       parts.add(
           '${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}');
     }
 
-    return ListTile(
-      onTap: onTap,
-      leading: _Avatar(username: friend.username),
-      title: Text(friend.username,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-      subtitle: Text(
-        parts.isEmpty ? 'Rien de partage pour le moment' : parts.join(' · '),
-        style: const TextStyle(color: Colors.white54, fontSize: 13),
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
-    );
-  }
-}
+    Track? findNowPlaying(AppState state) {
+      if (friend.nowPlayingTrackId == null) return null;
+      for (final t in state.allTracks) {
+        if (t.id == friend.nowPlayingTrackId) return t;
+      }
+      return null;
+    }
 
-class _Avatar extends StatelessWidget {
-  final String username;
-  const _Avatar({required this.username});
-
-  static const _colors = [
-    Color(0xFF1DB954),
-    Color(0xFFE91E63),
-    Color(0xFF2196F3),
-    Color(0xFFFF9800),
-    Color(0xFF9C27B0),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _colors[username.hashCode.abs() % _colors.length];
-    final initial = username.isNotEmpty ? username[0].toUpperCase() : '?';
-    return CircleAvatar(
-      radius: 22,
-      backgroundColor: color,
-      child: Text(initial,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+    return Selector<AppState, Track?>(
+      selector: (_, state) => findNowPlaying(state),
+      builder: (context, nowPlayingTrack, __) {
+        final inJam = friend.jamSessionId != null;
+        return ListTile(
+          onTap: onTap,
+          leading: UserAvatar(username: friend.username, size: 44),
+          title: Text(friend.username,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w500)),
+          subtitle: nowPlayingTrack != null
+              ? Text(
+                  '🎧 ${nowPlayingTrack.title} · ${nowPlayingTrack.artist}',
+                  style:
+                      const TextStyle(color: Color(0xFF1DB954), fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : Text(
+                  parts.isEmpty
+                      ? 'Rien de partage pour le moment'
+                      : parts.join(' · '),
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+          trailing: inJam
+              ? TextButton.icon(
+                  onPressed: () => context
+                      .read<AppState>()
+                      .joinJamSession(friend.jamSessionId!),
+                  icon: const Icon(Icons.groups, size: 16),
+                  label: const Text('Rejoindre'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF1DB954),
+                  ),
+                )
+              : const Icon(Icons.chevron_right, color: Colors.white38),
+        );
+      },
     );
   }
 }

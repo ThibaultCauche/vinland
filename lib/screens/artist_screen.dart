@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -10,6 +9,7 @@ import '../models/discovered_track.dart';
 import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/cover_image.dart';
 import 'album_screen.dart';
 import 'discovered_album_screen.dart';
 
@@ -281,7 +281,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
         // (les albums sans date connue sont relegues a la fin).
         final sortedAlbumEntries = <_ArtistAlbumEntry>[
           for (final a in localAlbums)
-            _ArtistAlbumEntry.local(a, a.year != null ? DateTime(a.year!) : null),
+            _ArtistAlbumEntry.local(
+                a, a.year != null ? DateTime(a.year!) : null),
           for (final a in discoveredOnly)
             _ArtistAlbumEntry.discovered(a, _parseReleaseDate(a.releaseDate)),
         ]..sort((a, b) {
@@ -305,9 +306,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
             (localAlbums.isNotEmpty ? localAlbums.first.coverPath : null);
 
         return Scaffold(
-          backgroundColor: const Color(0xFF121212),
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
-            backgroundColor: const Color(0xFF121212),
+            backgroundColor: Colors.transparent,
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -580,14 +581,19 @@ class _ArtistScreenState extends State<ArtistScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) => TrackTile(
-                        track: allArtistTracks[index],
-                        onTap: () {
-                          _recordRecent(state, coverPath: artistImage);
-                          state.playTrack(allArtistTracks[index]);
-                        },
-                        onLike: () =>
-                            state.toggleLike(allArtistTracks[index].id),
+                      (context, index) => Selector<AppState, Track?>(
+                        selector: (_, s) => s.currentTrack,
+                        builder: (context, currentTrack, __) => TrackTile(
+                          track: allArtistTracks[index],
+                          isPlaying:
+                              currentTrack?.id == allArtistTracks[index].id,
+                          onTap: () {
+                            _recordRecent(state, coverPath: artistImage);
+                            state.playTrack(allArtistTracks[index]);
+                          },
+                          onLike: () =>
+                              state.toggleLike(allArtistTracks[index].id),
+                        ),
                       ),
                       childCount: allArtistTracks.length,
                     ),
@@ -621,9 +627,8 @@ class _ArtistAlbumEntry {
   /// Nombre de titres. Pour un album Deezer sans compte connu, on suppose
   /// que ce n'est pas un single (evite de le releguer a tort dans la rangee
   /// "Singles" faute d'info).
-  int get trackCount => local != null
-      ? local!.trackIds.length
-      : (discovered!.nbTracks ?? 2);
+  int get trackCount =>
+      local != null ? local!.trackIds.length : (discovered!.nbTracks ?? 2);
 }
 
 /// Pair : track Deezer + track locale correspondante (ou null)
@@ -664,8 +669,12 @@ class _PopularTrackTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(4),
                 image: track.discovered.coverUrl != null
                     ? DecorationImage(
-                        image: NetworkImage(track.discovered.coverUrl!),
+                        image: coverImageProvider(context,
+                            path: track.discovered.coverUrl!,
+                            width: 48,
+                            height: 48),
                         fit: BoxFit.cover,
+                        onError: (_, __) {},
                       )
                     : null,
               ),
@@ -788,14 +797,17 @@ class _DiscoveredAlbumCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final coverSide = compact ? 120.0 : 150.0;
     final coverBox = Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
         borderRadius: BorderRadius.circular(8),
         image: album.coverUrl != null
             ? DecorationImage(
-                image: NetworkImage(album.coverUrl!),
+                image: coverImageProvider(context,
+                    path: album.coverUrl!, width: coverSide, height: coverSide),
                 fit: BoxFit.cover,
+                onError: (_, __) {},
               )
             : null,
       ),
@@ -863,19 +875,6 @@ class _ArtistAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl = url;
 
-    if (imageUrl != null && imageUrl.startsWith('http')) {
-      return Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(40),
-          image: DecorationImage(
-            image: NetworkImage(imageUrl),
-            fit: BoxFit.cover,
-          ),
-        ),
-      );
-    }
     if (imageUrl != null) {
       return Container(
         width: 80,
@@ -883,8 +882,10 @@ class _ArtistAvatar extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(40),
           image: DecorationImage(
-            image: FileImage(File(imageUrl)),
+            image: coverImageProvider(context,
+                path: imageUrl, width: 80, height: 80),
             fit: BoxFit.cover,
+            onError: (_, __) {},
           ),
         ),
       );
@@ -909,38 +910,33 @@ class _AlbumCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = coverPath;
 
-    if (path != null && path.startsWith('http')) {
+    final exists = path != null && path.startsWith('http')
+        ? true
+        : context.read<AppState>().coverExists(path);
+
+    return LayoutBuilder(builder: (context, constraints) {
       return Container(
         decoration: BoxDecoration(
           color: const Color(0xFF2A2A2A),
           borderRadius: BorderRadius.circular(8),
-          image: DecorationImage(
-            image: NetworkImage(path),
-            fit: BoxFit.cover,
-          ),
+          image: exists && path != null
+              ? DecorationImage(
+                  image: coverImageProvider(context,
+                      path: path,
+                      width: constraints.maxWidth,
+                      height: constraints.maxHeight),
+                  fit: BoxFit.cover,
+                  onError: (_, __) {},
+                )
+              : null,
         ),
-      );
-    }
-
-    final exists = context.read<AppState>().coverExists(path);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(8),
-        image: exists && path != null
-            ? DecorationImage(
-                image: FileImage(File(path)),
-                fit: BoxFit.cover,
+        child: exists != true
+            ? const Center(
+                child: Icon(Icons.album, color: Colors.white54, size: 48),
               )
             : null,
-      ),
-      child: exists != true
-          ? const Center(
-              child: Icon(Icons.album, color: Colors.white54, size: 48),
-            )
-          : null,
-    );
+      );
+    });
   }
 }
 

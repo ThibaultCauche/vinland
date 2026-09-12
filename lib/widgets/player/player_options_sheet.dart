@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
@@ -6,6 +5,8 @@ import '../../models/track.dart';
 import '../../models/album.dart';
 import '../../screens/artist_screen.dart';
 import '../../screens/album_screen.dart';
+import '../cover_image.dart';
+import 'jam_controls.dart';
 
 void showPlayerOptions(BuildContext context, Track track) {
   final state = context.read<AppState>();
@@ -69,6 +70,18 @@ void showPlayerOptions(BuildContext context, Track track) {
             onTap: () {
               Navigator.pop(ctx);
               _showArtistPicker(context, track.artist);
+            },
+          ),
+          _SheetTile(
+            icon: state.isJamActive ? Icons.close : Icons.groups,
+            label: state.isJamActive
+                ? (state.isJamHost
+                    ? 'Session Jam (${state.jamParticipantCount} a l\'ecoute)'
+                    : 'Session Jam en cours')
+                : 'Ecouter ensemble (Jam)',
+            onTap: () {
+              Navigator.pop(ctx);
+              showJamMenu(context);
             },
           ),
           const SizedBox(height: 8),
@@ -202,10 +215,10 @@ class _SheetHeader extends StatelessWidget {
               color: const Color(0xFF2A2A2A),
               image: coverExists && track.coverPath != null
                   ? DecorationImage(
-                      image: track.coverPath!.startsWith('http')
-                          ? NetworkImage(track.coverPath!) as ImageProvider
-                          : FileImage(File(track.coverPath!)),
+                      image: coverImageProvider(context,
+                          path: track.coverPath!, width: 48, height: 48),
                       fit: BoxFit.cover,
+                      onError: (_, __) {},
                     )
                   : null,
             ),

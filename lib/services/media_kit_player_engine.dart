@@ -68,6 +68,7 @@ class MediaKitPlayerEngine implements PlayerEngine {
     final playable = items.where((i) => !i.isAsset).toList();
     if (playable.isEmpty) return;
     final adjustedIndex = initialIndex.clamp(0, playable.length - 1);
+    final targetUri = mk.Media(playable[adjustedIndex].path).uri;
 
     final playlist = mk.Playlist(
       playable.map((i) => mk.Media(i.path)).toList(),
@@ -75,6 +76,23 @@ class MediaKitPlayerEngine implements PlayerEngine {
     );
     await _player.open(playlist);
     await _player.setShuffle(_shuffleEnabled);
+    // _player.open() positionne bien playlist-pos sur adjustedIndex, mais
+    // setShuffle() (commande mpv "playlist-shuffle") reordonne ensuite la
+    // playlist ENTIERE -- y compris la piste qu'on vient d'ouvrir -- ce qui
+    // faisait sauter la lecture vers un titre aleatoire juste apres avoir
+    // clique sur un titre precis, quand la lecture aleatoire etait active
+    // (media_kit.Player.open() reinitialise toujours son shuffle interne a
+    // false, donc setShuffle(true) juste apres n'est jamais un no-op et
+    // relance systematiquement ce reordonnancement). On retrouve le titre
+    // voulu dans le nouvel ordre et on s'y repositionne explicitement.
+    if (_shuffleEnabled) {
+      final shuffledIndex =
+          _player.state.playlist.medias.indexWhere((m) => m.uri == targetUri);
+      if (shuffledIndex != -1 &&
+          shuffledIndex != _player.state.playlist.index) {
+        await _player.jump(shuffledIndex);
+      }
+    }
     await _player.setPlaylistMode(_playlistModeFor(_loopMode));
     _hasSource = true;
   }
