@@ -69,8 +69,17 @@ jobs:
           DOWNLOAD_WORKER_API_KEY: ${{ secrets.DOWNLOAD_WORKER_API_KEY }}
 
       - run: flutter pub get
+        shell: cmd
 
-      - run: flutter build windows --release
+      # Execute en cmd, pas pwsh : PowerShell resout les chemins passant par
+      # le symlink flutter/ephemeral/.plugin_symlinks en forme longue
+      # (\\?\...), ce qui fait declencher a CMake sa protection anti-tar-zip-
+      # slip ("Cannot extract through symlink") en extrayant l'archive native
+      # de metadata_god. cmd.exe ne normalise pas ces chemins de la meme
+      # facon et evite le probleme.
+      - name: flutter build windows --release
+        shell: cmd
+        run: flutter build windows --release
 
       # Zippe le CONTENU du dossier Release (pas le dossier lui-meme) : le
       # script d'auto-update (self_updater_service.dart) fait un
