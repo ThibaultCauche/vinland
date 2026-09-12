@@ -18,7 +18,13 @@ env:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    # windows-2022 (pas windows-latest) : l'image la plus recente utilise un
+    # "Dev Drive" (D:, ReFS) pour le checkout et une toolchain VS plus
+    # agressive, qui declenchent respectivement le bug CMake "Cannot extract
+    # through symlink" sur l'archive native de metadata_god et un hard-error
+    # MSVC sur le flag /await deprecated de permission_handler_windows.
+    # windows-2022 reste sur un C: classique (NTFS) et un MSVC plus etabli.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
