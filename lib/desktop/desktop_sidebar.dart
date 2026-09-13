@@ -4,6 +4,7 @@ import '../providers/app_state.dart';
 import '../models/playlist.dart';
 import '../screens/settings_screen.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/sync_status_banner.dart';
 import '../widgets/user_avatar.dart';
 import 'glass.dart';
 
@@ -34,45 +35,54 @@ class DesktopSidebar extends StatelessWidget {
       // desormais par-dessus la sidebar (voir desktop_app_shell.dart)
       // plutot que de reserver leur propre espace -- garde ces marges pour
       // ne pas demarrer/finir derriere elles.
-      margin: const EdgeInsets.fromLTRB(12, DesktopGlass.titleBarHeight + 12, 6,
+      margin: const EdgeInsets.fromLTRB(12, DesktopGlass.titleBarHeight + 4, 6,
           DesktopGlass.playerBarReserve),
       child: GlassPanel(
         borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
         child: Column(
           children: [
             const SizedBox(height: 16),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: const BoxDecoration(
-                color: DesktopGlass.accent,
-                shape: BoxShape.circle,
-              ),
-              child:
-                  const Icon(Icons.graphic_eq, color: Colors.white, size: 18),
+            const Image(
+              image: AssetImage('assets/icon/app_icon_foreground.png'),
+              width: 32,
+              height: 32,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
+            // Synchro NAS : discret ici, ne pousse rien quand elle n'est pas
+            // active (SyncIndicator se replie a taille nulle), et vit dans
+            // la sidebar plutot que dans le TopBar flottant pour rester
+            // visible meme sur les vues poussees ou celui-ci se cache
+            // (playlist/album/artiste).
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 2),
+              child: SyncIndicator(size: 16),
+            ),
+            const SizedBox(height: 10),
             GlassIconButton(
               icon: Icons.home_rounded,
               active: activeTab == DesktopNavTab.home,
+              tooltip: 'Accueil',
               onPressed: () => onTabSelected(DesktopNavTab.home),
             ),
             const SizedBox(height: 6),
             GlassIconButton(
               icon: Icons.search_rounded,
               active: activeTab == DesktopNavTab.search,
+              tooltip: 'Recherche',
               onPressed: () => onTabSelected(DesktopNavTab.search),
             ),
             const SizedBox(height: 6),
             GlassIconButton(
               icon: Icons.headphones_rounded,
               active: activeTab == DesktopNavTab.library,
+              tooltip: 'Bibliotheque',
               onPressed: () => onTabSelected(DesktopNavTab.library),
             ),
             const SizedBox(height: 6),
             GlassIconButton(
               icon: Icons.people_alt_rounded,
               active: activeTab == DesktopNavTab.friends,
+              tooltip: 'Amis',
               onPressed: () => onTabSelected(DesktopNavTab.friends),
             ),
             const SizedBox(height: 12),

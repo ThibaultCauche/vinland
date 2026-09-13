@@ -87,7 +87,10 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     _customActionController.add(name);
   }
 
-  Future<void> loadAndPlay(List<MediaItem> items, int startIndex) async {
+  /// Retourne false si le chargement echoue apres toutes les tentatives
+  /// (appelant responsable de reagir -- voir AppState._advanceQueue, qui
+  /// saute au titre suivant plutot que de rester bloque en silence).
+  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex) async {
     queue.add(items);
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
@@ -101,13 +104,27 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       return PlayerQueueItem(path: item.id, isAsset: isAsset, isRemote: isRemote);
     }).toList();
 
-    try {
-      await _engine.setAudioSources(sources, initialIndex: startIndex);
-      print('✅ AudioSource chargé, lecture...');
-      await _engine.play();
-    } catch (e) {
-      print('❌ ERREUR LECTURE: $e');
+    // Un blip reseau mobile (Tailscale en exterieur) faisait echouer le
+    // chargement du titre suivant une fois sur deux sans que rien ne le
+    // rattrape : l'erreur etait juste journalisee, puis silencieusement
+    // ignoree -- la lecture semblait "bloquee" jusqu'a ce que l'utilisateur
+    // revienne relancer le titre a la main (retour testeur). Quelques
+    // tentatives rapprochees laissent le temps a un reseau capricieux de
+    // revenir avant d'abandonner pour de bon.
+    const maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await _engine.setAudioSources(sources, initialIndex: startIndex);
+        print('✅ AudioSource chargé, lecture...');
+        await _engine.play();
+        return true;
+      } catch (e) {
+        print('❌ ERREUR LECTURE (tentative $attempt/$maxAttempts): $e');
+        if (attempt == maxAttempts) return false;
+        await Future.delayed(Duration(milliseconds: 500 * attempt));
+      }
     }
+    return false;
   }
 
   PlaybackState _transformState() {

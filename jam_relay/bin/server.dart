@@ -112,6 +112,19 @@ void _handleConnection(WebSocketChannel channel) {
             break;
           }
 
+        case 'command':
+          {
+            // Un participant pilote l'hote a distance (play/pause/suivant/
+            // precedent) : transmis uniquement a l'hote, jamais aux autres
+            // participants -- symetrique du cas 'state' qui va hote -> tous.
+            final id = sessionId;
+            if (id == null || isHost) return;
+            final session = _sessions[id];
+            final host = session?.host;
+            if (host != null) _send(host, msg);
+            break;
+          }
+
         case 'leave':
           channel.sink.close();
           break;

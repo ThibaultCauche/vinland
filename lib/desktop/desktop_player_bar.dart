@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -23,10 +25,36 @@ class DesktopPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (Track?, bool)>(
-      selector: (_, state) => (state.currentTrack, state.isPlaying),
+    return Selector<AppState, (Track?, bool, bool, Track?, bool, String?)>(
+      selector: (_, state) => (
+        state.currentTrack,
+        state.isPlaying,
+        state.isPersonalSyncParticipant,
+        state.remoteTrack,
+        state.remoteIsPlaying,
+        state.remoteDeviceName,
+      ),
       builder: (context, data, _) {
-        final (track, isPlaying) = data;
+        final (track, isPlaying, isRemote, remoteTrack, remoteIsPlaying,
+            remoteDeviceName) = data;
+
+        // Rien ne joue localement mais un autre appareil du meme compte est
+        // hote (voir AppState.isPersonalSyncParticipant) : affiche son etat
+        // et propose de le piloter, sans jamais jouer l'audio ici.
+        if (track == null && isRemote && remoteTrack != null) {
+          return Container(
+            height: 84,
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: GlassPanel(
+              borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
+              child: _RemotePlayingRow(
+                track: remoteTrack,
+                isPlaying: remoteIsPlaying,
+                deviceName: remoteDeviceName ?? 'un autre appareil',
+              ),
+            ),
+          );
+        }
 
         return Container(
           height: 84,
@@ -47,7 +75,13 @@ class DesktopPlayerBar extends StatelessWidget {
                       // (BackdropFilter) de ce GlassPanel a se recalculer en
                       // entier au meme rythme -- couteux pour un gain visuel
                       // nul, le flou lui-meme ne changeant jamais.
-                      RepaintBoundary(child: _SeekBar(track: track)),
+                      Transform.translate(
+                        offset: const Offset(0, 6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 15),
+                          child: RepaintBoundary(child: _SeekBar(track: track)),
+                        ),
+                      ),
                       Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -196,32 +230,9 @@ class _NowPlayingInfo extends StatelessWidget {
                 onTap: album != null ? () => onOpenAlbum(album) : null,
               ),
               const SizedBox(height: 2),
-              // SingleChildScrollView horizontal plutot que Wrap : avec
-              // plusieurs artistes (feat.) le Wrap passait a la ligne et
-              // faisait deborder verticalement la barre de lecture (hauteur
-              // fixe). Ici la liste reste sur une seule ligne, simplement
-              // tronquee/scrollable si trop longue, sans casser la mise en
-              // page -- chaque nom reste individuellement survolable/cliquable.
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const ClampingScrollPhysics(),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < artistNames.length; i++) ...[
-                      if (i > 0)
-                        const Text(', ',
-                            style:
-                                TextStyle(color: Colors.white54, fontSize: 12)),
-                      _HoverableText(
-                        text: artistNames[i],
-                        style: const TextStyle(
-                            color: Colors.white54, fontSize: 12),
-                        onTap: () => onOpenArtist(artistNames[i]),
-                      ),
-                    ],
-                  ],
-                ),
+              _ArtistNamesMarquee(
+                artistNames: artistNames,
+                onOpenArtist: onOpenArtist,
               ),
             ],
           ),
@@ -233,10 +244,128 @@ class _NowPlayingInfo extends StatelessWidget {
             icon: isLiked ? Icons.favorite : Icons.favorite_border,
             color: isLiked ? DesktopGlass.accent : Colors.white70,
             size: 18,
+            tooltip: isLiked ? 'Retirer' : 'Aimer',
             onPressed: () => context.read<AppState>().toggleLike(track.id),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Liste d'artistes en defilement automatique quand elle deborde de la
+/// largeur disponible (feat. a rallonge) -- boucle droite jusqu'au bout,
+/// pause, retour au debut, pause, etc. S'arrete au survol pour laisser le
+/// temps de lire/cliquer un nom precis (chaque nom reste individuellement
+/// cliquable vers sa page artiste, comme avant). Ne fait rien si le texte
+/// tient deja dans la largeur (defilement inutile).
+class _ArtistNamesMarquee extends StatefulWidget {
+  final List<String> artistNames;
+  final void Function(String artistName) onOpenArtist;
+
+  const _ArtistNamesMarquee({
+    required this.artistNames,
+    required this.onOpenArtist,
+  });
+
+  @override
+  State<_ArtistNamesMarquee> createState() => _ArtistNamesMarqueeState();
+}
+
+class _ArtistNamesMarqueeState extends State<_ArtistNamesMarquee>
+    with SingleTickerProviderStateMixin {
+  static const _pxPerSecond = 24.0;
+  static const _edgePauseMs = 1000.0;
+
+  final _scrollController = ScrollController();
+  late final Ticker _ticker;
+  Duration _lastElapsed = Duration.zero;
+  double _pauseRemainingMs = _edgePauseMs;
+  bool _atEnd = false;
+  bool _hovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = createTicker(_onTick)..start();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ArtistNamesMarquee oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Nouveau morceau (autre liste d'artistes) : repart du debut plutot que
+    // de garder un offset qui n'a plus de sens pour ce nouveau texte.
+    if (!listEquals(oldWidget.artistNames, widget.artistNames)) {
+      _pauseRemainingMs = _edgePauseMs;
+      _atEnd = false;
+      if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    final dtMs = (elapsed - _lastElapsed).inMicroseconds / 1000.0;
+    _lastElapsed = elapsed;
+    if (_hovering || !_scrollController.hasClients) return;
+
+    final max = _scrollController.position.maxScrollExtent;
+    if (max <= 0) return; // tient dans la largeur dispo : rien a faire
+
+    if (_pauseRemainingMs > 0) {
+      _pauseRemainingMs -= dtMs;
+      return;
+    }
+
+    if (_atEnd) {
+      // Pause au bout ecoulee : revient au debut, puis pause a nouveau
+      // avant de repartir vers la droite.
+      _scrollController.jumpTo(0);
+      _atEnd = false;
+      _pauseRemainingMs = _edgePauseMs;
+      return;
+    }
+
+    final next = _scrollController.offset + _pxPerSecond * dtMs / 1000;
+    if (next >= max) {
+      _scrollController.jumpTo(max);
+      _atEnd = true;
+      _pauseRemainingMs = _edgePauseMs;
+    } else {
+      _scrollController.jumpTo(next);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => _hovering = true,
+      onExit: (_) => _hovering = false,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < widget.artistNames.length; i++) ...[
+              if (i > 0)
+                const Text(', ',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+              _HoverableText(
+                text: widget.artistNames[i],
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                onTap: () => widget.onOpenArtist(widget.artistNames[i]),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -260,26 +389,32 @@ class _TransportControls extends StatelessWidget {
               icon: Icons.shuffle,
               active: isShuffled,
               size: 18,
+              tooltip: 'Aleatoire',
               onPressed: state.toggleShuffle,
             ),
             GlassIconButton(
               icon: Icons.skip_previous_rounded,
               size: 24,
+              tooltip: 'Precedent',
               onPressed: state.previousTrack,
             ),
             const SizedBox(width: 4),
-            Material(
-              color: Colors.white,
-              shape: const CircleBorder(),
-              child: InkWell(
-                customBorder: const CircleBorder(),
-                onTap: state.togglePlayPause,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Icon(
-                    isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.black,
-                    size: 22,
+            Tooltip(
+              message: isPlaying ? 'Pause' : 'Lecture',
+              child: Material(
+                color: Colors.white,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: state.togglePlayPause,
+                  mouseCursor: SystemMouseCursors.click,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(
+                      isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.black,
+                      size: 22,
+                    ),
                   ),
                 ),
               ),
@@ -288,6 +423,7 @@ class _TransportControls extends StatelessWidget {
             GlassIconButton(
               icon: Icons.skip_next_rounded,
               size: 24,
+              tooltip: 'Suivant',
               onPressed: state.nextTrack,
             ),
             GlassIconButton(
@@ -296,6 +432,7 @@ class _TransportControls extends StatelessWidget {
                   : Icons.repeat_rounded,
               active: loopMode != LoopMode.off,
               size: 18,
+              tooltip: 'Repeter',
               onPressed: state.toggleLoopMode,
             ),
           ],
@@ -371,20 +508,85 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
           ),
         ),
         Selector<AppState, bool>(
-          selector: (_, state) => state.isJamActive,
-          builder: (context, isJamActive, __) => GlassIconButton(
+          selector: (_, state) => state.isFriendJamActive,
+          builder: (context, isFriendJamActive, __) => GlassIconButton(
             icon: Icons.groups,
-            active: isJamActive,
+            active: isFriendJamActive,
             size: 18,
+            tooltip: 'Jam',
             onPressed: () => showJamMenu(context),
           ),
         ),
         GlassIconButton(
           icon: Icons.queue_music,
           size: 18,
+          tooltip: 'File',
           onPressed: () => showQueuePanel(context),
         ),
       ],
+    );
+  }
+}
+
+/// Rangee "Spotify Connect" : ce qui joue sur un autre appareil du meme
+/// compte (voir AppState.isPersonalSyncParticipant), avec des controles qui
+/// pilotent cet appareil a distance au lieu du moteur audio local.
+class _RemotePlayingRow extends StatelessWidget {
+  final Track track;
+  final bool isPlaying;
+  final String deviceName;
+
+  const _RemotePlayingRow({
+    required this.track,
+    required this.isPlaying,
+    required this.deviceName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          const Icon(Icons.devices, color: Colors.white54, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('En lecture sur $deviceName',
+                    style:
+                        const TextStyle(color: Colors.white38, fontSize: 11)),
+                const SizedBox(height: 2),
+                Text('${track.title} - ${track.artist}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 13)),
+              ],
+            ),
+          ),
+          GlassIconButton(
+            icon: Icons.skip_previous_rounded,
+            size: 22,
+            tooltip: 'Precedent',
+            onPressed: state.remotePrevious,
+          ),
+          GlassIconButton(
+            icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            size: 22,
+            tooltip: isPlaying ? 'Pause' : 'Lecture',
+            onPressed: state.remoteToggle,
+          ),
+          GlassIconButton(
+            icon: Icons.skip_next_rounded,
+            size: 22,
+            tooltip: 'Suivant',
+            onPressed: state.remoteNext,
+          ),
+        ],
+      ),
     );
   }
 }

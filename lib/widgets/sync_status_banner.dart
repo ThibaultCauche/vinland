@@ -2,34 +2,52 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 
+/// Petit cercle vert qui tourne pendant une synchro -- discret, a placer
+/// pres de l'avatar/la recherche (mobile) ou dans la sidebar (desktop,
+/// voir DesktopSidebar). Remplace l'ancien gros bandeau texte plein
+/// largeur qui occupait la home a chaque synchro (retour testeurs : trop
+/// intrusif pour un etat aussi frequent).
+class SyncIndicator extends StatelessWidget {
+  final double size;
+  const SyncIndicator({super.key, this.size = 16});
+
+  @override
+  Widget build(BuildContext context) {
+    return Selector<AppState, bool>(
+      selector: (_, state) => state.isSyncing,
+      builder: (context, isSyncing, __) {
+        if (!isSyncing) return const SizedBox.shrink();
+        return Tooltip(
+          message: 'Synchronisation en cours...',
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: const CircularProgressIndicator(
+                color: Color(0xFF1DB954), strokeWidth: 2),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// Rend visible ce qui se passait avant en silence total : la toute
 /// premiere synchro (cache local vide) peut prendre du temps ou echouer
 /// (NAS/Tailscale Funnel injoignable), et sans ce bandeau l'app semblait
-/// juste vide/cassee -- exactement ce qu'un ami testeur a rencontre.
+/// juste vide/cassee -- exactement ce qu'un ami testeur a rencontre. Ne
+/// couvre plus que ce cas d'erreur : la synchro en cours (etat frequent,
+/// pas une erreur) est signalee par le petit SyncIndicator ci-dessus a la
+/// place.
 class SyncStatusBanner extends StatelessWidget {
   const SyncStatusBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (bool, bool, bool)>(
-      selector: (_, state) =>
-          (state.isSyncing, state.lastSyncEmpty, state.allTracks.isEmpty),
+    return Selector<AppState, (bool, bool)>(
+      selector: (_, state) => (state.lastSyncEmpty, state.allTracks.isEmpty),
       builder: (context, data, child) {
-        final (isSyncing, lastSyncEmpty, hasNoTracks) = data;
+        final (lastSyncEmpty, hasNoTracks) = data;
         final state = context.read<AppState>();
-
-        if (isSyncing) {
-          return _Banner(
-            color: const Color(0xFF1E1E1E),
-            icon: const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                  color: Color(0xFF1DB954), strokeWidth: 2),
-            ),
-            text: 'Synchronisation de ta bibliotheque avec le serveur...',
-          );
-        }
 
         if (lastSyncEmpty && hasNoTracks) {
           return _Banner(

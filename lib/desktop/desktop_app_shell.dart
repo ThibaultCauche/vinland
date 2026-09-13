@@ -209,7 +209,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
                         children: [
                           Positioned.fill(child: _contentStack),
                           Positioned(
-                            top: DesktopGlass.titleBarHeight + 8,
+                            top: DesktopGlass.titleBarHeight + 4,
                             left: 0,
                             right: 0,
                             child: _TopBar(
@@ -315,32 +315,6 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                 ),
-        ),
-        // Petit cercle qui tourne pendant une synchro, a la place du gros
-        // bandeau qui occupait auparavant la home -- discret, mais toujours
-        // visible quel que soit l'onglet puisqu'il vit dans le TopBar.
-        // L'avatar de profil (et son menu Parametres/Deconnexion) a
-        // demenage en bas de la sidebar (voir DesktopSidebar) : le laisser
-        // ici imposait de reserver toute la hauteur du TopBar meme sur les
-        // vues poussees (playlist/album/artiste) qui n'en ont plus besoin
-        // (showSearchBar=false), creant un grand vide au-dessus de leur
-        // bloc titre/cover (retour testeurs).
-        Selector<AppState, bool>(
-          selector: (_, s) => s.isSyncing,
-          builder: (context, isSyncing, __) {
-            if (!isSyncing) return const SizedBox.shrink();
-            return const Tooltip(
-              message: 'Synchronisation en cours...',
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  color: DesktopGlass.accent,
-                  strokeWidth: 2,
-                ),
-              ),
-            );
-          },
         ),
       ],
     );

@@ -32,4 +32,14 @@ class BluetoothTrustedDevicesService {
   Future<void> setTrustedAddresses(Set<String> addresses) async {
     await _channel.invokeMethod('setTrustedDevices', addresses.toList());
   }
+
+  /// Appele par BluetoothConnectReceiver (cote natif) quand un appareil de
+  /// confiance se connecte alors que l'app tourne deja -- dans ce cas le
+  /// receiver ne demarre pas de FlutterEngine headless, donc c'est le seul
+  /// moyen de declencher la reprise de lecture.
+  void onTrustedDeviceConnected(void Function() callback) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'trustedDeviceConnected') callback();
+    });
+  }
 }

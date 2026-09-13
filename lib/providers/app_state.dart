@@ -22,6 +22,7 @@ import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
+import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
@@ -41,8 +42,31 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription? _jamStateSub;
   StreamSubscription? _jamHostLeftSub;
   StreamSubscription? _jamCountSub;
+  StreamSubscription? _jamCommandSub;
   Timer? _jamHeartbeat;
+  Timer? _personalSyncPoll;
   bool _applyingJamState = false;
+
+  // Synchro multi-appareils "perso" (voir _maybeBecomePersonalHost /
+  // _tryJoinPersonalSync) : reutilise le relais Jam mais avec une session
+  // deterministe par compte (pas de code a partager) et, cote participant,
+  // affichage + controle a distance seulement -- l'audio n'est jamais joue
+  // en double, contrairement au Jam "entre amis" classique.
+  bool _personalSyncMode = false;
+  Track? remoteTrack;
+  bool remoteIsPlaying = false;
+  String? remoteDeviceName;
+  bool get isPersonalSyncParticipant =>
+      _personalSyncMode && isJamActive && !isJamHost;
+
+  String get _deviceLabel {
+    if (Platform.isAndroid) return 'Telephone';
+    if (Platform.isIOS) return 'iPhone';
+    if (Platform.isWindows) return 'PC';
+    if (Platform.isMacOS) return 'Mac';
+    if (Platform.isLinux) return 'Linux';
+    return 'Appareil';
+  }
 
   // Player state
   Track? currentTrack;
@@ -338,6 +362,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// (avant, ce rebouclage rejouait toujours le tout premier titre de la
   /// liste d'origine meme en mode aleatoire -- voir le commentaire sur
   /// `toggleShuffle` pour le detail du bug que ca causait).
+  /// Nombre de titres consecutifs qu'on a du sauter faute d'avoir reussi a
+  /// les charger (voir _advanceQueue) -- protege contre une boucle infinie
+  /// si le reseau est completement coupe (sinon chaque titre de la file
+  /// echouerait et relancerait immediatement le suivant, sans jamais
+  /// s'arreter).
+  int _consecutiveLoadFailures = 0;
+  static const _maxConsecutiveLoadFailures = 3;
+
   Future<void> _advanceQueue() async {
     if (queue.isEmpty) {
       if (_sourceOrder.isEmpty) return;
@@ -351,7 +383,20 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (queue.isEmpty) return;
     if (currentTrack != null) _pushHistory(currentTrack!);
     final next = queue.removeAt(0);
-    await _playSingle(next);
+    final loaded = await _playSingle(next);
+    if (!loaded) {
+      // Titre injouable (reseau/fichier) : plutot que de rester bloque en
+      // silence dessus (le bug remonte par un testeur en exterieur), on
+      // passe au suivant -- sauf si plusieurs echecs de suite suggerent que
+      // le reseau est totalement coupe, auquel cas on abandonne pour de bon
+      // au lieu de vider toute la file d'attente en boucle.
+      _consecutiveLoadFailures++;
+      if (_consecutiveLoadFailures < _maxConsecutiveLoadFailures) {
+        await _advanceQueue();
+      }
+      return;
+    }
+    _consecutiveLoadFailures = 0;
   }
 
   /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee
@@ -437,12 +482,19 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _useNavidrome = _music.navidromeTracks.isNotEmpty;
     await _restorePlaybackState(prefs);
 
+    if (!kIsWeb && Platform.isAndroid) {
+      BluetoothTrustedDevicesService().onTrustedDeviceConnected(() {
+        if (!isPlaying) togglePlayPause();
+      });
+    }
+
     // Charge les identifiants (I/O local sur le secure storage, pas de
     // reseau) AVANT le premier rendu : sinon hasCredentials/isLoggedIn
     // restent faux le temps de cette lecture et l'ecran de connexion
     // s'affiche brievement avant de basculer sur la home -- flash visible
     // a chaque lancement alors que l'utilisateur est bien "reste connecte".
     await _navidrome.loadStoredCredentials();
+    _startPersonalSyncPolling();
 
     // Rien de plus a attendre pour afficher l'app : "rester connecte" veut
     // dire ne jamais bloquer l'affichage sur un ping reseau. L'authentification
@@ -694,9 +746,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _notifyDebounce?.cancel();
     _jamHeartbeat?.cancel();
+    _personalSyncPoll?.cancel();
     _jamStateSub?.cancel();
     _jamHostLeftSub?.cancel();
     _jamCountSub?.cancel();
+    _jamCommandSub?.cancel();
     unawaited(_jam.leave());
     _audioHandler.player.dispose();
     super.dispose();
@@ -745,7 +799,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // recu du relais (voir _applyJamState), ne pilote jamais la lecture
     // lui-meme -- sauf l'appel interne fait par _applyJamState, qui doit
     // pouvoir passer.
-    if (isJamActive && !isJamHost && !_applyingJamState) return;
+    if (isJamActive && !isJamHost && !_applyingJamState && !_personalSyncMode) {
+      return;
+    }
     _history.clear();
     _sourceOrder = trackList ?? [track];
     final startIndex = _sourceOrder.indexWhere((t) => t.id == track.id);
@@ -754,6 +810,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         : _sourceOrder.sublist(startIndex + 1);
     if (isShuffled) remainder = List<Track>.of(remainder)..shuffle();
     queue = remainder;
+    _consecutiveLoadFailures = 0;
     await _playSingle(track);
   }
 
@@ -762,8 +819,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// _advanceQueue, previousTrack et togglePlayPause (reprise apres
   /// redemarrage de l'app). Un seul titre a la fois est confie au moteur --
   /// voir le commentaire sur le champ `queue` pour le bug (natif shuffle
-  /// desynchronisant l'affichage) que ca evite.
-  Future<void> _playSingle(Track track) async {
+  /// desynchronisant l'affichage) que ca evite. Retourne false si le moteur
+  /// n'a pas reussi a charger le titre (voir _advanceQueue, qui saute au
+  /// suivant plutot que de laisser la lecture bloquee en silence).
+  Future<bool> _playSingle(Track track) async {
     currentTrack = track;
     final path = _music.getOfflinePath(track.id) ?? track.filePath!;
     final isAsset = path.startsWith('assets/');
@@ -789,8 +848,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _updateDominantColor(track.coverPath);
     _notify();
     await Future.delayed(Duration.zero);
-    await _audioHandler.loadAndPlay([item], 0);
-    isPlaying = true;
+    final loaded = await _audioHandler.loadAndPlay([item], 0);
+    isPlaying = loaded;
+    if (!loaded) {
+      _notify();
+      return false;
+    }
     await _music.recordPlay(track.id);
     _music.updateNowPlaying(track.id,
         jamSessionId: isJamHost ? jamSessionId : null);
@@ -802,11 +865,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       unawaited(_navidrome.scrobble(track.id));
     }
     unawaited(_savePlaybackState());
+    // Prend/garde le role d'hote de la synchro perso multi-appareils (voir
+    // _maybeBecomePersonalHost) tant qu'aucune session Jam entre amis
+    // manuelle n'est en cours -- diffuse aussi l'etat si deja hote.
+    unawaited(_maybeBecomePersonalHost());
     _notify();
+    return true;
   }
 
   void togglePlayPause() {
-    if (isJamActive && !isJamHost && !_applyingJamState) return;
+    if (isJamActive && !isJamHost && !_applyingJamState && !_personalSyncMode) {
+      return;
+    }
     // Redemarrage de l'app : le mini-player affiche le dernier titre joue
     // mais aucune source audio n'a encore ete chargee dans le player. Un
     // simple play()/pause() sur un player vide ne fait rien : il faut
@@ -821,11 +891,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _audioHandler.play();
     }
     isPlaying = !isPlaying;
+    if (isJamHost) _broadcastJamState();
     _notify();
   }
 
   Future<void> nextTrack() async {
-    if (isJamActive && !isJamHost) return;
+    if (isJamActive && !isJamHost && !_personalSyncMode) return;
     await _advanceQueue();
   }
 
@@ -833,7 +904,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// remise en tete). Au-dela : redemarre simplement le titre en cours,
   /// comme la plupart des lecteurs.
   Future<void> previousTrack() async {
-    if (isJamActive && !isJamHost) return;
+    if (isJamActive && !isJamHost && !_personalSyncMode) return;
     if (position > const Duration(seconds: 3) || _history.isEmpty) {
       seek(Duration.zero);
       return;
@@ -881,7 +952,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void seek(Duration pos) {
-    if (isJamActive && !isJamHost && !_applyingJamState) return;
+    if (isJamActive && !isJamHost && !_applyingJamState && !_personalSyncMode) {
+      return;
+    }
     _audioHandler.seek(pos);
     _notify();
   }
@@ -892,6 +965,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// rattraper la derive. Renvoie le sessionId a partager, ou null en cas
   /// d'echec (relais injoignable).
   Future<String?> startJamSession() async {
+    _personalSyncMode = false;
+    remoteTrack = null;
+    remoteIsPlaying = false;
+    remoteDeviceName = null;
     final id = _jam.generateSessionId();
     final ok = await _jam.host(id);
     if (!ok) return null;
@@ -915,6 +992,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// (voir _applyJamState), les actions de lecture locales sont ignorees
   /// tant que la session est active (cf. playTrack/togglePlayPause/etc.).
   Future<bool> joinJamSession(String sessionId) async {
+    _personalSyncMode = false;
     final ok = await _jam.join(sessionId);
     if (!ok) return false;
     _jamStateSub?.cancel();
@@ -929,6 +1007,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> leaveJamSession() async {
     final wasHost = isJamHost;
+    _personalSyncMode = false;
     _jamHeartbeat?.cancel();
     _jamHeartbeat = null;
     await _jamStateSub?.cancel();
@@ -937,6 +1016,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _jamHostLeftSub = null;
     await _jamCountSub?.cancel();
     _jamCountSub = null;
+    await _jamCommandSub?.cancel();
+    _jamCommandSub = null;
     await _jam.leave();
     jamParticipantCount = 0;
     if (wasHost && currentTrack != null) {
@@ -944,6 +1025,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
     _notify();
   }
+
+  /// Vrai seulement pour une session Jam "entre amis" demarree/rejointe
+  /// manuellement (menu Jam) -- exclut la synchro perso multi-appareils
+  /// (silencieuse, jamais affichee dans ce menu). Utilise par
+  /// jam_controls.dart et l'icone Jam de la barre de lecture desktop.
+  bool get isFriendJamActive => isJamActive && !_personalSyncMode;
 
   void _broadcastJamState() {
     if (!_jam.isActive || !_jam.isHost) return;
@@ -953,6 +1040,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       trackId: track.id,
       positionMs: position.inMilliseconds,
       isPlaying: isPlaying,
+      deviceName: _deviceLabel,
     );
   }
 
@@ -982,6 +1070,127 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     } finally {
       _applyingJamState = false;
     }
+  }
+
+  /// Sondage periodique (voir initialize()) : tant qu'aucune session Jam
+  /// n'est active, tente de rejoindre la synchro perso de ce compte -- si un
+  /// autre appareil est deja hote, on le retrouve automatiquement sans
+  /// action utilisateur, meme si cet appareil-ci n'etait pas ouvert quand
+  /// l'autre a demarre sa lecture.
+  // ponytail: sondage simple (toutes les 20s) plutot qu'un mecanisme de
+  // presence -- suffisant a l'echelle d'un usage personnel multi-appareils,
+  // a revoir si ca devient sensible a la latence/batterie.
+  void _startPersonalSyncPolling() {
+    _personalSyncPoll?.cancel();
+    _personalSyncPoll =
+        Timer.periodic(const Duration(seconds: 20), (_) => _tryJoinPersonalSync());
+    _tryJoinPersonalSync();
+  }
+
+  Future<void> _tryJoinPersonalSync() async {
+    if (isJamActive) return;
+    final username = _navidrome.username;
+    if (username == null) return;
+    final id = _jam.personalSessionId(username);
+    final ok = await _jam.join(id);
+    if (!ok) return;
+    _personalSyncMode = true;
+    _jamStateSub?.cancel();
+    _jamStateSub = _jam.stateStream.listen(_applyPersonalSyncState);
+    _jamHostLeftSub?.cancel();
+    _jamHostLeftSub = _jam.hostLeftStream.listen((_) => _leavePersonalSync());
+    _notify();
+  }
+
+  /// Affiche seulement l'etat recu d'un autre appareil du meme compte --
+  /// contrairement a _applyJamState (Jam entre amis), ne joue jamais l'audio
+  /// localement : voir remoteTrack/remoteIsPlaying/remoteDeviceName et les
+  /// boutons de la barre de lecture qui pilotent l'hote via remoteToggle/
+  /// remoteNext/remotePrevious plutot que le moteur audio local.
+  void _applyPersonalSyncState(JamStateMessage msg) {
+    remoteTrack = _findTrackById(msg.trackId);
+    remoteIsPlaying = msg.isPlaying;
+    remoteDeviceName = msg.deviceName;
+    _notify();
+  }
+
+  Future<void> _leavePersonalSync() async {
+    _personalSyncMode = false;
+    remoteTrack = null;
+    remoteIsPlaying = false;
+    remoteDeviceName = null;
+    await _jamStateSub?.cancel();
+    _jamStateSub = null;
+    await _jamHostLeftSub?.cancel();
+    _jamHostLeftSub = null;
+    await _jam.leave();
+    _notify();
+  }
+
+  /// Prend (ou garde) le role d'hote de la synchro perso a chaque lecture
+  /// locale reelle (voir _playSingle) -- jamais pendant une session Jam
+  /// entre amis manuelle. C'est ce qui fait qu'appuyer sur play sur
+  /// n'importe quel appareil du compte le rend autoritaire, exactement comme
+  /// changer d'appareil actif dans Spotify Connect.
+  Future<void> _maybeBecomePersonalHost() async {
+    if (isJamActive && !_personalSyncMode) return;
+    if (isJamActive && isJamHost) {
+      _broadcastJamState();
+      return;
+    }
+    final username = _navidrome.username;
+    if (username == null) return;
+    await _jamStateSub?.cancel();
+    _jamStateSub = null;
+    await _jamHostLeftSub?.cancel();
+    _jamHostLeftSub = null;
+    remoteTrack = null;
+    remoteIsPlaying = false;
+    remoteDeviceName = null;
+
+    final id = _jam.personalSessionId(username);
+    final ok = await _jam.host(id);
+    if (!ok) return;
+    _personalSyncMode = true;
+    _jamCommandSub?.cancel();
+    _jamCommandSub = _jam.commandStream.listen(_applyJamCommand);
+    _jamHeartbeat?.cancel();
+    _jamHeartbeat =
+        Timer.periodic(const Duration(seconds: 5), (_) => _broadcastJamState());
+    _broadcastJamState();
+    _notify();
+  }
+
+  void _applyJamCommand(JamCommandMessage cmd) {
+    switch (cmd.action) {
+      case 'toggle':
+        togglePlayPause();
+        break;
+      case 'next':
+        nextTrack();
+        break;
+      case 'previous':
+        previousTrack();
+        break;
+    }
+  }
+
+  /// Controles de la barre de lecture cote appareil "spectateur" (voir
+  /// isPersonalSyncParticipant) : n'agissent jamais sur le moteur audio
+  /// local, envoient une commande a l'appareil hote via le relais.
+  void remoteToggle() {
+    if (!isPersonalSyncParticipant) return;
+    _jam.sendCommand('toggle');
+  }
+
+  void remoteNext() {
+    if (!isPersonalSyncParticipant) return;
+    _jam.sendCommand('next');
+  }
+
+  void remotePrevious() {
+    if (!isPersonalSyncParticipant) return;
+    _jam.sendCommand('previous');
   }
 
   Track? _findTrackById(String id) {

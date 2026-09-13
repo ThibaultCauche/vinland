@@ -1,7 +1,7 @@
 name: vinland
 description: Lecteur de musique personnel
 publish_to: 'none'
-version: 1.1.5+7
+version: 1.1.6+8
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -53,7 +53,32 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/
+
+# Genere les icones natives (Android/iOS/macOS/Windows/web) a partir du logo
+# Vinland -- `dart run flutter_launcher_icons` apres toute modification du
+# fichier source.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#121212"
+    theme_color: "#121212"
 

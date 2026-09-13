@@ -19,7 +19,7 @@ void showJamMenu(BuildContext context) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (state.isJamActive)
+          if (state.isFriendJamActive)
             ListTile(
               leading: const Icon(Icons.close, color: Colors.white, size: 26),
               title: Text(

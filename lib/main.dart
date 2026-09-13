@@ -69,7 +69,7 @@ Future<void> main() async {
       await Permission.notification.request();
     }
 
-    if (defaultTargetPlatform == TargetPlatform.windows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       // Fenetre sans bordure/barre de titre native (la barre custom avec ses
       // propres boutons vit dans DesktopTitleBar) + fond de fenetre
       // transparent : DesktopBackground n'a alors plus qu'a laisser passer
@@ -98,8 +98,9 @@ Future<void> main() async {
     // plateformes on passe par media_kit (libmpv) a la place. Ailleurs
     // (Android/iOS/macOS/web), just_audio + audio_service reste le combo
     // le plus mature pour la notification/lock screen.
-    final bool useMediaKit = defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.linux;
+    final bool useMediaKit = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux);
 
     final PlayerEngine engine;
     if (useMediaKit) {
@@ -253,7 +254,11 @@ class _SplashScreen extends StatelessWidget {
     return const Scaffold(
       backgroundColor: Color(0xFF121212),
       body: Center(
-        child: Icon(Icons.music_note, color: Color(0xFF1DB954), size: 64),
+        child: Image(
+          image: AssetImage('assets/icon/app_icon_foreground.png'),
+          width: 96,
+          height: 96,
+        ),
       ),
     );
   }

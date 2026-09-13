@@ -43,6 +43,11 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
       height: DesktopGlass.titleBarHeight,
       child: Row(
         children: [
+          // Plus de logo/texte ici : personne ne les lisait, et l'espace
+          // sert desormais entierement de zone de glisser-deposer pour
+          // deplacer la fenetre (double-tap = maximiser/restaurer), laissee
+          // vide pour que la sidebar et la barre de recherche puissent
+          // remonter juste en dessous (voir DesktopGlass.titleBarHeight).
           Expanded(
             child: DragToMoveArea(
               child: GestureDetector(
@@ -54,19 +59,6 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
                     windowManager.maximize();
                   }
                 },
-                child: const Padding(
-                  padding: EdgeInsets.only(left: 12),
-                  child: Row(
-                    children: [
-                      Icon(Icons.music_note,
-                          color: Color(0xFF1DB954), size: 16),
-                      SizedBox(width: 8),
-                      Text('Vinland',
-                          style:
-                              TextStyle(color: Colors.white54, fontSize: 12)),
-                    ],
-                  ),
-                ),
               ),
             ),
           ),

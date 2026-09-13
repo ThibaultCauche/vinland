@@ -12,17 +12,18 @@ class DesktopGlass {
   /// Hauteur de la barre de titre custom (voir DesktopTitleBar) -- elle
   /// flotte desormais au-dessus de tout (sidebar + contenu), donc ce qui
   /// est dessous doit reserver cet espace pour ne pas demarrer derriere
-  /// elle. Remontee de 36 a 48 (retour testeurs : la zone de
-  /// glisser-deposer pour deplacer la fenetre etait trop fine pour etre
-  /// attrapee confortablement).
-  static const titleBarHeight = 48.0;
+  /// elle. Reduite a 32 depuis que la barre ne porte plus que les 3
+  /// boutons de fenetre (logo/texte retires, jamais lus par personne) --
+  /// la sidebar et la barre de recherche remontent d'autant (retour
+  /// utilisateur : trop d'espace mort en haut de la fenetre).
+  static const titleBarHeight = 32.0;
 
   /// Espace reserve en haut de chaque vue de contenu pour la barre de titre
   /// + la TopBar flottantes du shell (toutes deux sans fond opaque -- voir
   /// desktop_app_shell.dart) : le contenu qui defile passe dessous
   /// plutot que d'etre coupe net par une limite arbitraire au milieu de
   /// l'ecran, jusqu'au vrai bord haut de la fenetre.
-  static const topInset = titleBarHeight + 8 + 44 + 12;
+  static const topInset = titleBarHeight + 4 + 44 + 8;
 
   /// Variante reduite de topInset, pour les vues poussees dans la pile
   /// locale (playlist/album/artiste) : leur propre en-tete pinned (hero qui
@@ -30,7 +31,7 @@ class DesktopGlass {
   /// persistante (masquee sur ces vues, voir _TopBar.showSearchBar) -- ne
   /// garder que la place de la barre de titre custom, sinon un grand vide
   /// s'affichait entre elle et le bloc titre/cover (retour testeurs).
-  static const topInsetCompact = titleBarHeight + 12;
+  static const topInsetCompact = titleBarHeight + 4;
 
   /// Espace reserve en bas de chaque vue de contenu pour la barre de
   /// lecture flottante du shell (hauteur 84 + sa propre marge de 12, voir
@@ -92,13 +93,18 @@ class GlassPanel extends StatelessWidget {
 }
 
 /// Bouton icone circulaire en verre, utilise dans la sidebar / la barre de
-/// lecture (etat actif optionnel en surbrillance).
+/// lecture (etat actif optionnel en surbrillance). `tooltip` affiche un
+/// libelle au survol (en plus du curseur main, force explicitement --
+/// comme pour DesktopHoverable, le comportement par defaut d'InkWell ne se
+/// declenchait pas de maniere fiable ici) pour que chaque icone reste
+/// comprehensible sans avoir a deviner.
 class GlassIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
   final bool active;
   final double size;
   final Color? color;
+  final String? tooltip;
 
   const GlassIconButton({
     super.key,
@@ -107,16 +113,18 @@ class GlassIconButton extends StatelessWidget {
     this.active = false,
     this.size = 22,
     this.color,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final button = Material(
       color: active ? Colors.white.withOpacity(0.14) : Colors.transparent,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onPressed,
+        mouseCursor: SystemMouseCursors.click,
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Icon(
@@ -127,6 +135,7 @@ class GlassIconButton extends StatelessWidget {
         ),
       ),
     );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
   }
 }
 

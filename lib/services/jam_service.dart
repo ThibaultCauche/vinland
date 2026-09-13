@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'navidrome_service.dart';
 
@@ -9,12 +10,14 @@ class JamStateMessage {
   final int positionMs;
   final bool isPlaying;
   final int ts;
+  final String? deviceName;
 
   const JamStateMessage({
     required this.trackId,
     required this.positionMs,
     required this.isPlaying,
     required this.ts,
+    this.deviceName,
   });
 
   factory JamStateMessage.fromJson(Map<String, dynamic> json) =>
@@ -23,7 +26,15 @@ class JamStateMessage {
         positionMs: json['positionMs'] as int,
         isPlaying: json['isPlaying'] as bool,
         ts: json['ts'] as int,
+        deviceName: json['deviceName'] as String?,
       );
+}
+
+/// Commande de controle a distance (play/pause/suivant/precedent), envoyee
+/// par un participant et recue uniquement par l'hote -- voir sendCommand.
+class JamCommandMessage {
+  final String action;
+  const JamCommandMessage(this.action);
 }
 
 /// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
@@ -59,6 +70,9 @@ class JamService {
   final _errorController = StreamController<String>.broadcast();
   Stream<String> get errorStream => _errorController.stream;
 
+  final _commandController = StreamController<JamCommandMessage>.broadcast();
+  Stream<JamCommandMessage> get commandStream => _commandController.stream;
+
   String? _relayUrl() {
     final baseUrl = _navidrome.baseUrl;
     if (baseUrl == null || baseUrl.isEmpty) return null;
@@ -72,6 +86,17 @@ class JamService {
     final random = Random.secure();
     final bytes = List.generate(6, (_) => random.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
+  }
+
+  /// SessionId stable et prive pour la synchro multi-appareils "perso" (voir
+  /// AppState._maybeBecomePersonalHost/_tryJoinPersonalSync) : deterministe a
+  /// partir du compte Navidrome, pour que tous les appareils du meme compte
+  /// se retrouvent automatiquement sans code a partager. Hashe (avec un sel
+  /// fixe) plutot qu'utilise tel quel pour ne pas exposer le nom d'utilisateur
+  /// Navidrome en clair a qui intercepterait ce sessionId.
+  String personalSessionId(String username) {
+    final digest = sha256.convert(utf8.encode('vinland_personal_$username'));
+    return digest.toString().substring(0, 24);
   }
 
   Future<bool> host(String sessionId) => _connect(sessionId, asHost: true);
@@ -138,6 +163,9 @@ class JamService {
       case 'participant_count':
         _participantCountController.add(msg['count'] as int? ?? 0);
         break;
+      case 'command':
+        _commandController.add(JamCommandMessage(msg['action'] as String? ?? ''));
+        break;
     }
   }
 
@@ -145,6 +173,7 @@ class JamService {
     required String trackId,
     required int positionMs,
     required bool isPlaying,
+    String? deviceName,
   }) {
     if (!_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
@@ -153,7 +182,15 @@ class JamService {
       'positionMs': positionMs,
       'isPlaying': isPlaying,
       'ts': DateTime.now().millisecondsSinceEpoch,
+      'deviceName': deviceName,
     }));
+  }
+
+  /// Envoie une commande de controle a distance vers l'hote (voir
+  /// commandStream cote hote) -- reserve aux participants.
+  void sendCommand(String action) {
+    if (_isHost || _channel == null) return;
+    _channel!.sink.add(jsonEncode({'type': 'command', 'action': action}));
   }
 
   Future<void> leave() async {
