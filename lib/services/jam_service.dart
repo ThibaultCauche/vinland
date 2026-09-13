@@ -152,6 +152,16 @@ class JamService {
       case 'error':
         _errorController.add(msg['message']?.toString() ?? 'Erreur inconnue');
         if (!joinCompleter.isCompleted) joinCompleter.complete(false);
+        // Sans ca, _channel restait ouvert malgre l'echec (ex: join() sur
+        // la session "perso" antes qu'aucun appareil ne l'ait hebergee --
+        // le cas d'un compte teste sur un seul appareil) : isActive
+        // continuait de rapporter true bien que ni host() ni join() n'aient
+        // reellement abouti, ce qui faisait passer AppState en mode "suivi
+        // passif" et bloquait silencieusement playTrack/togglePlayPause/
+        // nextTrack/previousTrack (retour testeur : plus aucun bouton ne
+        // repondait, seule la navigation via la file d'attente restait
+        // possible car playFromQueue n'a pas cette garde).
+        leave();
         break;
       case 'state':
         _stateController.add(JamStateMessage.fromJson(msg));

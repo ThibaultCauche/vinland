@@ -303,6 +303,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     // abonnes a AppState ~2x/seconde pendant la lecture, pour rien.
     _audioHandler.player.positionStream.listen((pos) {
       position = pos;
+      _checkStall(pos);
     });
     _audioHandler.player.durationStream.listen((dur) {
       if (dur != null && dur != duration) {
@@ -339,6 +340,39 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool _autoContinuing = false;
+
+  // Filet de securite : sur certains appareils Android, en arriere-plan
+  // (ecran eteint, telephone en poche en exterieur), le processingState
+  // just_audio n'atteint parfois jamais `completed` en fin de titre -- rien
+  // ne declenche alors _continueQueueAutomatically et la lecture reste
+  // bloquee, position figee en fin de titre, jusqu'a ce qu'on relance a la
+  // main (retour testeur). Des qu'on approche de la fin, on arme un minuteur
+  // qui force le passage au titre suivant si rien n'a bouge 2s plus tard --
+  // annule/reutilise en boucle sinon, donc sans effet en fonctionnement
+  // normal (completedStream a largement le temps de faire avancer la file
+  // avant que ce filet ne se declenche).
+  Timer? _stallWatchdog;
+
+  void _checkStall(Duration pos) {
+    final dur = duration;
+    final nearEnd =
+        isPlaying && dur.inMilliseconds > 0 && (dur - pos).inMilliseconds < 800;
+    if (!nearEnd) {
+      _stallWatchdog?.cancel();
+      _stallWatchdog = null;
+      return;
+    }
+    if (_stallWatchdog != null) return; // deja arme pour ce titre
+    final stalledTrackId = currentTrack?.id;
+    _stallWatchdog = Timer(const Duration(seconds: 2), () {
+      _stallWatchdog = null;
+      // Toujours sur le meme titre malgre les 2s ecoulees : la transition
+      // normale n'a pas eu lieu, on la force nous-memes.
+      if (isPlaying && currentTrack?.id == stalledTrackId) {
+        _continueQueueAutomatically();
+      }
+    });
+  }
 
   Future<void> _continueQueueAutomatically() async {
     if (_autoContinuing || _isDisposed) return;
@@ -745,6 +779,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _notifyDebounce?.cancel();
+    _stallWatchdog?.cancel();
     _jamHeartbeat?.cancel();
     _personalSyncPoll?.cancel();
     _jamStateSub?.cancel();

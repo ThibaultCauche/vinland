@@ -301,7 +301,19 @@ class _MobileAppShell extends StatelessWidget {
         body: AppBackground(
           child: Stack(
             children: [
-              screens[currentTab],
+              // Offstage (pas un simple `if`) : cache l'ecran de l'onglet
+              // pendant qu'un overlay (recherche/artiste/album...) est
+              // affiche par-dessus, sans le demonter -- il garde son etat
+              // (position de scroll) pour l'onglet en cours. Sans ca, chaque
+              // Scaffold transparent d'overlay (voulu pour laisser voir
+              // AppBackground derriere lui) laissait en fait transparaitre
+              // l'ecran de l'onglet toujours monte en dessous, jamais cache
+              // (retour testeur : la home page restait visible en
+              // filigrane derriere la recherche/un artiste/un album).
+              Offstage(
+                offstage: currentOverlay != null,
+                child: screens[currentTab],
+              ),
               if (currentOverlay != null)
                 Positioned.fill(child: currentOverlay!),
             ],
