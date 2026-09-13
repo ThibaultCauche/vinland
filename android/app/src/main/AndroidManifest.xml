@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Auto-update : ouvrir l'installeur systeme sur l'APK telecharge par
+         AndroidUpdaterService. Android affiche quand meme un ecran de
+         confirmation a l'utilisateur pour la source (ex: "Installer des
+         apps inconnues" pour Vinland), mais cette permission evite de
+         devoir passer par un gestionnaire de fichiers/navigateur externe. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Bluetooth : detecter la connexion d'un casque/enceinte de confiance
          pour reprendre la lecture automatiquement (voir BluetoothConnectReceiver).
          BLUETOOTH_CONNECT est necessaire a partir d'Android 12 (API 31) pour lire

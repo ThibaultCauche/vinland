@@ -29,7 +29,7 @@ import '../theme/solid_color_effect.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-class AppState extends ChangeNotifier {
+class AppState extends ChangeNotifier with WidgetsBindingObserver {
   final MusicService _music = MusicService();
   final VinlandAudioHandler _audioHandler;
   final JamService _jam = JamService();
@@ -466,6 +466,20 @@ class AppState extends ChangeNotifier {
     }));
 
     unawaited(checkForUpdate());
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Sans ca, une app relancee depuis l'arriere-plan (le cas courant sur
+  /// mobile -- l'OS ne "ferme" quasiment jamais une app, il la met juste en
+  /// pause) ne revoit jamais le check fait au vrai cold start dans
+  /// initialize(), et une mise a jour fraichement publiee reste invisible
+  /// tant que l'utilisateur ne va pas cliquer "Verifier les mises a jour"
+  /// dans Parametres.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(checkForUpdate());
+    }
   }
 
   UpdateInfo? updateInfo;
@@ -677,6 +691,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _notifyDebounce?.cancel();
     _jamHeartbeat?.cancel();
     _jamStateSub?.cancel();

@@ -3,13 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_state.dart';
+import '../services/android_updater_service.dart';
 import '../services/self_updater_service.dart';
 import '../services/update_check_service.dart';
 
 /// Bandeau affiche sur l'accueil des qu'une nouvelle version est disponible.
 /// Sur Windows avec un asset zip trouve : declenche l'auto-update complet
-/// (fermeture/remplacement/relance). Sinon (Android, ou asset manquant) :
-/// ouvre juste la page de release dans le navigateur.
+/// (fermeture/remplacement/relance). Sur Android avec un asset APK trouve :
+/// telecharge l'APK et ouvre l'installeur systeme directement (l'utilisateur
+/// doit quand meme confirmer l'installation, Android l'exige). Sinon (asset
+/// manquant) : ouvre juste la page de release dans le navigateur.
 class UpdateBanner extends StatelessWidget {
   const UpdateBanner({super.key});
 
@@ -20,9 +23,13 @@ class UpdateBanner extends StatelessWidget {
       builder: (context, update, child) {
         if (update == null) return const SizedBox.shrink();
 
+        final isWindows = defaultTargetPlatform == TargetPlatform.windows;
+        final isAndroid = defaultTargetPlatform == TargetPlatform.android;
         final canAutoUpdate =
-            defaultTargetPlatform == TargetPlatform.windows &&
-                update.windowsDownloadUrl != null;
+            (isWindows && update.windowsDownloadUrl != null) ||
+                (isAndroid && update.androidDownloadUrl != null);
+        final autoUpdateUrl =
+            isWindows ? update.windowsDownloadUrl : update.androidDownloadUrl;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -32,7 +39,7 @@ class UpdateBanner extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: () => canAutoUpdate
-                  ? _confirmAutoUpdate(context, update.windowsDownloadUrl!)
+                  ? _confirmAutoUpdate(context, autoUpdateUrl!, isWindows)
                   : launchUrl(Uri.parse(update.releaseUrl),
                       mode: LaunchMode.externalApplication),
               child: Padding(
@@ -71,17 +78,21 @@ class UpdateBanner extends StatelessWidget {
     );
   }
 
-  void _confirmAutoUpdate(BuildContext context, String downloadUrl) {
+  void _confirmAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title:
             const Text('Mettre a jour', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          "L'app va se fermer, se mettre a jour, puis redemarrer automatiquement. "
-          "Ca prend quelques secondes.",
-          style: TextStyle(color: Colors.white70),
+        content: Text(
+          isWindows
+              ? "L'app va se fermer, se mettre a jour, puis redemarrer automatiquement. "
+                  "Ca prend quelques secondes."
+              : "L'app va telecharger la mise a jour puis te proposera de "
+                  "l'installer -- Android demande de confirmer toi-meme "
+                  "l'installation.",
+          style: const TextStyle(color: Colors.white70),
         ),
         actions: [
           TextButton(
@@ -92,7 +103,7 @@ class UpdateBanner extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _runAutoUpdate(context, downloadUrl);
+              _runAutoUpdate(context, downloadUrl, isWindows);
             },
             child: const Text('Mettre a jour',
                 style: TextStyle(color: Color(0xFF1DB954))),
@@ -102,7 +113,7 @@ class UpdateBanner extends StatelessWidget {
     );
   }
 
-  void _runAutoUpdate(BuildContext context, String downloadUrl) {
+  void _runAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -121,16 +132,26 @@ class UpdateBanner extends StatelessWidget {
       ),
     );
 
-    SelfUpdaterService().downloadAndApply(downloadUrl).then((ok) {
-      // Si ok == true, downloadAndApply() a deja appele exit(0) : on
-      // n'arrive ici que dans le cas d'un echec.
-      if (!ok && context.mounted) {
+    final future = isWindows
+        ? SelfUpdaterService().downloadAndApply(downloadUrl)
+        : AndroidUpdaterService().downloadAndInstall(downloadUrl);
+
+    future.then((ok) {
+      // Sur Windows, ok == true signifie que downloadAndApply() a deja
+      // appele exit(0) : on n'arrive ici que dans le cas d'un echec. Sur
+      // Android, ok == true signifie juste que l'installeur systeme a bien
+      // ete lance (l'app continue de tourner en-dessous) -- on ferme le
+      // dialogue de chargement dans les deux cas de succes/echec puisqu'il
+      // n'y a plus rien a attendre.
+      if (context.mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  "Echec de la mise a jour automatique -- reessaie plus tard.")),
-        );
+        if (!ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    "Echec de la mise a jour automatique -- reessaie plus tard.")),
+          );
+        }
       }
     });
   }

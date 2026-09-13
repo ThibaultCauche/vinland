@@ -12,10 +12,16 @@ class UpdateInfo {
   /// releaseUrl dans le navigateur.
   final String? windowsDownloadUrl;
 
+  /// Meme principe pour l'APK Android (nom contenant "android", terminant
+  /// par ".apk") : permet a AndroidUpdaterService de le telecharger et de
+  /// lancer l'installeur systeme directement, sans passer par le navigateur.
+  final String? androidDownloadUrl;
+
   const UpdateInfo({
     required this.latestVersion,
     required this.releaseUrl,
     this.windowsDownloadUrl,
+    this.androidDownloadUrl,
   });
 }
 
@@ -48,17 +54,20 @@ class UpdateCheckService {
       if (_isNewer(latest, current)) {
         final assets = (data['assets'] as List?) ?? [];
         String? windowsUrl;
+        String? androidUrl;
         for (final asset in assets) {
           final name = (asset['name'] as String? ?? '').toLowerCase();
           if (name.contains('windows') && name.endsWith('.zip')) {
             windowsUrl = asset['browser_download_url'] as String?;
-            break;
+          } else if (name.contains('android') && name.endsWith('.apk')) {
+            androidUrl = asset['browser_download_url'] as String?;
           }
         }
         return UpdateInfo(
           latestVersion: tag,
           releaseUrl: url,
           windowsDownloadUrl: windowsUrl,
+          androidDownloadUrl: androidUrl,
         );
       }
       return null;
