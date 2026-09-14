@@ -299,9 +299,9 @@ class PlaylistScreen extends StatelessWidget {
                   Navigator.pop(ctx);
                   showSendToFriendDialog(context,
                       type: 'playlist',
-                      itemId: playlist.id,
                       title: playlist.name,
-                      subtitle: '${playlist.trackIds.length} titre(s)');
+                      subtitle: '${playlist.trackIds.length} titre(s)',
+                      playlistForPrivacyCheck: playlist);
                 },
                 minLeadingWidth: 24,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
@@ -338,8 +338,7 @@ class PlaylistScreen extends StatelessWidget {
                 label: 'Retirer de la playlist',
                 onTap: () {
                   Navigator.pop(ctx);
-                  state.musicService.removeFromPlaylist(playlist.id, track.id);
-                  state.notifyListeners();
+                  state.removeFromPlaylist(playlist.id, track.id);
                 },
               ),
             _SheetTile(

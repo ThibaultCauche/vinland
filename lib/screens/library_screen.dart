@@ -495,6 +495,14 @@ class _LibraryScreenState extends State<LibraryScreen>
                 state.pushOverlay(AlbumScreen(album: album));
               },
             ),
+            _SheetTile(
+              icon: Icons.person_outline,
+              label: "Aller a l'artiste",
+              onTap: () {
+                Navigator.pop(ctx);
+                _showArtistPicker(context, track.artist);
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -774,7 +782,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           }
         }
       } catch (e) {
-        print('ERREUR LECTURE DOSSIER: $e');
+        debugPrint('ERREUR LECTURE DOSSIER: $e');
       }
 
       if (files.isNotEmpty) {

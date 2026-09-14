@@ -99,7 +99,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
         if (mounted) setState(() => _discoveredTracks = tracks);
       }
     } catch (e) {
-      print('Deezer album tracks error: $e');
+      debugPrint('Deezer album tracks error: $e');
     }
     if (mounted) setState(() => _loadingDeezer = false);
   }

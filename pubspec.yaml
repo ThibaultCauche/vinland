@@ -1,7 +1,7 @@
 name: vinland
 description: Lecteur de musique personnel
 publish_to: 'none'
-version: 1.1.11+13
+version: 1.1.12+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -30,8 +30,6 @@ dependencies:
   intl: ^0.19.0
   crypto: ^3.0.3
   palette_generator: ^0.3.3+7
-  image: ^4.5.0
-  csv: ^6.0.0
   diacritic: ^0.1.6
   package_info_plus: ^9.0.1
   url_launcher: ^6.3.2

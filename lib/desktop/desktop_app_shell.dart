@@ -100,9 +100,9 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
           onSendToFriend: context.read<AppState>().shareInboxConfigured
               ? () => showSendToFriendDialog(context,
                   type: 'playlist',
-                  itemId: playlist.id,
                   title: playlist.name,
-                  subtitle: '${playlist.trackIds.length} titre(s)')
+                  subtitle: '${playlist.trackIds.length} titre(s)',
+                  playlistForPrivacyCheck: playlist)
               : null,
         ));
   }

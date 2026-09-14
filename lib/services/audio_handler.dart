@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'player_engine.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
@@ -18,7 +19,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       onError: (Object e, StackTrace st) {
         // Une erreur reseau/decodage ponctuelle ne doit pas remonter
         // non-geree et faire planter l'app : on la journalise seulement.
-        print('PLAYBACK EVENT ERROR: $e');
+        debugPrint('PLAYBACK EVENT ERROR: $e');
       },
     );
     _engine.playingStream.listen((_) => _pushState());
@@ -28,7 +29,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     });
 
     _engine.errorMessages.listen((msg) {
-      print('AUDIO ERROR: $msg');
+      debugPrint('AUDIO ERROR: $msg');
     });
 
     _engine.durationStream.listen((duration) {
@@ -55,7 +56,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       playbackState.add(_transformState());
     } catch (e) {
-      print('PLAYBACK STATE PUSH ERROR: $e');
+      debugPrint('PLAYBACK STATE PUSH ERROR: $e');
     }
   }
 
@@ -99,7 +100,7 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     final sources = items.map((item) {
       final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
-      print(
+      debugPrint(
           '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isAsset=$isAsset isRemote=$isRemote');
       return PlayerQueueItem(path: item.id, isAsset: isAsset, isRemote: isRemote);
     }).toList();
@@ -115,11 +116,11 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await _engine.setAudioSources(sources, initialIndex: startIndex);
-        print('✅ AudioSource chargé, lecture...');
+        debugPrint('✅ AudioSource chargé, lecture...');
         await _engine.play();
         return true;
       } catch (e) {
-        print('❌ ERREUR LECTURE (tentative $attempt/$maxAttempts): $e');
+        debugPrint('❌ ERREUR LECTURE (tentative $attempt/$maxAttempts): $e');
         if (attempt == maxAttempts) return false;
         await Future.delayed(Duration(milliseconds: 500 * attempt));
       }

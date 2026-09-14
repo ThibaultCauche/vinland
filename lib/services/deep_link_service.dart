@@ -20,8 +20,24 @@ final GlobalKey<NavigatorState> vinlandNavigatorKey = GlobalKey<NavigatorState>(
 
 String trackShareLink(Track track) => '$_scheme://track/${track.id}';
 String albumShareLink(Album album) => '$_scheme://album/${album.id}';
-String playlistShareLink(Playlist playlist) =>
-    '$_scheme://playlist/${playlist.id}';
+
+/// Id a utiliser pour partager une playlist : celui du SERVEUR Navidrome
+/// (playlist.serverId), jamais l'id LOCAL (playlist.id, ex: horodatage de
+/// creation) qui n'a aucun sens pour un autre utilisateur -- cote
+/// destinataire, les playlists des amis ne sont connues que par leur id
+/// serveur (voir MusicService.fetchFriends), deux valeurs differentes des
+/// qu'une playlist a ete synchronisee. Un lien construit avec l'id local ne
+/// se resout donc jamais que pour son propre proprietaire (retour
+/// utilisateur : partage recu mais impossible a ouvrir, ni en lien externe
+/// ni en boite de reception). Retourne null si la playlist n'est pas
+/// encore synchronisee (pas d'id serveur) : rien d'utilisable a partager
+/// dans ce cas, a l'appelant de le signaler plutot que d'envoyer un lien
+/// casse.
+String? playlistShareId(Playlist playlist) => playlist.serverId;
+String? playlistShareLink(Playlist playlist) {
+  final id = playlistShareId(playlist);
+  return id == null ? null : '$_scheme://playlist/$id';
+}
 
 Future<void> _shareText(String text) =>
     SharePlus.instance.share(ShareParams(text: text));
@@ -38,51 +54,70 @@ Future<void> shareAlbum(Album album) => _shareText(
 
 enum _PlaylistShareChoice { shareAnyway, makePublic }
 
-/// Si la playlist est privee, le lien ne s'ouvrira pas chez le destinataire
-/// (Navidrome ne renvoie les playlists d'un autre utilisateur que si elles
-/// sont publiques -- voir MusicService.fetchFriends). On ne la rend donc
-/// jamais publique sans demander : on previent et on laisse le choix.
-Future<void> sharePlaylist(BuildContext context, Playlist playlist) async {
-  if (!playlist.isPublic) {
-    final choice = await showDialog<_PlaylistShareChoice>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title:
-            const Text('Playlist privee', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          "Cette playlist est privee : tant qu'elle le reste, le lien ne "
-          "s'ouvrira pas chez la personne a qui tu l'envoies.",
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler', style: TextStyle(color: Colors.white54)),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, _PlaylistShareChoice.shareAnyway),
-            child: const Text('Partager quand meme'),
-          ),
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(ctx, _PlaylistShareChoice.makePublic),
-            child: const Text('Rendre publique et partager'),
-          ),
-        ],
+/// Si la playlist est privee, ni le lien ni un partage en boite de reception
+/// ne s'ouvriront jamais chez le destinataire (Navidrome ne renvoie les
+/// playlists d'un autre utilisateur que si elles sont publiques -- voir
+/// MusicService.fetchFriends). On ne la rend donc jamais publique sans
+/// demander : on previent et on laisse le choix. Retourne false si
+/// l'utilisateur annule (rien a partager dans ce cas).
+Future<bool> _ensurePlaylistShareable(
+    BuildContext context, Playlist playlist) async {
+  if (playlist.isPublic) return true;
+  final choice = await showDialog<_PlaylistShareChoice>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF1E1E1E),
+      title:
+          const Text('Playlist privee', style: TextStyle(color: Colors.white)),
+      content: const Text(
+        "Cette playlist est privee : tant qu'elle le reste, le destinataire "
+        "ne pourra pas y acceder.",
+        style: TextStyle(color: Colors.white70),
       ),
-    );
-    if (choice == null) return;
-    if (choice == _PlaylistShareChoice.makePublic) {
-      if (!context.mounted) return;
-      await context.read<AppState>().setPlaylistPublic(playlist.id, true);
-    }
-  }
-  await _shareText(
-    'Ecoute la playlist "${playlist.name}" sur Vinland\n'
-    '${playlistShareLink(playlist)}',
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Annuler', style: TextStyle(color: Colors.white54)),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(ctx, _PlaylistShareChoice.shareAnyway),
+          child: const Text('Partager quand meme'),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.pop(ctx, _PlaylistShareChoice.makePublic),
+          child: const Text('Rendre publique et partager'),
+        ),
+      ],
+    ),
   );
+  if (choice == null) return false;
+  if (choice == _PlaylistShareChoice.makePublic) {
+    if (!context.mounted) return false;
+    await context.read<AppState>().setPlaylistPublic(playlist.id, true);
+  }
+  return true;
+}
+
+void _showNotYetSyncedError(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+          "Cette playlist n'est pas encore synchronisee avec le serveur, "
+          "reessaie dans quelques instants."),
+      backgroundColor: Color(0xFF2A2A2A),
+    ),
+  );
+}
+
+Future<void> sharePlaylist(BuildContext context, Playlist playlist) async {
+  final proceed = await _ensurePlaylistShareable(context, playlist);
+  if (!proceed) return;
+  if (!context.mounted) return;
+  final link = playlistShareLink(playlist);
+  if (link == null) return _showNotYetSyncedError(context);
+  await _shareText('Ecoute la playlist "${playlist.name}" sur Vinland\n$link');
 }
 
 /// "Envoyer a un ami" (phase 2 du partage, contrairement au partage externe
@@ -95,10 +130,32 @@ Future<void> sharePlaylist(BuildContext context, Playlist playlist) async {
 Future<void> showSendToFriendDialog(
   BuildContext context, {
   required String type,
-  required String itemId,
+  // Requis sauf pour type == 'playlist' (voir playlistForPrivacyCheck, qui
+  // fournit l'id serveur correct a sa place -- jamais playlist.id, l'id
+  // LOCAL, qui ne voudrait rien dire pour le destinataire).
+  String? itemId,
   required String title,
   required String subtitle,
+  // Uniquement pour type == 'playlist' : verifie/demande avant d'envoyer
+  // une playlist privee (voir _ensurePlaylistShareable), et fournit le bon
+  // id a partager (playlist.serverId, pas playlist.id -- voir
+  // playlistShareId).
+  Playlist? playlistForPrivacyCheck,
 }) async {
+  assert(itemId != null || playlistForPrivacyCheck != null);
+  var resolvedItemId = itemId;
+  if (playlistForPrivacyCheck != null) {
+    final proceed =
+        await _ensurePlaylistShareable(context, playlistForPrivacyCheck);
+    if (!proceed) return;
+    final serverId = playlistShareId(playlistForPrivacyCheck);
+    if (serverId == null) {
+      if (!context.mounted) return;
+      return _showNotYetSyncedError(context);
+    }
+    resolvedItemId = serverId;
+  }
+  if (!context.mounted) return;
   final state = context.read<AppState>();
   if (state.friends.isEmpty && !state.loadingFriends) {
     await state.loadFriends();
@@ -152,7 +209,7 @@ Future<void> showSendToFriendDialog(
   final ok = await state.sendShareToFriend(
     toUsername: friendUsername,
     type: type,
-    itemId: itemId,
+    itemId: resolvedItemId!,
     title: title,
     subtitle: subtitle,
   );
@@ -246,9 +303,19 @@ class DeepLinkService {
     if (!ok) _notFound();
   }
 
+  /// isLoggedIn ne reflete que des identifiants presents en local (pas de
+  /// reseau) : sur un demarrage a froid via lien (app tuee puis relancee
+  /// par le tap), il redevenait vrai bien avant que l'authentification
+  /// live aupres du serveur (jusqu'a ~10s, NAS lent/injoignable) ou le
+  /// premier fetchFriends() n'aient eu le temps d'aboutir -- resolution
+  /// tentee trop tot, toujours en echec meme pour un element qui existe
+  /// reellement (retour utilisateur : lien "introuvable" a chaque fois).
+  /// Attend donc aussi isNavidromeConnected, pas juste isLoggedIn.
   Future<void> _waitUntilReady() async {
-    final deadline = DateTime.now().add(const Duration(seconds: 15));
-    while (!_state.isLoggedIn || _state.isInitializing) {
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (!_state.isLoggedIn ||
+        _state.isInitializing ||
+        !_state.isNavidromeConnected) {
       if (DateTime.now().isAfter(deadline)) return;
       await Future.delayed(const Duration(milliseconds: 300));
     }

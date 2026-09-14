@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -15,6 +15,112 @@ import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
 import 'navidrome_service.dart';
 import 'package:http/http.dart' as http;
+
+/// Fusionne un titre fraichement recu du serveur (Navidrome) avec l'etat
+/// local deja connu (cache) et le statut "starred" -- coeur de
+/// [MusicService.syncWithNavidrome], extrait en fonction pure top-level pour
+/// pouvoir etre teste sans mock HTTP (voir test/music_service_reconcile_test.dart).
+/// A deja cause deux regressions distinctes sur l'ordre des "Titres likes"
+/// (perte de dateAdded ecrasee a tort, puis cache local absent apres
+/// reinstall) -- toute modification ici merite un test avant tout.
+void reconcileTrack(
+  Track t, {
+  required Map<String, DateTime?> starredMap,
+  required Map<String, Map<String, dynamic>> localData,
+  required Set<String> tracksNeedingOrderRecovery,
+}) {
+  if (starredMap.containsKey(t.id)) {
+    t.isLiked = true;
+    t.dateAdded = starredMap[t.id] ?? t.dateAdded;
+  }
+  final local = localData[t.id];
+  if (local != null) {
+    t.isLiked = local['isLiked'] ?? t.isLiked;
+    // superLiked n'a aucun equivalent cote Navidrome : purement local,
+    // toujours reporte tel quel (jamais recalcule depuis le serveur).
+    t.superLiked = local['superLiked'] ?? false;
+    // ?? et non ecrasement direct : si le cache local n'a pas encore de
+    // date (ex: track starred hors de l'app) on garde celle du serveur
+    // posee juste au-dessus, plutot que de la remettre a null et casser
+    // le tri de la liste "Titres likes" (voir AppState.likedTracks).
+    t.dateAdded = local['dateAdded'] ?? t.dateAdded;
+    t.playCount = local['playCount'] ?? t.playCount;
+    t.lastPlayed = local['lastPlayed'] ?? t.lastPlayed;
+  }
+  // Aucune source locale fiable pour la date de ce titre like (cache
+  // vide ou date jamais connue en local) : la date posee ci-dessus vient
+  // du timestamp "starred" du serveur, pas garanti dans l'ordre d'import
+  // d'origine (resolution grossiere, pas forcement pose dans l'ordre du
+  // CSV importe). A recuperer depuis l'ordre reel de la playlist miroir
+  // des likes une fois celle-ci relue -- voir _syncPlaylistsFromServer.
+  if (t.isLiked && (local == null || local['dateAdded'] == null)) {
+    tracksNeedingOrderRecovery.add(t.id);
+  }
+}
+
+/// Resultat de [planPlaylistSync] : playlists locales deja connues dont le
+/// contenu serveur doit etre rafraichi, et playlists nouvellement decouvertes
+/// (creees ici, pas encore ajoutees a la liste locale par l'appelant).
+class PlaylistSyncPlan {
+  final List<Playlist> toRefresh;
+  final List<Playlist> discovered;
+  PlaylistSyncPlan(this.toRefresh, this.discovered);
+}
+
+/// Decide, pour chaque playlist du serveur appartenant a l'utilisateur
+/// courant (deja filtree a "mine" par l'appelant), si elle correspond a un
+/// objet [Playlist] local deja connu (a rafraichir) ou doit etre decouverte
+/// (jamais vue sur CET appareil) -- coeur de
+/// [MusicService._syncPlaylistsFromServer], extrait en fonction pure pour
+/// etre testable sans mock HTTP (voir
+/// test/music_service_playlist_sync_test.dart).
+///
+/// Avant l'ajout de la branche "decouverte", une playlist qui existait cote
+/// serveur sous ce compte mais que l'appareil courant n'avait jamais creee
+/// lui-meme (typiquement : creee pour un ami depuis un AUTRE appareil/
+/// session) etait silencieusement ignoree pour toujours -- ni rafraichie
+/// (pas de correspondance locale par serverId) ni republiee (elle a deja un
+/// serverId, donc ignoree par la boucle "playlists locales -> serveur").
+/// Vecu par l'utilisateur : playlist invisible chez le proprietaire une fois
+/// connecte sur son propre appareil, alors que visible via son profil
+/// (FriendProfile, qui lit directement depuis le serveur sans ce filtre).
+PlaylistSyncPlan planPlaylistSync(
+  List<Map<String, dynamic>> mine,
+  List<Playlist> localPlaylists, {
+  required Set<String?> ignoredServerIds,
+  required String collabTagPrefix,
+}) {
+  final byServerId = {
+    for (final p in localPlaylists)
+      if (p.serverId != null) p.serverId!: p,
+  };
+  final toRefresh = <Playlist>[];
+  final discovered = <Playlist>[];
+  for (final pl in mine) {
+    final serverId = pl['id'] as String;
+    if (ignoredServerIds.contains(serverId)) continue;
+
+    final comment = pl['comment'] as String? ?? '';
+    // Sous-liste d'une playlist collaborative : mergee separement par
+    // MusicService.fetchCollabPlaylist(), ne doit jamais apparaitre comme
+    // une playlist normale a part entiere ici.
+    if (comment.startsWith(collabTagPrefix)) continue;
+
+    final local = byServerId[serverId];
+    if (local != null) {
+      local.isPublic = pl['public'] == true;
+      toRefresh.add(local);
+      continue;
+    }
+    discovered.add(Playlist(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: pl['name'] as String? ?? 'Playlist',
+      serverId: serverId,
+      isPublic: pl['public'] == true,
+    ));
+  }
+  return PlaylistSyncPlan(toRefresh, discovered);
+}
 
 class MusicService {
   static final MusicService _instance = MusicService._internal();
@@ -102,8 +208,65 @@ class MusicService {
   String? _currentUserId;
 
   void setCurrentUser(String? userId) {
+    if (userId == _currentUserId) return;
     _currentUserId = userId;
+    _resetInMemoryState();
     _initialized = false;
+  }
+
+  /// Vide tout l'etat en memoire propre a un compte avant de charger celui
+  /// d'un autre (login/logout/changement de serveur -- voir
+  /// AppState.configureNavidrome/logout). Sans ca, la bibliotheque, les
+  /// likes et les playlists du compte precedent restaient en memoire tant
+  /// qu'un rechargement de cache ne les remplaçait pas -- et si le nouveau
+  /// compte n'a encore aucun fichier de cache local sur cet appareil (jamais
+  /// connecte ici), rien ne les remplaçait jamais.
+  ///
+  /// Pire : les Timer de debounce (_debouncedSave, miroirs de
+  /// likes/ecoutes-recentes/now-playing, sync de playlist) relisent l'etat
+  /// au moment ou ILS SE DECLENCHENT (jusqu'a 2s plus tard), pas au moment
+  /// ou ils sont programmes -- un compte A qui like un titre puis bascule
+  /// sur le compte B dans les 2 secondes qui suivent pouvait donc pousser
+  /// SES propres likes vers le serveur DU COMPTE B (playlist miroir), ou
+  /// ecrire la bibliotheque du compte A dans le fichier de cache local du
+  /// compte B. Annuler ces Timer ici (plutot que d'attendre qu'ils se
+  /// declenchent avec l'ancien etat) est ce qui coupe vraiment la fuite.
+  /// Observe par l'utilisateur : des titres qui "changent de compte" en
+  /// changeant d'utilisateur, la playlist miroir des likes d'un ami montrant
+  /// des titres qu'il n'a jamais likes lui-meme.
+  void _resetInMemoryState() {
+    _saveDebounceTimer?.cancel();
+    _saveDebounceTimer = null;
+    _likesMirrorDebounce?.cancel();
+    _likesMirrorDebounce = null;
+    _recentPlaysMirrorDebounce?.cancel();
+    _recentPlaysMirrorDebounce = null;
+    _nowPlayingMirrorDebounce?.cancel();
+    _nowPlayingMirrorDebounce = null;
+    for (final timer in _playlistSyncDebounce.values) {
+      timer.cancel();
+    }
+    _playlistSyncDebounce.clear();
+
+    _navidromeTracks = [];
+    _navidromeTracksView = null;
+    _allTracks = [];
+    _albums = [];
+    _albumsView = null;
+    _playlists = [];
+    _offlineFiles = {};
+    _missingTracks = [];
+    _missingTracksView = null;
+    _recentPlays = [];
+    _existingCovers.clear();
+    _tracksNeedingOrderRecovery.clear();
+
+    _shareLikesWithFriends = true;
+    _likesMirrorServerId = null;
+    _shareRecentPlaysWithFriends = true;
+    _recentPlaysMirrorServerId = null;
+    _shareNowPlayingWithFriends = true;
+    _nowPlayingMirrorServerId = null;
   }
 
   String get _cacheFileName {
@@ -117,20 +280,9 @@ class MusicService {
     if (_initialized) return;
     _coversDir = await _getCoversDir();
 
-    // TEMPORAIRE : décommente cette ligne, lance l'app 1 fois, puis re-commente
-    // await _deleteCacheFile();
-
     await _loadFromCache();
     await _refreshCoverCache();
     _initialized = true;
-  }
-
-  Future<void> _deleteCacheFile() async {
-    final file = await _getCacheFile();
-    if (await file.exists()) {
-      await file.delete();
-      print('CACHE SUPPRIME');
-    }
   }
 
   Future<String> _getCoversDir() async {
@@ -168,7 +320,7 @@ class MusicService {
       _existingCovers.add(filePath);
       return filePath;
     } catch (e) {
-      print('ERREUR SAUVEGARDE COVER: $e');
+      debugPrint('ERREUR SAUVEGARDE COVER: $e');
       return null;
     }
   }
@@ -180,7 +332,7 @@ class MusicService {
   }
 
   Future<void> scanAssetsMusic() async {
-    print('SCAN DES ASSETS...');
+    debugPrint('SCAN DES ASSETS...');
     final manifestContent = await rootBundle.loadString('AssetManifest.json');
     final Map<String, dynamic> manifest = jsonDecode(manifestContent);
 
@@ -216,7 +368,7 @@ class MusicService {
           }
           await tempFile.delete();
         } catch (e) {
-          print('ERREUR COVER ASSET: $assetPath - $e');
+          debugPrint('ERREUR COVER ASSET: $assetPath - $e');
         }
 
         loaded.add(Track(
@@ -229,7 +381,7 @@ class MusicService {
           coverPath: coverPath,
         ));
       } catch (e) {
-        print('ERREUR FICHIER: $assetPath - $e');
+        debugPrint('ERREUR FICHIER: $assetPath - $e');
       }
     }
 
@@ -250,7 +402,7 @@ class MusicService {
     final dir = Directory(normalizedPath);
 
     if (!await dir.exists()) {
-      print('DOSSIER NON TROUVE: $normalizedPath');
+      debugPrint('DOSSIER NON TROUVE: $normalizedPath');
       return;
     }
 
@@ -392,7 +544,7 @@ class MusicService {
         duration = Duration(milliseconds: metadata.durationMs!.toInt());
       }
     } catch (e) {
-      print('ERREUR METADATA: $filePath - $e');
+      debugPrint('ERREUR METADATA: $filePath - $e');
       title = _extractTitleFromFileName(fileName);
     }
 
@@ -954,7 +1106,7 @@ class MusicService {
           rebuildAlbums();
         }
       } catch (e) {
-        print('ERREUR CHARGEMENT CACHE: $e');
+        debugPrint('ERREUR CHARGEMENT CACHE: $e');
       }
     }
   }
@@ -1033,7 +1185,7 @@ class MusicService {
           }
         }
       } catch (e) {
-        print('ERREUR COVER ${track.filePath}: $e');
+        debugPrint('ERREUR COVER ${track.filePath}: $e');
       }
     }
 
@@ -1041,7 +1193,7 @@ class MusicService {
       rebuildAlbums();
       _debouncedSave();
     }
-    print('RESCAN COVERS: $updated covers ajoutees');
+    debugPrint('RESCAN COVERS: $updated covers ajoutees');
   }
 
   void _debouncedSave() {
@@ -1057,7 +1209,7 @@ class MusicService {
   /// figee sur l'ancien cache jusqu'a la toute fin d'une resynchro complete,
   /// qui peut prendre du temps sur une grosse bibliotheque.
   Future<void> syncWithNavidrome({void Function()? onProgress}) async {
-    print('SYNC NAVIDROME...');
+    debugPrint('SYNC NAVIDROME...');
     _tracksNeedingOrderRecovery.clear();
     // Recuperes avant les titres (requetes uniques, rapides) pour pouvoir
     // reconcilier chaque lot de titres avec son statut like/date des son
@@ -1077,35 +1229,12 @@ class MusicService {
       };
     }
 
-    void reconcile(Track t) {
-      if (starredMap.containsKey(t.id)) {
-        t.isLiked = true;
-        t.dateAdded = starredMap[t.id] ?? t.dateAdded;
-      }
-      final local = localData[t.id];
-      if (local != null) {
-        t.isLiked = local['isLiked'] ?? t.isLiked;
-        // superLiked n'a aucun equivalent cote Navidrome : purement local,
-        // toujours reporte tel quel (jamais recalcule depuis le serveur).
-        t.superLiked = local['superLiked'] ?? false;
-        // ?? et non ecrasement direct : si le cache local n'a pas encore de
-        // date (ex: track starred hors de l'app) on garde celle du serveur
-        // posee juste au-dessus, plutot que de la remettre a null et casser
-        // le tri de la liste "Titres likes" (voir AppState.likedTracks).
-        t.dateAdded = local['dateAdded'] ?? t.dateAdded;
-        t.playCount = local['playCount'] ?? t.playCount;
-        t.lastPlayed = local['lastPlayed'] ?? t.lastPlayed;
-      }
-      // Aucune source locale fiable pour la date de ce titre like (cache
-      // vide ou date jamais connue en local) : la date posee ci-dessus vient
-      // du timestamp "starred" du serveur, pas garanti dans l'ordre d'import
-      // d'origine (resolution grossiere, pas forcement pose dans l'ordre du
-      // CSV importe). A recuperer depuis l'ordre reel de la playlist miroir
-      // des likes une fois celle-ci relue -- voir _syncPlaylistsFromServer.
-      if (t.isLiked && (local == null || local['dateAdded'] == null)) {
-        _tracksNeedingOrderRecovery.add(t.id);
-      }
-    }
+    void reconcile(Track t) => reconcileTrack(
+          t,
+          starredMap: starredMap,
+          localData: localData,
+          tracksNeedingOrderRecovery: _tracksNeedingOrderRecovery,
+        );
 
     void applyAlbumStarred() {
       for (final album in _albums) {
@@ -1134,7 +1263,7 @@ class MusicService {
     applyAlbumStarred();
 
     _debouncedSave();
-    print('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
+    debugPrint('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
 
     await _syncPlaylistsFromServer();
   }
@@ -1197,7 +1326,7 @@ class MusicService {
   /// pouvoir re-effacer des likes tout juste faits (import CSV notamment)
   /// si cette synchro legere tombe pendant l'import.
   Future<void> lightSync() async {
-    print('LIGHT SYNC (pas de refetch complet)...');
+    debugPrint('LIGHT SYNC (pas de refetch complet)...');
     final starredMap = await _navidrome.fetchStarredTrackIds();
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
@@ -1285,23 +1414,25 @@ class MusicService {
 
     // Recupere le contenu serveur des playlists qui ont deja un serverId
     // (ordre/contenu peut avoir change depuis un autre appareil).
-    final byServerId = {
-      for (final p in _playlists)
-        if (p.serverId != null) p.serverId!: p,
-    };
-    for (final pl in mine) {
-      final serverId = pl['id'] as String;
-      if (serverId == _likesMirrorServerId ||
-          serverId == _recentPlaysMirrorServerId ||
-          serverId == _nowPlayingMirrorServerId) {
-        continue;
-      }
-      final local = byServerId[serverId];
-      if (local == null) continue;
-      local.isPublic = pl['public'] == true;
-      local.trackIds
+    // Decide quelles playlists rafraichir/decouvrir (pur, voir
+    // planPlaylistSync) puis va chercher le contenu serveur (I/O) de
+    // chacune -- l'ordre/contenu peut avoir change depuis un autre appareil,
+    // et une playlist "decouverte" n'a encore aucun trackIds local.
+    final plan = planPlaylistSync(
+      mine,
+      _playlists,
+      ignoredServerIds: {
+        _likesMirrorServerId,
+        _recentPlaysMirrorServerId,
+        _nowPlayingMirrorServerId,
+      },
+      collabTagPrefix: _collabTagPrefix,
+    );
+    _playlists.addAll(plan.discovered);
+    for (final playlist in [...plan.toRefresh, ...plan.discovered]) {
+      playlist.trackIds
         ..clear()
-        ..addAll(await _navidrome.fetchPlaylistSongIds(serverId));
+        ..addAll(await _navidrome.fetchPlaylistSongIds(playlist.serverId!));
     }
 
     _debouncedSave();
@@ -1338,7 +1469,7 @@ class MusicService {
     }
     _tracksNeedingOrderRecovery.clear();
     if (recovered > 0) {
-      print('ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
+      debugPrint('ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
       _debouncedSave();
     }
   }
@@ -1443,10 +1574,10 @@ class MusicService {
 
         _offlineFiles[track.id] = filePath;
         _debouncedSave();
-        print('DOWNLOADED: ${track.title} -> $filePath');
+        debugPrint('DOWNLOADED: ${track.title} -> $filePath');
       }
     } catch (e) {
-      print('DOWNLOAD ERROR ${track.title}: $e');
+      debugPrint('DOWNLOAD ERROR ${track.title}: $e');
     }
   }
 
@@ -1475,7 +1606,7 @@ class MusicService {
         final file = File(path);
         if (await file.exists()) await file.delete();
       } catch (e) {
-        print('REMOVE DOWNLOAD ERROR ${track.title}: $e');
+        debugPrint('REMOVE DOWNLOAD ERROR ${track.title}: $e');
       }
       _offlineFiles.remove(track.id);
     }

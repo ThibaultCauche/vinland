@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import '../models/track.dart';
@@ -136,7 +137,7 @@ class NavidromeService {
         }
       }
     } catch (e) {
-      print('Navidrome auth error: $e');
+      debugPrint('Navidrome auth error: $e');
     }
     _token = null;
     return false;
@@ -194,11 +195,11 @@ class NavidromeService {
       }
       allTracks.addAll(batchTracks);
       onBatch?.call(batchTracks);
-      print(
+      debugPrint(
           'PROGRESSION: ${(i + batchSize).clamp(0, albums.length)}/${albums.length} albums, ${allTracks.length} tracks');
     }
 
-    print('TOTAL TRACKS: ${allTracks.length}');
+    debugPrint('TOTAL TRACKS: ${allTracks.length}');
     return allTracks;
   }
 
@@ -235,7 +236,7 @@ class NavidromeService {
               })
           .toList();
     } catch (e) {
-      print('fetchRecentAlbums error: $e');
+      debugPrint('fetchRecentAlbums error: $e');
       return [];
     }
   }
@@ -257,7 +258,7 @@ class NavidromeService {
             .timeout(const Duration(seconds: 15));
 
         if (response.statusCode != 200) {
-          print('ERREUR LISTE ALBUMS (offset=$offset): ${response.statusCode}');
+          debugPrint('ERREUR LISTE ALBUMS (offset=$offset): ${response.statusCode}');
           break;
         }
 
@@ -280,18 +281,18 @@ class NavidromeService {
           });
         }
 
-        print(
+        debugPrint(
             'PAGE ALBUMS: offset=$offset, count=${albumList.length}, total=${albums.length}');
 
         if (albumList.length < pageSize) break;
         offset += pageSize;
       } catch (e) {
-        print('fetchAlbums error (offset=$offset): $e');
+        debugPrint('fetchAlbums error (offset=$offset): $e');
         break;
       }
     }
 
-    print('TOTAL ALBUMS: ${albums.length}');
+    debugPrint('TOTAL ALBUMS: ${albums.length}');
     return albums;
   }
 
@@ -322,7 +323,7 @@ class NavidromeService {
         return fetchAlbumTracks(albumId,
             albumArtist: albumArtist, retriesLeft: retriesLeft - 1);
       }
-      print('fetchAlbumTracks error (album $albumId, no more retries): $e');
+      debugPrint('fetchAlbumTracks error (album $albumId, no more retries): $e');
     }
     return [];
   }
@@ -399,7 +400,7 @@ class NavidromeService {
               extra: {'id': cleanId, 'submission': 'true'}))
           .timeout(const Duration(seconds: 10));
     } catch (e) {
-      print('scrobble error: $e');
+      debugPrint('scrobble error: $e');
     }
   }
 
@@ -414,7 +415,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (e) {
-      print('starTrack error: $e');
+      debugPrint('starTrack error: $e');
       return false;
     }
   }
@@ -430,7 +431,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (e) {
-      print('unstarTrack error: $e');
+      debugPrint('unstarTrack error: $e');
       return false;
     }
   }
@@ -453,7 +454,7 @@ class NavidromeService {
         };
       }
     } catch (e) {
-      print('fetchStarred error: $e');
+      debugPrint('fetchStarred error: $e');
     }
     return {};
   }
@@ -466,7 +467,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (e) {
-      print('starAlbum error: $e');
+      debugPrint('starAlbum error: $e');
       return false;
     }
   }
@@ -479,7 +480,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 10));
       return response.statusCode == 200;
     } catch (e) {
-      print('unstarAlbum error: $e');
+      debugPrint('unstarAlbum error: $e');
       return false;
     }
   }
@@ -497,7 +498,7 @@ class NavidromeService {
         return albums.map((a) => 'navidrome_${a['id']}').toSet();
       }
     } catch (e) {
-      print('fetchStarredAlbumIds error: $e');
+      debugPrint('fetchStarredAlbumIds error: $e');
     }
     return {};
   }
@@ -529,7 +530,7 @@ class NavidromeService {
             .toList();
       }
     } catch (e) {
-      print('fetchPlaylists error: $e');
+      debugPrint('fetchPlaylists error: $e');
     }
     return [];
   }
@@ -550,7 +551,7 @@ class NavidromeService {
         return songs.map((s) => 'navidrome_${s['id']}').toList();
       }
     } catch (e) {
-      print('fetchPlaylistSongIds error: $e');
+      debugPrint('fetchPlaylistSongIds error: $e');
     }
     return [];
   }
@@ -575,7 +576,7 @@ class NavidromeService {
       }
       return id;
     } catch (e) {
-      print('createServerPlaylist error: $e');
+      debugPrint('createServerPlaylist error: $e');
       return null;
     }
   }
@@ -593,7 +594,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 15));
       return response.statusCode == 200;
     } catch (e) {
-      print('setPlaylistMeta error: $e');
+      debugPrint('setPlaylistMeta error: $e');
       return false;
     }
   }
@@ -630,7 +631,7 @@ class NavidromeService {
           await http.get(fullUri).timeout(const Duration(seconds: 20));
       return response.statusCode == 200;
     } catch (e) {
-      print('replacePlaylistSongs error: $e');
+      debugPrint('replacePlaylistSongs error: $e');
       return false;
     }
   }
@@ -643,7 +644,7 @@ class NavidromeService {
           .timeout(const Duration(seconds: 15));
       return response.statusCode == 200;
     } catch (e) {
-      print('deleteServerPlaylist error: $e');
+      debugPrint('deleteServerPlaylist error: $e');
       return false;
     }
   }

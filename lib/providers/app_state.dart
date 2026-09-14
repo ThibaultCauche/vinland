@@ -180,6 +180,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // le serveur redevient joignable. Seule une deconnexion explicite
   // ramene a l'ecran de connexion.
   bool get isLoggedIn => _navidrome.hasCredentials;
+  // Contrairement a isLoggedIn (identifiants presents en local, pas de
+  // reseau), reflete la vraie authentification live aupres du serveur --
+  // necessaire par ex. pour un lien vinland:// ouvert au demarrage a froid,
+  // qui doit attendre plus que le simple flag "identifiants charges" avant
+  // de chercher l'element vise (voir DeepLinkService._waitUntilReady).
+  bool get isNavidromeConnected => _navidrome.isConnected;
   String? get userName => _navidrome.username;
   String? get navidromeUrl => _navidrome.baseUrl;
   String? get currentUserId => _navidrome.username;
@@ -755,7 +761,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final needsFullSync = _music.navidromeTracks.isEmpty ||
         lastFull == null ||
         DateTime.now().difference(lastFull) > _fullSyncInterval;
-    print('PERFORM SYNC: needsFullSync=$needsFullSync '
+    debugPrint('PERFORM SYNC: needsFullSync=$needsFullSync '
         '(tracksEnCache=${_music.navidromeTracks.length}, lastFullSync=$lastFull)');
 
     _isSyncing = true;
@@ -878,8 +884,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     try {
       await _audioHandler.stop().timeout(const Duration(seconds: 2));
     } catch (e) {
-      print('logout: audioHandler.stop() a echoue/timeout: $e');
+      debugPrint('logout: audioHandler.stop() a echoue/timeout: $e');
     }
+    // Sans ca, une session Jam active survivait a la deconnexion : le compte
+    // qui se reconnecte ensuite (ou un simple changement de compte, meme
+    // mecanisme) heritait d'une session WebSocket ouverte sous une identite
+    // qui n'est plus la sienne (voir dispose(), qui fait deja ce nettoyage a
+    // la fermeture complete de l'app -- logout() doit faire pareil).
+    unawaited(_jam.leave());
     await _navidrome.clearCredentials();
     _music.setCurrentUser(null);
     SearchHistoryService().setCurrentUser(null);
@@ -1370,6 +1382,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
+  Future<void> removeFromPlaylist(String playlistId, String trackId) async {
+    await _music.removeFromPlaylist(playlistId, trackId);
+    _notify();
+  }
+
   void setTab(int index) {
     currentTab = index;
     _notify();
@@ -1524,18 +1541,32 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Playlist?> _findSharedPlaylist(String id) async {
+    // Un lien partage porte l'id SERVEUR (voir playlistShareId dans
+    // deep_link_service.dart), pas l'id local -- comparer aussi serverId
+    // pour que le proprietaire retrouve sa propre playlist en rouvrant son
+    // propre lien (les deux id different des qu'une playlist est synchronisee).
     for (final p in playlists) {
-      if (p.id == id) return p;
+      if (p.id == id || p.serverId == id) return p;
     }
-    if (friends.isEmpty && !loadingFriends) {
-      await loadFriends();
-    }
-    for (final f in friends) {
-      for (final p in f.playlists) {
-        if (p.id == id) return p;
+    Playlist? searchFriends() {
+      for (final f in friends) {
+        for (final p in f.playlists) {
+          if (p.id == id) return p;
+        }
+        if (f.likesPlaylist?.id == id) return f.likesPlaylist;
+        if (f.recentPlaysPlaylist?.id == id) return f.recentPlaysPlaylist;
       }
-      if (f.likesPlaylist?.id == id) return f.likesPlaylist;
-      if (f.recentPlaysPlaylist?.id == id) return f.recentPlaysPlaylist;
+      return null;
+    }
+    final found = searchFriends();
+    if (found != null) return found;
+    // Pas trouvee dans le cache actuel : peut-etre juste pas encore
+    // rafraichi depuis que l'ami a partage/publie cette playlist (le cache
+    // n'est reactualise qu'a l'ouverture de l'onglet Amis) -- un seul
+    // rechargement avant d'abandonner, pas a chaque appel.
+    if (!loadingFriends) {
+      await loadFriends();
+      return searchFriends();
     }
     return null;
   }
@@ -1627,22 +1658,22 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   void _updateDominantColor(String? coverPath) {
     if (coverPath == null) {
-      print('PALETTE: coverPath null');
+      debugPrint('PALETTE: coverPath null');
       dominantColor = null;
       _notify();
       return;
     }
     if (_colorCache.containsKey(coverPath)) {
-      print('PALETTE: cache hit');
+      debugPrint('PALETTE: cache hit');
       dominantColor = _colorCache[coverPath];
       _notify();
       return;
     }
     final requestId = ++_lastColorRequest;
-    print('PALETTE: start extraction (isolate)');
+    debugPrint('PALETTE: start extraction (isolate)');
     _extractDominantColorIsolate(coverPath).then((color) {
       if (_isDisposed) return;
-      print('PALETTE: done, color=$color');
+      debugPrint('PALETTE: done, color=$color');
       if (requestId == _lastColorRequest && color != null) {
         _colorCache[coverPath] = color;
         dominantColor = color;
@@ -1667,6 +1698,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> configureNavidrome(String url, String user, String pass) async {
     final ok = await _navidrome.saveCredentials(url, user, pass);
     if (ok) {
+      // Reconfigurer depuis Parametres (changement de compte/serveur) peut
+      // arriver sans passer par logout() d'abord -- meme nettoyage de
+      // session Jam necessaire ici, voir logout().
+      unawaited(_jam.leave());
       _music.setCurrentUser(_navidrome.username);
       SearchHistoryService().setCurrentUser(_navidrome.username);
       await _music.initialize();

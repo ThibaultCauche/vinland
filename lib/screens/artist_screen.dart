@@ -214,7 +214,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
             }
           }
         } catch (e) {
-          print('Deep match error for album ${album.title}: $e');
+          debugPrint('Deep match error for album ${album.title}: $e');
         }
       }));
 

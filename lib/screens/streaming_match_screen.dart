@@ -585,9 +585,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
   }
 
   Future<void> _likeMatched() async {
-    print('=== _likeMatched called ===');
+    debugPrint('=== _likeMatched called ===');
     final state = context.read<AppState>();
-    print('tracks count: ${state.allTracks.length}');
+    debugPrint('tracks count: ${state.allTracks.length}');
 
     if (state.allTracks.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

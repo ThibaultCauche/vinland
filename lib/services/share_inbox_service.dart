@@ -81,7 +81,10 @@ class ShareInboxService {
     if (!isConfigured) return [];
     try {
       final response = await http
-          .get(Uri.parse('$kShareInboxBaseUrl/shares/$username'))
+          .get(
+            Uri.parse('$kShareInboxBaseUrl/shares/$username'),
+            headers: {'X-Api-Key': kShareInboxApiKey},
+          )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return [];
       final raw = jsonDecode(response.body) as List;

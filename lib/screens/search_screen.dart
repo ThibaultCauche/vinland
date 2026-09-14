@@ -163,9 +163,6 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   Widget build(BuildContext context) {
-    final hasResults =
-        _localTracks.isNotEmpty || _artists.isNotEmpty || _albums.isNotEmpty;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
