@@ -551,6 +551,15 @@ class _AlbumScreenState extends State<AlbumScreen> {
               },
             ),
             _SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.playNext(track);
+                _showSnack('"${track.title}" sera joue ensuite');
+              },
+            ),
+            _SheetTile(
               icon: Icons.playlist_add,
               label: "Ajouter a la file d'attente",
               onTap: () {
@@ -646,6 +655,17 @@ class _AlbumScreenState extends State<AlbumScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _showArtistPicker(context, widget.album.artist);
+              },
+            ),
+            _SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                for (final t in albumTracks.reversed) {
+                  state.playNext(t);
+                }
+                _showSnack('Album ajoute juste apres le titre en cours');
               },
             ),
             _SheetTile(

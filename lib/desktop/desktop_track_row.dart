@@ -63,6 +63,16 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
         PopupMenuItem<void>(
           child: const Row(
             children: [
+              Icon(Icons.playlist_play, color: Colors.white70, size: 18),
+              SizedBox(width: 10),
+              Text('Lire ensuite', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          onTap: () => context.read<AppState>().playNext(widget.track),
+        ),
+        PopupMenuItem<void>(
+          child: const Row(
+            children: [
               Icon(Icons.queue_music, color: Colors.white70, size: 18),
               SizedBox(width: 10),
               Text('Ajouter a la file d\'attente',

@@ -79,6 +79,29 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
 
+  /// Marque une bascule play/pause explicite de l'utilisateur, pour que le
+  /// listener sur playingStream (voir le constructeur) puisse ignorer un
+  /// evenement "en retard" qui la contredirait juste apres. Sur le tout
+  /// premier titre charge dans une session, le moteur audio natif peut
+  /// mettre plusieurs centaines de ms a emettre son evenement "playing=true"
+  /// initial (chargement/warm-up du codec) -- si l'utilisateur a deja tape
+  /// pause entre-temps, cet evenement en retard arrivait APRES le isPlaying
+  /// = false pose par togglePlayPause() et l'ecrasait, desynchronisant le
+  /// bouton de l'etat reel (l'audio, lui, etait bien en pause). Reproduit et
+  /// corrige le 2026-09-15 (retour utilisateur : bouton reste sur "lecture"
+  /// apres une pause, un appui de plus sans effet sur l'audio suffit a le
+  /// resynchroniser -- jamais revu apres le premier titre de la session,
+  /// coherent avec un warm-up qui ne se reproduit plus une fois le moteur
+  /// deja chaud).
+  DateTime? _lastManualPlaybackToggleAt;
+  bool? _lastManualPlaybackIntent;
+
+  void _setPlayingIntent(bool value) {
+    isPlaying = value;
+    _lastManualPlaybackToggleAt = DateTime.now();
+    _lastManualPlaybackIntent = value;
+  }
+
   // File d'attente ("Titres a venir") : les titres qui vont suivre, dans
   // l'ordre d'ecoute -- visible/reordonnable par l'utilisateur (voir
   // QueueScreen), completee par "Ajouter a la file d'attente". Ne contient
@@ -338,7 +361,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       }
     });
     _audioHandler.player.playingStream.listen((playing) {
-      if (playing != isPlaying) {
+      // ponytail: fenetre fixe de 700ms, a agrandir si le desync reapparait
+      // sur un appareil dont le moteur audio met plus longtemps a chauffer.
+      final contradictsRecentManualToggle = _lastManualPlaybackToggleAt !=
+              null &&
+          DateTime.now().difference(_lastManualPlaybackToggleAt!) <
+              const Duration(milliseconds: 700) &&
+          _lastManualPlaybackIntent != playing;
+      if (!contradictsRecentManualToggle && playing != isPlaying) {
         isPlaying = playing;
         _notify();
       }
@@ -965,7 +995,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
     await Future.delayed(Duration.zero);
     final loaded = await _audioHandler.loadAndPlay([item], 0);
-    isPlaying = loaded;
+    _setPlayingIntent(loaded);
     if (!loaded) {
       _notify();
       return false;
@@ -980,7 +1010,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (track.id.startsWith('navidrome_')) {
       unawaited(_navidrome.scrobble(track.id));
     }
-    unawaited(_savePlaybackState());
+    // Attend (contrairement aux autres appels de _savePlaybackState, fire-
+    // and-forget ailleurs) : c'est la valeur relue par le resume Bluetooth
+    // headless (bluetooth_resume_entrypoint.dart) quand Android a deja tue
+    // le process principal -- un titre change juste avant que l'app soit
+    // reclamee en arriere-plan pouvait laisser cette ecriture jamais flushee
+    // sur le disque, et le resume Bluetooth relancait alors le titre
+    // PRECEDENT (dernier vraiment ecrit) au lieu du bon (retour utilisateur,
+    // 2026-09-15 : "je reviens sur la musique d'avant apres une pause
+    // externe", reproduit surtout avec un appareil Bluetooth de confiance --
+    // voiture/casque -- qui se reconnecte pendant que l'app est en pause en
+    // arriere-plan).
+    await _savePlaybackState();
     // Prend/garde le role d'hote de la synchro perso multi-appareils (voir
     // _maybeBecomePersonalHost) tant qu'aucune session Jam entre amis
     // manuelle n'est en cours -- diffuse aussi l'etat si deja hote.
@@ -1006,7 +1047,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     } else {
       _audioHandler.play();
     }
-    isPlaying = !isPlaying;
+    _setPlayingIntent(!isPlaying);
     if (isJamHost) _broadcastJamState();
     _notify();
   }
@@ -1045,6 +1086,17 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// de `queue`.
   void addToQueue(Track track) {
     queue.add(track);
+    unawaited(_savePlaybackState());
+    _notify();
+  }
+
+  /// "Lire ensuite" (options d'un titre) : le place en tete de `queue`, donc
+  /// juste apres le titre en cours -- contrairement a addToQueue qui l'ajoute
+  /// a la fin. Pour mettre plusieurs titres en file en une fois (ex: un album
+  /// entier), appeler dans l'ordre inverse voulu (le dernier insere en tete
+  /// se retrouve premier).
+  void playNext(Track track) {
+    queue.insert(0, track);
     unawaited(_savePlaybackState());
     _notify();
   }

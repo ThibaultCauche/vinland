@@ -32,6 +32,16 @@ class SelfUpdaterService {
       final scriptPath = p.join(tempDir.path, 'vinland_update.ps1');
       await File(scriptPath).writeAsString(_scriptContent);
 
+      // mode: normal, PAS detached -- teste et confirme en conditions reelles
+      // (2026-09-15) que ProcessStartMode.detached fait mourir powershell.exe
+      // en quelques millisecondes sur Windows (avant meme d'ecrire sa
+      // premiere ligne de log), ce qui faisait echouer l'auto-update a
+      // chaque fois (silencieusement avant l'ajout du message d'erreur,
+      // "Echec de la mise a jour automatique" ensuite). mode: normal marche
+      // de facon fiable ET le processus survit bien a exit(0) juste apres
+      // (verifie : un process enfant Windows n'est pas tue par la sortie de
+      // son parent, contrairement a un modele Unix avec groupe de process) --
+      // detached n'etait donc pas necessaire pour ce que ce code doit faire.
       final proc = await Process.start(
         'powershell.exe',
         [
@@ -43,7 +53,7 @@ class SelfUpdaterService {
           '-InstallDir', installDir,
           '-ExePath', exePath,
         ],
-        mode: ProcessStartMode.detached,
+        mode: ProcessStartMode.normal,
       );
 
       // Verifie que le script est toujours vivant avant de fermer l'app :

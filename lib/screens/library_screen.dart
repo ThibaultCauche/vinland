@@ -437,6 +437,20 @@ class _LibraryScreenState extends State<LibraryScreen>
               },
             ),
             _SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.playNext(track);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('"${track.title}" sera joue ensuite'),
+                    backgroundColor: const Color(0xFF1DB954),
+                  ),
+                );
+              },
+            ),
+            _SheetTile(
               icon: Icons.queue_music,
               label: "Ajouter a la file d'attente",
               onTap: () {

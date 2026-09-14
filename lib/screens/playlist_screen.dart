@@ -342,6 +342,14 @@ class PlaylistScreen extends StatelessWidget {
                 },
               ),
             _SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.playNext(track);
+              },
+            ),
+            _SheetTile(
               icon: Icons.queue_music,
               label: "Ajouter a la file d'attente",
               onTap: () {
