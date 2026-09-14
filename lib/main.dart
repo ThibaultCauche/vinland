@@ -78,6 +78,17 @@ Future<void> main() async {
       // Necessaire sur Android 13+ pour que la notification de lecture
       // (et donc le foreground service audio) puisse s'afficher correctement.
       await Permission.notification.request();
+      // Vinland est installe en sideload (zip/APK telecharge, pas le Play
+      // Store) : contrairement a Spotify, qui beneficie sur beaucoup d'OEM
+      // (Samsung, Xiaomi...) d'une liste blanche automatique des apps Play
+      // Store connues/frequentes, Vinland n'a par defaut aucun traitement
+      // de faveur des gestionnaires de batterie constructeur et se fait
+      // tuer en fond bien plus facilement (retour utilisateur : coupures
+      // pendant un trajet, changement d'appli en salle de sport). On
+      // demande donc explicitement l'exemption ici (popup systeme standard)
+      // au lieu de compter sur l'utilisateur pour la trouver lui-meme dans
+      // les reglages -- no-op silencieux si deja accordee/refusee.
+      await Permission.ignoreBatteryOptimizations.request();
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {

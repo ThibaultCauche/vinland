@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Popup systeme demandant l'exemption d'optimisation batterie (voir
+         main.dart) : sans cette permission declaree, Permission.
+         ignoreBatteryOptimizations.request() echoue silencieusement. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Auto-update : ouvrir l'installeur systeme sur l'APK telecharge par
          AndroidUpdaterService. Android affiche quand meme un ecran de
          confirmation a l'utilisateur pour la source (ex: "Installer des

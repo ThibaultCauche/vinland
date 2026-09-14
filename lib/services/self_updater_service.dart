@@ -32,12 +32,11 @@ class SelfUpdaterService {
       final scriptPath = p.join(tempDir.path, 'vinland_update.ps1');
       await File(scriptPath).writeAsString(_scriptContent);
 
-      await Process.start(
+      final proc = await Process.start(
         'powershell.exe',
         [
           '-NoProfile',
           '-ExecutionPolicy', 'Bypass',
-          '-WindowStyle', 'Hidden',
           '-File', scriptPath,
           '-ProcessId', pid.toString(),
           '-ZipPath', zipPath,
@@ -47,9 +46,39 @@ class SelfUpdaterService {
         mode: ProcessStartMode.detached,
       );
 
+      // Verifie que le script est toujours vivant avant de fermer l'app :
+      // un antivirus/SmartScreen qui le tue au demarrage (profil suspect --
+      // PowerShell avec policy bypass juste apres un exe fraichement
+      // telecharge, donc marque "Internet" par Windows) le fait dans les
+      // toutes premieres millisecondes. Sans cette verification, l'app se
+      // fermait quand meme (exit(0) inconditionnel) : l'utilisateur ne
+      // voyait plus qu'une fenetre fermee et plus rien ensuite, sans le
+      // moindre message -- le pire des deux mondes. Ici, si le process est
+      // deja mort, on annule et on laisse l'app ouverte avec un message
+      // d'echec explicite (voir update_prompt.dart) au lieu de fermer pour
+      // rien.
+      // Pas via proc.exitCode : un process detache leve "Bad state: Process
+      // is detached" (Dart n'en garde pas le handle) -- il faut demander a
+      // Windows lui-meme si ce PID existe encore.
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!await _isPidAlive(proc.pid)) return false;
+
       exit(0);
     } catch (e) {
       return false;
+    }
+  }
+
+  Future<bool> _isPidAlive(int pid) async {
+    try {
+      final result =
+          await Process.run('tasklist', ['/FI', 'PID eq $pid', '/NH']);
+      return (result.stdout as String).contains(pid.toString());
+    } catch (_) {
+      // Verification elle-meme en echec (tasklist introuvable...) : on
+      // suppose que le process va bien plutot que de bloquer une mise a
+      // jour qui aurait fonctionne.
+      return true;
     }
   }
 
