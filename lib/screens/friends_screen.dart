@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/friend_profile.dart';
 import '../models/track.dart';
+import '../services/share_inbox_service.dart';
 import '../widgets/user_avatar.dart';
 import 'friend_profile_screen.dart';
 
@@ -43,22 +44,39 @@ class _FriendsScreenState extends State<FriendsScreen> {
               ? const Center(
                   child: CircularProgressIndicator(color: Color(0xFF1DB954)),
                 )
-              : state.friends.isEmpty
+              : state.friends.isEmpty && state.pendingShares.isEmpty
                   ? _EmptyState(onRetry: () => state.loadFriends())
                   : RefreshIndicator(
                       color: const Color(0xFF1DB954),
                       onRefresh: () => state.loadFriends(),
-                      child: ListView.builder(
+                      child: ListView(
                         padding: const EdgeInsets.only(top: 8, bottom: 100),
-                        itemCount: state.friends.length,
-                        itemBuilder: (context, i) {
-                          final friend = state.friends[i];
-                          return _FriendTile(
-                            friend: friend,
-                            onTap: () => state.pushOverlay(
-                                FriendProfileScreen(friend: friend)),
-                          );
-                        },
+                        children: [
+                          if (state.pendingShares.isNotEmpty) ...[
+                            const Padding(
+                              padding:
+                                  EdgeInsets.fromLTRB(16, 8, 16, 4),
+                              child: Text('Partages recus',
+                                  style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                            for (final share in state.pendingShares)
+                              _ReceivedShareTile(share: share),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              child: Divider(color: Color(0xFF2A2A2A)),
+                            ),
+                          ],
+                          for (final friend in state.friends)
+                            _FriendTile(
+                              friend: friend,
+                              onTap: () => state.pushOverlay(
+                                  FriendProfileScreen(friend: friend)),
+                            ),
+                        ],
                       ),
                     ),
         );
@@ -104,6 +122,48 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ReceivedShareTile extends StatelessWidget {
+  final ReceivedShare share;
+  const _ReceivedShareTile({required this.share});
+
+  IconData get _icon => switch (share.type) {
+        'album' => Icons.album_outlined,
+        'playlist' => Icons.queue_music,
+        _ => Icons.music_note,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: const Color(0xFF2A2A2A),
+        child: Icon(_icon, color: Colors.white70, size: 20),
+      ),
+      title: Text(share.title,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        share.subtitle.isEmpty
+            ? 'Envoye par ${share.from}'
+            : '${share.from} • ${share.subtitle}',
+        style: const TextStyle(color: Colors.white54, fontSize: 13),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      onTap: () async {
+        final state = context.read<AppState>();
+        final ok = await state.openSharedItem(type: share.type, id: share.itemId);
+        if (ok) await state.dismissShare(share);
+      },
+      trailing: IconButton(
+        icon: const Icon(Icons.close, color: Colors.white38, size: 20),
+        onPressed: () => context.read<AppState>().dismissShare(share),
       ),
     );
   }

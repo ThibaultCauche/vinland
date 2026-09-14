@@ -67,12 +67,18 @@ jobs:
           const String kDownloadWorkerServiceBaseUrl = '$env:DOWNLOAD_WORKER_BASE_URL';
           const String kDownloadWorkerServiceApiKey = '$env:DOWNLOAD_WORKER_API_KEY';
           "@
+          Set-Content -NoNewline -Encoding utf8 -Path lib/config/share_inbox_config.dart -Value @"
+          const String kShareInboxBaseUrl = '$env:SHARE_INBOX_BASE_URL';
+          const String kShareInboxApiKey = '$env:SHARE_INBOX_API_KEY';
+          "@
         env:
           DISCORD_FEEDBACK_WEBHOOK_URL: ${{ secrets.DISCORD_FEEDBACK_WEBHOOK_URL }}
           AVATAR_SERVICE_BASE_URL: ${{ secrets.AVATAR_SERVICE_BASE_URL }}
           AVATAR_SERVICE_API_KEY: ${{ secrets.AVATAR_SERVICE_API_KEY }}
           DOWNLOAD_WORKER_BASE_URL: ${{ secrets.DOWNLOAD_WORKER_BASE_URL }}
           DOWNLOAD_WORKER_API_KEY: ${{ secrets.DOWNLOAD_WORKER_API_KEY }}
+          SHARE_INBOX_BASE_URL: ${{ secrets.SHARE_INBOX_BASE_URL }}
+          SHARE_INBOX_API_KEY: ${{ secrets.SHARE_INBOX_API_KEY }}
 
       - run: flutter pub get
         shell: cmd
@@ -154,12 +160,18 @@ jobs:
           const String kDownloadWorkerServiceBaseUrl = '$DOWNLOAD_WORKER_BASE_URL';
           const String kDownloadWorkerServiceApiKey = '$DOWNLOAD_WORKER_API_KEY';
           EOF
+          cat > lib/config/share_inbox_config.dart <<EOF
+          const String kShareInboxBaseUrl = '$SHARE_INBOX_BASE_URL';
+          const String kShareInboxApiKey = '$SHARE_INBOX_API_KEY';
+          EOF
         env:
           DISCORD_FEEDBACK_WEBHOOK_URL: ${{ secrets.DISCORD_FEEDBACK_WEBHOOK_URL }}
           AVATAR_SERVICE_BASE_URL: ${{ secrets.AVATAR_SERVICE_BASE_URL }}
           AVATAR_SERVICE_API_KEY: ${{ secrets.AVATAR_SERVICE_API_KEY }}
           DOWNLOAD_WORKER_BASE_URL: ${{ secrets.DOWNLOAD_WORKER_BASE_URL }}
           DOWNLOAD_WORKER_API_KEY: ${{ secrets.DOWNLOAD_WORKER_API_KEY }}
+          SHARE_INBOX_BASE_URL: ${{ secrets.SHARE_INBOX_BASE_URL }}
+          SHARE_INBOX_API_KEY: ${{ secrets.SHARE_INBOX_API_KEY }}
 
       - run: flutter pub get
 

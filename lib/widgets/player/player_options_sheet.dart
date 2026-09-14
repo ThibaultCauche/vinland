@@ -5,6 +5,7 @@ import '../../models/track.dart';
 import '../../models/album.dart';
 import '../../screens/artist_screen.dart';
 import '../../screens/album_screen.dart';
+import '../../services/deep_link_service.dart';
 import '../cover_image.dart';
 import 'jam_controls.dart';
 
@@ -84,6 +85,27 @@ void showPlayerOptions(BuildContext context, Track track) {
               _showArtistPicker(context, track.artist);
             },
           ),
+          _SheetTile(
+            icon: Icons.ios_share,
+            label: 'Partager',
+            onTap: () {
+              Navigator.pop(ctx);
+              shareTrack(track);
+            },
+          ),
+          if (state.shareInboxConfigured)
+            _SheetTile(
+              icon: Icons.send_outlined,
+              label: 'Envoyer a un ami',
+              onTap: () {
+                Navigator.pop(ctx);
+                showSendToFriendDialog(context,
+                    type: 'track',
+                    itemId: track.id,
+                    title: track.title,
+                    subtitle: track.artist);
+              },
+            ),
           _SheetTile(
             icon: state.isJamActive ? Icons.close : Icons.groups,
             label: state.isJamActive

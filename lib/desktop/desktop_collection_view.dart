@@ -33,6 +33,10 @@ class DesktopCollectionView extends StatefulWidget {
   // restent de simples textes non cliquables (voir DesktopTrackRow).
   final void Function(Album album)? onOpenAlbum;
   final void Function(String artistName)? onOpenArtist;
+  // Non-null uniquement pour une playlist (pas de sens pour "Titres likes",
+  // seul autre appelant de cette vue).
+  final VoidCallback? onShare;
+  final VoidCallback? onSendToFriend;
 
   const DesktopCollectionView({
     super.key,
@@ -45,6 +49,8 @@ class DesktopCollectionView extends StatefulWidget {
     this.onToggleLike,
     this.onOpenAlbum,
     this.onOpenArtist,
+    this.onShare,
+    this.onSendToFriend,
   });
 
   @override
@@ -143,6 +149,8 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
                         ..shuffle();
                       state.playTrack(shuffled.first, trackList: shuffled);
                     },
+              onShare: widget.onShare,
+              onSendToFriend: widget.onSendToFriend,
             ),
           ),
           // 20 -> 10 : l'espace entre le bloc et la liste etait trop
@@ -301,6 +309,8 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onToggleLike;
   final VoidCallback onShuffle;
   final VoidCallback onBack;
+  final VoidCallback? onShare;
+  final VoidCallback? onSendToFriend;
 
   _CollapsingHeroDelegate({
     required this.title,
@@ -311,6 +321,8 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
     required this.onBack,
     this.isLiked = false,
     this.onToggleLike,
+    this.onShare,
+    this.onSendToFriend,
   });
 
   static const double _maxExtent = 220;
@@ -356,6 +368,8 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
             onToggleLike: onToggleLike,
             onShuffle: onShuffle,
             onBack: onBack,
+            onShare: onShare,
+            onSendToFriend: onSendToFriend,
             shrink: shrink,
           ),
           if (expanded)
@@ -379,6 +393,8 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
         isLiked != oldDelegate.isLiked ||
         onToggleLike != oldDelegate.onToggleLike ||
         onShuffle != oldDelegate.onShuffle ||
-        onBack != oldDelegate.onBack;
+        onBack != oldDelegate.onBack ||
+        onShare != oldDelegate.onShare ||
+        onSendToFriend != oldDelegate.onSendToFriend;
   }
 }

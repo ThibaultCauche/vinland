@@ -10,6 +10,7 @@ import '../widgets/cover_image.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
 import '../models/album.dart';
+import '../services/deep_link_service.dart';
 
 class PlaylistScreen extends StatelessWidget {
   final Playlist playlist;
@@ -181,6 +182,7 @@ class PlaylistScreen extends StatelessWidget {
   }
 
   void _showPlaylistOptions(BuildContext context, Playlist playlist) {
+    final state = context.read<AppState>();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF1E1E1E),
@@ -270,6 +272,40 @@ class PlaylistScreen extends StatelessWidget {
               minLeadingWidth: 24,
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             ),
+            ListTile(
+              leading: const Icon(Icons.ios_share, color: Colors.white, size: 26),
+              title: const Text('Partager',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500)),
+              onTap: () {
+                Navigator.pop(ctx);
+                sharePlaylist(context, playlist);
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            ),
+            if (state.shareInboxConfigured)
+              ListTile(
+                leading: const Icon(Icons.send_outlined,
+                    color: Colors.white, size: 26),
+                title: const Text('Envoyer a un ami',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'playlist',
+                      itemId: playlist.id,
+                      title: playlist.name,
+                      subtitle: '${playlist.trackIds.length} titre(s)');
+                },
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -358,6 +394,27 @@ class PlaylistScreen extends StatelessWidget {
                 state.pushOverlay(ArtistScreen(artistName: track.artist));
               },
             ),
+            _SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                shareTrack(track);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              _SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer a un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'track',
+                      itemId: track.id,
+                      title: track.title,
+                      subtitle: track.artist);
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),

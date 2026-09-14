@@ -79,11 +79,18 @@ class DesktopSidebar extends StatelessWidget {
               onPressed: () => onTabSelected(DesktopNavTab.library),
             ),
             const SizedBox(height: 6),
-            GlassIconButton(
-              icon: Icons.people_alt_rounded,
-              active: activeTab == DesktopNavTab.friends,
-              tooltip: 'Amis',
-              onPressed: () => onTabSelected(DesktopNavTab.friends),
+            Selector<AppState, int>(
+              selector: (_, state) => state.pendingShares.length,
+              builder: (context, pendingCount, __) => Badge(
+                isLabelVisible: pendingCount > 0,
+                label: Text('$pendingCount'),
+                child: GlassIconButton(
+                  icon: Icons.people_alt_rounded,
+                  active: activeTab == DesktopNavTab.friends,
+                  tooltip: 'Amis',
+                  onPressed: () => onTabSelected(DesktopNavTab.friends),
+                ),
+              ),
             ),
             const SizedBox(height: 6),
             GlassIconButton(

@@ -534,6 +534,15 @@ class MusicService {
   Timer? _likesMirrorDebounce;
   String? _likesMirrorServerId;
 
+  /// Ids des titres likes dont la date d'ajout locale etait manquante lors
+  /// du dernier syncWithNavidrome (cache vide -- reinstall, deconnexion,
+  /// etc.) : reconcile() leur pose alors la date "starred" du serveur en
+  /// repli, grossiere et pas garantie dans l'ordre d'import d'origine.
+  /// _syncPlaylistsFromServer() la remplace par une date synthetique derivee
+  /// de l'ordre reel (fiable, lui) de la playlist miroir des likes des
+  /// qu'elle est recuperee -- voir le commentaire complet la-bas.
+  final Set<String> _tracksNeedingOrderRecovery = {};
+
   Future<void> setShareLikesWithFriends(bool value) async {
     _shareLikesWithFriends = value;
     _debouncedSave();
@@ -1049,6 +1058,7 @@ class MusicService {
   /// qui peut prendre du temps sur une grosse bibliotheque.
   Future<void> syncWithNavidrome({void Function()? onProgress}) async {
     print('SYNC NAVIDROME...');
+    _tracksNeedingOrderRecovery.clear();
     // Recuperes avant les titres (requetes uniques, rapides) pour pouvoir
     // reconcilier chaque lot de titres avec son statut like/date des son
     // arrivee, plutot qu'en une seule passe finale sur toute la liste.
@@ -1085,6 +1095,15 @@ class MusicService {
         t.dateAdded = local['dateAdded'] ?? t.dateAdded;
         t.playCount = local['playCount'] ?? t.playCount;
         t.lastPlayed = local['lastPlayed'] ?? t.lastPlayed;
+      }
+      // Aucune source locale fiable pour la date de ce titre like (cache
+      // vide ou date jamais connue en local) : la date posee ci-dessus vient
+      // du timestamp "starred" du serveur, pas garanti dans l'ordre d'import
+      // d'origine (resolution grossiere, pas forcement pose dans l'ordre du
+      // CSV importe). A recuperer depuis l'ordre reel de la playlist miroir
+      // des likes une fois celle-ci relue -- voir _syncPlaylistsFromServer.
+      if (t.isLiked && (local == null || local['dateAdded'] == null)) {
+        _tracksNeedingOrderRecovery.add(t.id);
       }
     }
 
@@ -1240,6 +1259,8 @@ class MusicService {
     _likesMirrorServerId = mirrorRaw['id'] as String?;
     if (_likesMirrorServerId == null) {
       _syncLikesMirror();
+    } else if (_tracksNeedingOrderRecovery.isNotEmpty) {
+      await _recoverLikesOrderFromMirror();
     }
 
     // Retrouve/cree la playlist miroir des ecoutes recentes.
@@ -1284,6 +1305,42 @@ class MusicService {
     }
 
     _debouncedSave();
+  }
+
+  /// Reconstitue la date d'ajout des titres likes listes dans
+  /// [_tracksNeedingOrderRecovery] (dont le cache local n'avait pas de date
+  /// fiable -- reinstall, deconnexion, etc.) a partir de l'ORDRE REEL de la
+  /// playlist miroir des likes sur le serveur, plutot que du timestamp
+  /// "starred" pose en repli par reconcile() (grossier, pas garanti dans
+  /// l'ordre d'import CSV d'origine). La playlist miroir est justement
+  /// reecrite dans le bon ordre a chaque like/unlike (voir _syncLikesMirror),
+  /// donc son contenu survit a n'importe quelle perte de cache local --
+  /// c'est la meme "sauvegarde de l'ordre sur le profil" que celle deja
+  /// utilisee pour que les amis voient les titres likes dans le bon ordre.
+  /// Dates synthetiques (pas les vraies dates d'ajout, perdues avec le
+  /// cache) : seul l'ordre relatif compte pour le tri de "Titres likes".
+  Future<void> _recoverLikesOrderFromMirror() async {
+    final mirrorId = _likesMirrorServerId;
+    if (mirrorId == null) return;
+    final orderedIds = await _navidrome.fetchPlaylistSongIds(mirrorId);
+    if (orderedIds.isEmpty) return;
+
+    final byId = {for (final t in _navidromeTracks) t.id: t};
+    final base = DateTime.now();
+    var recovered = 0;
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
+      if (!_tracksNeedingOrderRecovery.contains(id)) continue;
+      final track = byId[id];
+      if (track == null) continue;
+      track.dateAdded = base.subtract(Duration(seconds: i));
+      recovered++;
+    }
+    _tracksNeedingOrderRecovery.clear();
+    if (recovered > 0) {
+      print('ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
+      _debouncedSave();
+    }
   }
 
   /// Amis = tout autre utilisateur du serveur ayant au moins une playlist

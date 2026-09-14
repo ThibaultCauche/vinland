@@ -48,6 +48,7 @@ lib/config/credentials.dart
 lib/config/discord_config.dart
 lib/config/avatar_config.dart
 lib/config/download_worker_config.dart
+lib/config/share_inbox_config.dart
 
 # Cle de signature de release Android -- jamais dans git (voir
 # vinland-release-keystore/ hors du repo pour le vrai .jks).

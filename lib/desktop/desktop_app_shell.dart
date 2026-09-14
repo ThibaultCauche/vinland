@@ -4,6 +4,7 @@ import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/playlist.dart';
+import '../services/deep_link_service.dart';
 import 'desktop_album_view.dart';
 import 'desktop_artist_view.dart';
 import 'desktop_background.dart';
@@ -34,6 +35,22 @@ class DesktopAppShell extends StatefulWidget {
 class _DesktopAppShellState extends State<DesktopAppShell> {
   DesktopNavTab _tab = DesktopNavTab.home;
   final List<Widget> _stack = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final state = context.read<AppState>();
+    state.onDesktopOpenAlbum = _openAlbum;
+    state.onDesktopOpenPlaylist = _openPlaylist;
+  }
+
+  @override
+  void dispose() {
+    final state = context.read<AppState>();
+    state.onDesktopOpenAlbum = null;
+    state.onDesktopOpenPlaylist = null;
+    super.dispose();
+  }
 
   void _push(Widget Function(VoidCallback onBack) builder) {
     late final Widget w;
@@ -79,6 +96,14 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
           onBack: onBack,
           onOpenAlbum: _openAlbum,
           onOpenArtist: _openArtist,
+          onShare: () => sharePlaylist(context, playlist),
+          onSendToFriend: context.read<AppState>().shareInboxConfigured
+              ? () => showSendToFriendDialog(context,
+                  type: 'playlist',
+                  itemId: playlist.id,
+                  title: playlist.name,
+                  subtitle: '${playlist.trackIds.length} titre(s)')
+              : null,
         ));
   }
 

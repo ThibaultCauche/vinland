@@ -26,6 +26,10 @@ import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
+import '../services/share_inbox_service.dart';
+import '../screens/album_screen.dart';
+import '../screens/playlist_screen.dart';
+import '../widgets/player_screen.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
 import '../theme/solid_color_effect.dart';
@@ -475,6 +479,16 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
+  /// Le shell desktop (DesktopAppShell) a sa propre pile de navigation
+  /// locale, separee de pushOverlay/currentOverlay ci-dessous (pensee pour
+  /// des ecrans mobiles pleine page) -- voir le commentaire sur
+  /// DesktopAppShell. Il s'enregistre ici a son montage pour que du code qui
+  /// n'a pas acces a son State (ex: DeepLinkService, qui ouvre un
+  /// album/playlist partage) puisse l'atteindre quelle que soit la
+  /// plateforme.
+  void Function(Album album)? onDesktopOpenAlbum;
+  void Function(Playlist playlist)? onDesktopOpenPlaylist;
+
   void pushOverlay(Widget screen) {
     if (_overlayStack.isNotEmpty) {
       final last = _overlayStack.last;
@@ -574,6 +588,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         _music.refreshNavidromeTrackUrls();
         _notify();
         unawaited(_performSync());
+        unawaited(loadPendingShares());
       } else {
         _notify();
       }
@@ -593,6 +608,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(checkForUpdate());
+      unawaited(loadPendingShares());
     }
   }
 
@@ -1408,6 +1424,120 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     friends = await _music.fetchFriends();
     loadingFriends = false;
     _notify();
+  }
+
+  // BOITE DE RECEPTION DE PARTAGES (phase 2 du partage titre/album/playlist,
+  // voir deep_link_service.dart pour la phase 1 -- lien envoye via le
+  // partage natif OS) : permet d'envoyer un partage CIBLE a un ami precis,
+  // via le petit service maison share-inbox/ (voir ShareInboxService).
+  final ShareInboxService _shareInbox = ShareInboxService();
+  List<ReceivedShare> pendingShares = [];
+  bool get shareInboxConfigured => _shareInbox.isConfigured;
+
+  Future<void> loadPendingShares() async {
+    final me = userName;
+    if (me == null || !_shareInbox.isConfigured) return;
+    pendingShares = await _shareInbox.fetchShares(me);
+    _notify();
+  }
+
+  Future<bool> sendShareToFriend({
+    required String toUsername,
+    required String type,
+    required String itemId,
+    required String title,
+    required String subtitle,
+  }) async {
+    final me = userName;
+    if (me == null) return false;
+    return _shareInbox.sendShare(
+      to: toUsername,
+      from: me,
+      type: type,
+      itemId: itemId,
+      title: title,
+      subtitle: subtitle,
+    );
+  }
+
+  /// Retire [share] de la liste affichee immediatement (l'utilisateur vient
+  /// de l'ouvrir ou de l'ignorer), puis le supprime cote serveur en best-effort.
+  Future<void> dismissShare(ReceivedShare share) async {
+    pendingShares = pendingShares.where((s) => s.id != share.id).toList();
+    _notify();
+    final me = userName;
+    if (me != null) await _shareInbox.dismissShare(me, share.id);
+  }
+
+  /// Ouvre l'element concerne par un lien vinland:// ou un partage recu en
+  /// boite de reception -- meme resolution/navigation dans les deux cas
+  /// (voir DeepLinkService, qui appelle cette methode). Retourne false si
+  /// l'element est introuvable (id invalide, playlist privee inaccessible...).
+  Future<bool> openSharedItem({required String type, required String id}) async {
+    switch (type) {
+      case 'track':
+        final track = _findSharedTrack(id);
+        if (track == null) return false;
+        await playTrack(track);
+        pushOverlay(const PlayerScreen());
+        return true;
+      case 'album':
+        final album = _findSharedAlbum(id);
+        if (album == null) return false;
+        final openAlbum = onDesktopOpenAlbum;
+        if (openAlbum != null) {
+          openAlbum(album);
+        } else {
+          pushOverlay(AlbumScreen(album: album));
+        }
+        return true;
+      case 'playlist':
+        final playlist = await _findSharedPlaylist(id);
+        if (playlist == null) return false;
+        final openPlaylist = onDesktopOpenPlaylist;
+        if (openPlaylist != null) {
+          openPlaylist(playlist);
+        } else {
+          pushOverlay(PlaylistScreen(
+            playlist: playlist,
+            readOnly: !playlist.isOwnedByCurrentUser,
+          ));
+        }
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Track? _findSharedTrack(String id) {
+    for (final t in allTracks) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  Album? _findSharedAlbum(String id) {
+    for (final a in albums) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  Future<Playlist?> _findSharedPlaylist(String id) async {
+    for (final p in playlists) {
+      if (p.id == id) return p;
+    }
+    if (friends.isEmpty && !loadingFriends) {
+      await loadFriends();
+    }
+    for (final f in friends) {
+      for (final p in f.playlists) {
+        if (p.id == id) return p;
+      }
+      if (f.likesPlaylist?.id == id) return f.likesPlaylist;
+      if (f.recentPlaysPlaylist?.id == id) return f.recentPlaysPlaylist;
+    }
+    return null;
   }
 
   bool get shareLikesWithFriends => _music.shareLikesWithFriends;

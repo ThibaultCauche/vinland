@@ -4,6 +4,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "app_links/app_links_plugin_c_api.h"
 
 // Sur un portable a cartes graphiques hybrides (Intel integree + NVIDIA/AMD
 // dediee), Windows fait tourner par defaut une appli desktop non plein-ecran
@@ -33,6 +34,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Initialize COM, so that it is available for use in the library and/or
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+  // Lien vinland:// recu (voir lib/services/deep_link_service.dart pour
+  // l'enregistrement du protocole dans le registre) : s'il y a deja une
+  // instance de l'app ouverte, on lui transfere le lien et on quitte au
+  // lieu d'ouvrir une deuxieme fenetre.
+  if (SendAppLinkToInstance()) {
+    return EXIT_SUCCESS;
+  }
 
   flutter::DartProject project(L"data");
 

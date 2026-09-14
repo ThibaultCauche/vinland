@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
+import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import 'glass.dart';
 
@@ -70,6 +71,31 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
           ),
           onTap: () => context.read<AppState>().addToQueue(widget.track),
         ),
+        PopupMenuItem<void>(
+          child: const Row(
+            children: [
+              Icon(Icons.ios_share, color: Colors.white70, size: 18),
+              SizedBox(width: 10),
+              Text('Partager', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          onTap: () => shareTrack(widget.track),
+        ),
+        if (context.read<AppState>().shareInboxConfigured)
+          PopupMenuItem<void>(
+            child: const Row(
+              children: [
+                Icon(Icons.send_outlined, color: Colors.white70, size: 18),
+                SizedBox(width: 10),
+                Text('Envoyer a un ami', style: TextStyle(color: Colors.white)),
+              ],
+            ),
+            onTap: () => showSendToFriendDialog(context,
+                type: 'track',
+                itemId: widget.track.id,
+                title: widget.track.title,
+                subtitle: widget.track.artist),
+          ),
       ],
     );
   }

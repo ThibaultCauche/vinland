@@ -16,6 +16,15 @@ class DesktopHeroCard extends StatelessWidget {
   final VoidCallback? onToggleLike;
   final VoidCallback onShuffle;
 
+  /// Non-null uniquement pour une playlist (voir DesktopCollectionView) :
+  /// pas de sens pour "Titres likes", seul autre appelant de cette carte.
+  final VoidCallback? onShare;
+
+  /// Meme principe que onShare, pour "Envoyer a un ami" (boite de reception,
+  /// voir AppState.sendShareToFriend) -- masque quand le service n'est pas
+  /// configure (voir AppState.shareInboxConfigured), a l'appelant de filtrer.
+  final VoidCallback? onSendToFriend;
+
   /// Appele par la fleche retour integree a la ligne du format reduit (voir
   /// plus bas) -- en plein format, la fleche flottante au-dessus de l'image
   /// reste geree par DesktopCollectionView (_CollapsingHeroDelegate).
@@ -37,6 +46,8 @@ class DesktopHeroCard extends StatelessWidget {
     required this.onBack,
     this.isLiked = false,
     this.onToggleLike,
+    this.onShare,
+    this.onSendToFriend,
     this.shrink = 0,
   });
 
@@ -161,6 +172,17 @@ class DesktopHeroCard extends StatelessWidget {
                                         color: Colors.white70, fontSize: 12)),
                                 const SizedBox(width: 20),
                                 _ShufflePill(onTap: onShuffle),
+                                if (onShare != null) ...[
+                                  const SizedBox(width: 8),
+                                  GlassIconButton(
+                                      icon: Icons.ios_share, onPressed: onShare!),
+                                ],
+                                if (onSendToFriend != null) ...[
+                                  const SizedBox(width: 8),
+                                  GlassIconButton(
+                                      icon: Icons.send_outlined,
+                                      onPressed: onSendToFriend!),
+                                ],
                               ],
                             ),
                           ],

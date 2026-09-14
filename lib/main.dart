@@ -19,6 +19,7 @@ import 'services/audio_handler.dart';
 import 'services/player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
+import 'services/deep_link_service.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
@@ -155,7 +156,11 @@ Future<void> main() async {
       ),
     );
 
-    runApp(VinlandApp(audioHandler: audioHandler));
+    final appState = AppState(audioHandler: audioHandler);
+    appState.initialize();
+    DeepLinkService(appState).init();
+
+    runApp(VinlandApp(audioHandler: audioHandler, appState: appState));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');
   });
@@ -163,7 +168,9 @@ Future<void> main() async {
 
 class VinlandApp extends StatelessWidget {
   final VinlandAudioHandler audioHandler;
-  const VinlandApp({super.key, required this.audioHandler});
+  final AppState appState;
+  const VinlandApp(
+      {super.key, required this.audioHandler, required this.appState});
 
   @override
   Widget build(BuildContext context) {
@@ -176,13 +183,12 @@ class VinlandApp extends StatelessWidget {
       ),
       child: MultiProvider(
         providers: [
-          ChangeNotifierProvider(
-            create: (_) => AppState(audioHandler: audioHandler)..initialize(),
-          ),
+          ChangeNotifierProvider<AppState>.value(value: appState),
           Provider<MusicService>.value(value: MusicService()),
           Provider<VinlandAudioHandler>.value(value: audioHandler),
         ],
         child: MaterialApp(
+          navigatorKey: vinlandNavigatorKey,
           title: 'Vinland',
           debugShowCheckedModeBanner: false,
           scrollBehavior: _VinlandScrollBehavior(),

@@ -11,6 +11,7 @@ import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
+import '../services/deep_link_service.dart';
 import '../widgets/download_button.dart';
 import '../widgets/cover_image.dart';
 import 'artist_screen.dart';
@@ -582,6 +583,27 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 state.toggleLike(track.id);
               },
             ),
+            _SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                shareTrack(track);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              _SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer a un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'track',
+                      itemId: track.id,
+                      title: track.title,
+                      subtitle: track.artist);
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -637,6 +659,27 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 _showSnack('Album ajoute a la file');
               },
             ),
+            _SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                shareAlbum(widget.album);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              _SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer a un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'album',
+                      itemId: widget.album.id,
+                      title: widget.album.title,
+                      subtitle: widget.album.artist);
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),

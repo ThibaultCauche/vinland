@@ -9,6 +9,7 @@ import '../providers/app_state.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
+import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
 import '../widgets/smooth_scroll.dart';
@@ -530,6 +531,22 @@ class _Header extends StatelessWidget {
                     color: isLiked ? DesktopGlass.accent : Colors.white54,
                     onPressed: onToggleLike,
                   ),
+                  const SizedBox(width: 12),
+                  GlassIconButton(
+                    icon: Icons.ios_share,
+                    onPressed: () => shareAlbum(album),
+                  ),
+                  if (context.read<AppState>().shareInboxConfigured) ...[
+                    const SizedBox(width: 12),
+                    GlassIconButton(
+                      icon: Icons.send_outlined,
+                      onPressed: () => showSendToFriendDialog(context,
+                          type: 'album',
+                          itemId: album.id,
+                          title: album.title,
+                          subtitle: album.artist),
+                    ),
+                  ],
                 ],
               ),
             ],

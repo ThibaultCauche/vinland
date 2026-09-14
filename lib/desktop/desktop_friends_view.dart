@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/friend_profile.dart';
 import '../models/track.dart';
+import '../services/share_inbox_service.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/user_avatar.dart';
 import 'glass.dart';
@@ -58,6 +59,22 @@ class _DesktopFriendsViewState extends State<DesktopFriendsView> {
                 ],
               ),
               const SizedBox(height: 20),
+              if (state.pendingShares.isNotEmpty) ...[
+                const Text('Partages recus',
+                    style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 10),
+                for (final share in state.pendingShares)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _ReceivedShareCard(share: share),
+                  ),
+                const SizedBox(height: 10),
+                Divider(color: Colors.white.withOpacity(0.12), height: 1),
+                const SizedBox(height: 20),
+              ],
               Expanded(
                 child: state.loadingFriends
                     ? const Center(
@@ -119,6 +136,71 @@ class _EmptyState extends StatelessWidget {
               'ses titres likes.',
               style: TextStyle(color: Colors.white54, fontSize: 13),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceivedShareCard extends StatelessWidget {
+  final ReceivedShare share;
+  const _ReceivedShareCard({required this.share});
+
+  IconData get _icon => switch (share.type) {
+        'album' => Icons.album_outlined,
+        'playlist' => Icons.queue_music,
+        _ => Icons.music_note,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return DesktopHoverable(
+      onTap: () async {
+        final state = context.read<AppState>();
+        final ok = await state.openSharedItem(type: share.type, id: share.itemId);
+        if (ok) await state.dismissShare(share);
+      },
+      borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.white.withOpacity(0.08),
+              child: Icon(_icon, color: Colors.white70, size: 18),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(share.title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(
+                    share.subtitle.isEmpty
+                        ? 'Envoye par ${share.from}'
+                        : '${share.from} • ${share.subtitle}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            GlassIconButton(
+              icon: Icons.close_rounded,
+              size: 18,
+              onPressed: () => context.read<AppState>().dismissShare(share),
             ),
           ],
         ),

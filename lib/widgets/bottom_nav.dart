@@ -7,10 +7,12 @@ class BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIX: Selector — on n'écoute QUE currentTab
-    return Selector<AppState, int>(
-      selector: (_, state) => state.currentTab,
-      builder: (context, currentTab, child) {
+    // FIX: Selector — on n'écoute QUE currentTab (+ le nombre de partages en
+    // attente, pour le badge sur l'onglet Amis)
+    return Selector<AppState, (int, int)>(
+      selector: (_, state) => (state.currentTab, state.pendingShares.length),
+      builder: (context, data, child) {
+        final (currentTab, pendingCount) = data;
         return BottomNavigationBar(
           currentIndex: currentTab,
           onTap: (i) {
@@ -24,20 +26,28 @@ class BottomNav extends StatelessWidget {
           type: BottomNavigationBarType.fixed,
           elevation: 0,
           useLegacyColorScheme: false,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home),
               label: 'Accueil',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.library_music_outlined),
               activeIcon: Icon(Icons.library_music),
               label: 'Bibliothèque',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline),
-              activeIcon: Icon(Icons.people),
+              icon: Badge(
+                isLabelVisible: pendingCount > 0,
+                label: Text('$pendingCount'),
+                child: const Icon(Icons.people_outline),
+              ),
+              activeIcon: Badge(
+                isLabelVisible: pendingCount > 0,
+                label: Text('$pendingCount'),
+                child: const Icon(Icons.people),
+              ),
               label: 'Amis',
             ),
           ],
