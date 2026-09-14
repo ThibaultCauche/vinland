@@ -15,6 +15,7 @@ import 'desktop_library_view.dart';
 import 'desktop_search_view.dart';
 import 'desktop_collection_view.dart';
 import 'desktop_friends_view.dart';
+import 'desktop_import_view.dart';
 import 'desktop_friend_profile_view.dart';
 import 'desktop_title_bar.dart';
 import 'glass.dart';
@@ -138,6 +139,8 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
         );
       case DesktopNavTab.friends:
         return DesktopFriendsView(onOpenFriend: _openFriendProfile);
+      case DesktopNavTab.import_:
+        return const DesktopImportView();
     }
   }
 

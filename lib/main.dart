@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:media_kit/media_kit.dart' hide Track;
+import 'package:metadata_god/metadata_god.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -21,6 +22,7 @@ import 'services/media_kit_player_engine.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
+import 'widgets/update_prompt.dart';
 import 'services/music_service.dart';
 import 'models/track.dart';
 import 'desktop/desktop_app_shell.dart';
@@ -42,6 +44,14 @@ bool _isDesktopLayout(double width) =>
 Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Requis avant tout appel a MetadataGod.readMetadata (lecture des tags
+    // ID3/Vorbis d'un fichier local) : sans cet appel, chaque lecture leve
+    // "Bad state: MetadataGod not initialized" -- capture silencieuse par
+    // les try/catch appelants (MusicService.parseFile, AppState._readLocalTags
+    // pour la detection de doublon a l'import), donc le symptome n'etait
+    // qu'un repli permanent sur le nom de fichier, jamais une erreur visible.
+    MetadataGod.initialize();
 
     // Empeche une erreur de rendu Flutter (ex: stream reseau en erreur)
     // de faire planter completement l'application.
@@ -283,6 +293,19 @@ class _MobileAppShell extends StatelessWidget {
       const FriendsScreen(),
     ];
 
+    // Sur Android, la mise a jour est proposee directement a l'ouverture
+    // (au lieu du bandeau retire de l'accueil) -- une seule fois par
+    // session, voir AppState.updatePromptShown.
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        state.updateInfo != null &&
+        !state.updatePromptShown) {
+      state.updatePromptShown = true;
+      final update = state.updateInfo!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) showUpdateDialog(context, update);
+      });
+    }
+
     return PopScope(
       canPop: currentOverlay == null && currentTab == 0,
       onPopInvokedWithResult: (didPop, result) {
@@ -301,19 +324,19 @@ class _MobileAppShell extends StatelessWidget {
         body: AppBackground(
           child: Stack(
             children: [
-              // Offstage (pas un simple `if`) : cache l'ecran de l'onglet
-              // pendant qu'un overlay (recherche/artiste/album...) est
-              // affiche par-dessus, sans le demonter -- il garde son etat
-              // (position de scroll) pour l'onglet en cours. Sans ca, chaque
-              // Scaffold transparent d'overlay (voulu pour laisser voir
-              // AppBackground derriere lui) laissait en fait transparaitre
-              // l'ecran de l'onglet toujours monte en dessous, jamais cache
-              // (retour testeur : la home page restait visible en
-              // filigrane derriere la recherche/un artiste/un album).
-              Offstage(
-                offstage: currentOverlay != null,
-                child: screens[currentTab],
-              ),
+              // Demonte comple entierement l'ecran de l'onglet pendant
+              // qu'un overlay (recherche/artiste/album...) est affiche,
+              // plutot que de le garder cache en arriere-plan (essaye
+              // d'abord avec Offstage : le moteur de rendu Impeller
+              // recomposait alors le fond commun par-dessus tout le reste,
+              // ecran entierement voile -- retour testeur). Cout accepte :
+              // l'onglet perd sa position de scroll pendant que l'overlay
+              // est ouvert, ce qui reste un compromis mineur a cote d'un
+              // ecran illisible. Avant ce demontage, l'ecran de l'onglet
+              // restant monte laissait aussi transparaitre son contenu
+              // derriere les Scaffold transparents des overlays (autre
+              // retour testeur).
+              if (currentOverlay == null) screens[currentTab],
               if (currentOverlay != null)
                 Positioned.fill(child: currentOverlay!),
             ],

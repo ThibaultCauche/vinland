@@ -10,8 +10,9 @@ import 'glass.dart';
 enum _LibrarySection { playlists, albums }
 
 /// Bibliotheque desktop : grille de playlists/albums dans des cartes en
-/// verre. Volontairement plus simple que l'onglet mobile (pas d'import de
-/// fichiers ici, deja gere cote mobile/NAS).
+/// verre. L'import de fichiers locaux a son propre onglet dans la sidebar
+/// (voir DesktopImportView) -- avant ici sous forme de petit bouton, jugé
+/// difficile a trouver (retour utilisateur).
 class DesktopLibraryView extends StatefulWidget {
   final ValueChanged<Playlist> onOpenPlaylist;
   final ValueChanged<Album> onOpenAlbum;

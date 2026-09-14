@@ -291,9 +291,18 @@ class MusicService {
       existingAlbums[a.id] = a;
     }
 
+    // Groupe par albumId Navidrome quand il existe (identifiant reel et
+    // unique cote serveur), et seulement par titre pour les titres qui n'en
+    // ont pas (locaux/importes). Grouper par titre seul (comme avant)
+    // fusionnait a tort deux albums differents partageant le meme titre --
+    // ex: une reedition/deluxe et un tout autre album d'un autre artiste --
+    // en un seul, avec les titres de l'un ajoutes a la fin de l'autre
+    // (retour utilisateur : des titres d'un autre artiste apparaissaient en
+    // fin de liste d'un album).
     final Map<String, List<Track>> albumMap = {};
     for (final track in _navidromeTracks) {
-      albumMap.putIfAbsent(track.album, () => []).add(track);
+      final key = track.albumId ?? track.album;
+      albumMap.putIfAbsent(key, () => []).add(track);
     }
 
     final newAlbums = <Album>[];
@@ -343,7 +352,7 @@ class MusicService {
 
       newAlbums.add(Album(
         id: id,
-        title: entry.key,
+        title: firstTrack.album,
         artist: artist,
         trackIds: tracks.map((t) => t.id).toList(),
         isSaved: existing?.isSaved ?? false,
@@ -668,7 +677,7 @@ class MusicService {
     });
   }
 
-  Future<void> createPlaylist(String name) async {
+  Future<String> createPlaylist(String name) async {
     final playlist = Playlist(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -679,6 +688,7 @@ class MusicService {
       playlist.serverId = await _navidrome.createServerPlaylist(name);
       _debouncedSave();
     }
+    return playlist.id;
   }
 
   Future<void> addToPlaylist(String playlistId, String trackId) async {
@@ -1068,7 +1078,11 @@ class MusicService {
         // superLiked n'a aucun equivalent cote Navidrome : purement local,
         // toujours reporte tel quel (jamais recalcule depuis le serveur).
         t.superLiked = local['superLiked'] ?? false;
-        t.dateAdded = local['dateAdded'];
+        // ?? et non ecrasement direct : si le cache local n'a pas encore de
+        // date (ex: track starred hors de l'app) on garde celle du serveur
+        // posee juste au-dessus, plutot que de la remettre a null et casser
+        // le tri de la liste "Titres likes" (voir AppState.likedTracks).
+        t.dateAdded = local['dateAdded'] ?? t.dateAdded;
         t.playCount = local['playCount'] ?? t.playCount;
         t.lastPlayed = local['lastPlayed'] ?? t.lastPlayed;
       }
@@ -1149,6 +1163,42 @@ class MusicService {
     rebuildAlbums();
     _debouncedSave();
     return changed;
+  }
+
+  /// Synchro "legere" utilisee a chaque ouverture de l'app quand une synchro
+  /// complete (syncWithNavidrome) a deja ete faite recemment (voir
+  /// AppState._performSync) : pas de refetch de toute la bibliotheque, juste
+  /// les likes serveur pas encore connus localement + les derniers albums
+  /// ajoutes (syncRecentlyAdded), pour une ouverture rapide sans re-tirer
+  /// des milliers de titres a chaque fois.
+  ///
+  /// Ne retire jamais un like/album sauvegarde localement meme si le
+  /// serveur ne le voit plus starred (contrairement a syncWithNavidrome) :
+  /// seule une synchro complete peut retirer un like local. Ca evite de
+  /// pouvoir re-effacer des likes tout juste faits (import CSV notamment)
+  /// si cette synchro legere tombe pendant l'import.
+  Future<void> lightSync() async {
+    print('LIGHT SYNC (pas de refetch complet)...');
+    final starredMap = await _navidrome.fetchStarredTrackIds();
+    final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
+
+    var changed = false;
+    for (final t in _allTracks) {
+      if (!t.isLiked && starredMap.containsKey(t.id)) {
+        t.isLiked = true;
+        t.dateAdded = starredMap[t.id] ?? t.dateAdded;
+        changed = true;
+      }
+    }
+    for (final album in _albums) {
+      if (!album.isSaved && starredAlbumIds.contains(album.id)) {
+        album.isSaved = true;
+        changed = true;
+      }
+    }
+
+    await syncRecentlyAdded();
+    if (changed) _debouncedSave();
   }
 
   /// Fait correspondre les playlists locales avec celles du serveur : publie
@@ -1400,6 +1450,30 @@ class MusicService {
     _missingTracks = [];
     _missingTracksView = null;
     _debouncedSave();
+  }
+
+  /// Associe un titre "manquant" (importe via CSV, jamais retrouve
+  /// automatiquement sur le NAS -- voir StreamingMatchScreen._likeMatched)
+  /// a un vrai titre de la bibliotheque, choisi manuellement par
+  /// l'utilisateur ou propose apres un telechargement automatique (voir
+  /// MissingTracksScreen). Reprend la date synthetique posee sur l'entree
+  /// manquante pour que le titre garde sa place dans l'ordre d'import une
+  /// fois bascule dans les vrais titres likes (voir MusicService.likedTracks).
+  Future<void> resolveMissingTrack(
+      Map<String, dynamic> entry, String trackId) async {
+    final track = _allTracks.firstWhere(
+      (t) => t.id == trackId,
+      orElse: () => throw Exception('Track $trackId not found'),
+    );
+    final importDate = DateTime.tryParse((entry['dateAdded'] ?? '').toString());
+    track.isLiked = true;
+    track.dateAdded = importDate ?? track.dateAdded ?? DateTime.now();
+    if (track.id.startsWith('navidrome_')) {
+      await _navidrome.starTrack(track.id);
+    }
+    _missingTracks.remove(entry);
+    _missingTracksView = null;
+    await saveToCache();
   }
 
   Future<void> clearAllLikes() async {

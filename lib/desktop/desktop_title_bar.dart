@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
+import '../providers/app_state.dart';
+import '../services/update_check_service.dart';
+import '../widgets/update_prompt.dart';
 import 'glass.dart';
 
 /// Remplace la barre de titre native Windows (reduire/agrandir/fermer) par
@@ -62,6 +66,17 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
               ),
             ),
           ),
+          Selector<AppState, UpdateInfo?>(
+            selector: (_, state) => state.updateInfo,
+            builder: (context, update, __) {
+              if (update == null) return const SizedBox.shrink();
+              return _TitleBarButton(
+                icon: Icons.arrow_circle_down,
+                color: const Color(0xFF1DB954),
+                onPressed: () => triggerUpdate(context, update),
+              );
+            },
+          ),
           _TitleBarButton(
             icon: Icons.remove,
             onPressed: () => windowManager.minimize(),
@@ -92,12 +107,14 @@ class _TitleBarButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onPressed;
   final Color? hoverColor;
+  final Color? color;
   final double iconSize;
 
   const _TitleBarButton({
     required this.icon,
     required this.onPressed,
     this.hoverColor,
+    this.color,
     this.iconSize = 16,
   });
 
@@ -111,7 +128,7 @@ class _TitleBarButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           hoverColor: hoverColor ?? Colors.white.withOpacity(0.08),
-          child: Icon(icon, size: iconSize, color: Colors.white70),
+          child: Icon(icon, size: iconSize, color: color ?? Colors.white70),
         ),
       ),
     );

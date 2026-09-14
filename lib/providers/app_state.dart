@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:metadata_god/metadata_god.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:image/image.dart' as img;
+import 'package:palette_generator/palette_generator.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -24,10 +24,11 @@ import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
+import '../services/download_worker_service.dart';
+import '../services/matching_service.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
 import '../theme/solid_color_effect.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppState extends ChangeNotifier with WidgetsBindingObserver {
@@ -120,7 +121,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // avec un tiebreak stable -- ne pas re-trier ici : un deuxieme List.sort
   // avec ex-aequo (meme date, ex: import CSV en lot) melangeait l'ordre a
   // chaque appel, le tri de Dart n'etant pas garanti stable.
-  List<Track> get likedTracks => _music.likedTracks;
+  //
+  // Pendant une synchro (_performSync), les titres arrivent lot par lot et
+  // _music.likedTracks change donc de contenu/ordre a chaque _notify() --
+  // visible et genant sur la page "Titres likes". On fige plutot un instantane
+  // pris juste avant le debut de la synchro (_frozenLikedTracks) et on ne
+  // bascule sur la version fraiche qu'une fois la synchro terminee.
+  List<Track>? _frozenLikedTracks;
+  List<Track> get likedTracks => _frozenLikedTracks ?? _music.likedTracks;
 
   /// Comme [likedTracks], mais avec en plus un titre "fantome" par entree de
   /// [missingTracks] (titre importe via CSV mais introuvable sur le NAS),
@@ -144,7 +152,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       );
     }).toList();
 
-    final combined = [..._music.likedTracks, ...placeholders];
+    final combined = [...likedTracks, ...placeholders];
     combined.sort((a, b) {
       final da = a.dateAdded;
       final db = b.dateAdded;
@@ -269,6 +277,14 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // Telechargement automatique des titres/albums/playlists likes
   static const _keyAutoDownloadLikes = 'vinland_auto_download_likes';
+
+  // Frequence de la synchro complete (voir _performSync) : une resynchro
+  // integrale de toute la bibliotheque a chaque ouverture est lente sur une
+  // grosse bibliotheque et risque de tomber pendant un import CSV/un like en
+  // cours (voir MusicService.lightSync). Entre deux, une synchro "legere"
+  // (juste les likes serveur + derniers albums) suffit a garder l'app a jour.
+  static const _keyLastFullSyncAt = 'vinland_last_full_sync_at';
+  static const _fullSyncInterval = Duration(hours: 6);
   bool _autoDownloadLikes = false;
   bool get autoDownloadLikes => _autoDownloadLikes;
 
@@ -354,9 +370,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _stallWatchdog;
 
   void _checkStall(Duration pos) {
-    final dur = duration;
-    final nearEnd =
-        isPlaying && dur.inMilliseconds > 0 && (dur - pos).inMilliseconds < 800;
+    // Comme dans _SeekBar (desktop) : la duree rapportee par le moteur
+    // audio peut etre fausse/trop courte en debut de lecture d'un flux
+    // Navidrome sans Content-Length (elle "grimpe" par paliers) -- s'y fier
+    // ici declenchait ce filet bien avant la vraie fin et redemarrait le
+    // titre depuis 0 (retour testeur). La duree des metadonnees du titre
+    // est fiable des le debut, on la prefere. pos > 3s ecarte en plus toute
+    // lecture a peine demarree d'un declenchement immediat.
+    final track = currentTrack;
+    final dur = (track != null && track.duration.inMilliseconds > 0)
+        ? track.duration
+        : duration;
+    final nearEnd = isPlaying &&
+        dur.inMilliseconds > 0 &&
+        pos.inMilliseconds > 3000 &&
+        (dur - pos).inMilliseconds < 800;
     if (!nearEnd) {
       _stallWatchdog?.cancel();
       _stallWatchdog = null;
@@ -570,6 +598,12 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   UpdateInfo? updateInfo;
 
+  // Sur Android, le prompt de mise a jour ne doit s'afficher qu'une fois par
+  // session (voir _MobileAppShell dans main.dart) -- sans ca il reapparaitrait
+  // a chaque rebuild de l'ecran d'accueil tant que la mise a jour n'est pas
+  // installee.
+  bool updatePromptShown = false;
+
   // Theme du fond desktop (voir desktop/desktop_theme.dart) : solide (couleur
   // RGB choisie par l'utilisateur), cover floutee, ou fenetre transparente
   // (experimental, depend du support de flutter_acrylic sur la machine).
@@ -698,17 +732,36 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   bool get lastSyncEmpty => _lastSyncEmpty;
 
   Future<void> _performSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastFullMs = prefs.getInt(_keyLastFullSyncAt);
+    final lastFull =
+        lastFullMs != null ? DateTime.fromMillisecondsSinceEpoch(lastFullMs) : null;
+    final needsFullSync = _music.navidromeTracks.isEmpty ||
+        lastFull == null ||
+        DateTime.now().difference(lastFull) > _fullSyncInterval;
+    print('PERFORM SYNC: needsFullSync=$needsFullSync '
+        '(tracksEnCache=${_music.navidromeTracks.length}, lastFullSync=$lastFull)');
+
     _isSyncing = true;
+    _frozenLikedTracks = List.of(_music.likedTracks);
     _notify();
     try {
-      // onProgress : la bibliotheque (allTracks/albums) se remplit lot par
-      // lot pendant la synchro -- _notify() est deja debounce (50ms), donc
-      // ca ne fait pas plus de rebuilds qu'une barre de progression normale.
-      await _music.syncWithNavidrome(onProgress: _notify);
+      if (needsFullSync) {
+        // onProgress : la bibliotheque (allTracks/albums) se remplit lot par
+        // lot pendant la synchro -- _notify() est deja debounce (50ms), donc
+        // ca ne fait pas plus de rebuilds qu'une barre de progression normale.
+        // likedTracks reste fige (_frozenLikedTracks) tant que ca tourne.
+        await _music.syncWithNavidrome(onProgress: _notify);
+        await prefs.setInt(
+            _keyLastFullSyncAt, DateTime.now().millisecondsSinceEpoch);
+      } else {
+        await _music.lightSync();
+      }
       _lastSyncEmpty = _music.navidromeTracks.isEmpty;
     } finally {
       _useNavidrome = _music.navidromeTracks.isNotEmpty;
       _isSyncing = false;
+      _frozenLikedTracks = null;
       _notify();
     }
   }
@@ -1269,9 +1322,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
-  Future<void> createPlaylist(String name) async {
-    await _music.createPlaylist(name);
+  Future<String> createPlaylist(String name) async {
+    final id = await _music.createPlaylist(name);
     _notify();
+    return id;
   }
 
   Future<String?> createCollabPlaylist(String name) async {
@@ -1329,6 +1383,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   void clearMissingTracks() {
     _music.clearMissingTracks();
+    _notify();
+  }
+
+  /// Voir MusicService.resolveMissingTrack.
+  Future<void> resolveMissingTrack(
+      Map<String, dynamic> entry, String trackId) async {
+    await _music.resolveMissingTrack(entry, trackId);
     _notify();
   }
 
@@ -1402,53 +1463,36 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
-  /// Extrait la couleur dominante dans un isolate — ZERO blocage UI
+  /// Extrait une couleur d'ambiance via PaletteGenerator (deja une
+  /// dependance du projet, jusque-la inutilisee) : quantifie l'image
+  /// entiere et ponderee par population/saturation, plutot que l'ancienne
+  /// moyenne brute de 5 pixels fixes (centre + coins), qui pouvait tomber
+  /// sur un detail non representatif et produire une couleur "boueuse"
+  /// n'apparaissant nulle part sur la cover.
+  ///
+  /// La swatch "vibrant" (la plus saturee) est preferee a la "dominant"
+  /// (la plus etendue en surface) : sur une cover typique -- fond sombre
+  /// uni + logo/texte colore au centre -- la dominante par surface est
+  /// justement ce fond sombre, qui se fond avec le noir de l'ecran une fois
+  /// assombri et donne l'impression que la couleur ne represente pas du
+  /// tout la pochette (retour utilisateur). La vibrante capture l'accent
+  /// coloré qui rend vraiment la cover reconnaissable.
   Future<Color?> _extractDominantColorIsolate(String coverPath) async {
     try {
-      Uint8List bytes;
-      if (coverPath.startsWith('http')) {
-        final response = await http.get(Uri.parse(coverPath));
-        if (response.statusCode != 200) return null;
-        bytes = response.bodyBytes;
-      } else {
-        bytes = await File(coverPath).readAsBytes();
-      }
-      return await compute(_dominantColorFromBytes, bytes);
+      final ImageProvider provider = coverPath.startsWith('http')
+          ? NetworkImage(coverPath) as ImageProvider
+          : FileImage(File(coverPath));
+      final palette = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(100, 100),
+      );
+      return palette.vibrantColor?.color ??
+          palette.lightVibrantColor?.color ??
+          palette.dominantColor?.color ??
+          palette.mutedColor?.color;
     } catch (_) {
       return null;
     }
-  }
-
-  /// Cette fonction tourne dans un isolate separe
-  static Color? _dominantColorFromBytes(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
-
-    final w = decoded.width;
-    final h = decoded.height;
-
-    final samples = [
-      decoded.getPixel(w ~/ 2, h ~/ 2),
-      decoded.getPixel(w ~/ 4, h ~/ 4),
-      decoded.getPixel(w * 3 ~/ 4, h ~/ 4),
-      decoded.getPixel(w ~/ 4, h * 3 ~/ 4),
-      decoded.getPixel(w * 3 ~/ 4, h * 3 ~/ 4),
-    ];
-
-    int r = 0, g = 0, b = 0;
-    for (final p in samples) {
-      final pixel = p as dynamic;
-      r += (pixel.r as num).round();
-      g += (pixel.g as num).round();
-      b += (pixel.b as num).round();
-    }
-
-    return Color.fromRGBO(
-      r ~/ samples.length,
-      g ~/ samples.length,
-      b ~/ samples.length,
-      1,
-    );
   }
 
   void _updateDominantColor(String? coverPath) {
@@ -1516,9 +1560,197 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// MusicService.syncRecentlyAdded. Ne passe pas par _isSyncing/_performSync :
   /// contrairement a une synchro complete, celui-ci ne rend rien injouable
   /// pendant son execution, donc pas besoin du signal "synchro en cours".
-  Future<void> syncRecentlyAdded() async {
-    await _music.syncRecentlyAdded();
+  Future<void> syncRecentlyAdded({int albumCount = 5}) async {
+    await _music.syncRecentlyAdded(albumCount: albumCount);
     _notify();
+  }
+
+  final _downloadWorker = DownloadWorkerService();
+
+  // Taille max d'un lot d'upload (voir importLocalFilesToPlaylist) : garde
+  // une marge confortable sous MAX_IMPORT_BODY_BYTES cote worker (500 Mo par
+  // defaut, voir download-worker/server.py) pour ne jamais s'en approcher,
+  // et evite une seule requete HTTP de plusieurs centaines de Mo/Go pour un
+  // gros import (bibliotheque "titres likes" d'un ami) -- fragile (un seul
+  // hoquet reseau perd tout le lot) et gourmande en RAM cote NAS (le worker
+  // lit tout le corps de la requete en memoire).
+  static const int _importBatchMaxBytes = 150 * 1024 * 1024;
+  static const int _importBatchMaxFiles = 50;
+
+  /// Lit (artiste, titre) depuis les tags locaux du fichier (MetadataGod,
+  /// meme lib que MusicService.parseFile), ou null si illisibles/absents --
+  /// utilise pour reperer un doublon avant meme d'uploader (voir
+  /// _splitAlreadyInLibrary). Pas de repli sur le nom de fichier ici
+  /// (contrairement au worker cote NAS) : un faux-negatif se contente
+  /// d'uploader normalement, alors qu'un faux-positif sur un nom de fichier
+  /// ambigu ferait sauter silencieusement un vrai import.
+  Future<(String, String)?> _readLocalTags(File file) async {
+    try {
+      final metadata = await MetadataGod.readMetadata(file: file.path);
+      final artist = metadata.artist;
+      final title = metadata.title;
+      if (artist != null &&
+          artist.isNotEmpty &&
+          title != null &&
+          title.isNotEmpty) {
+        return (artist, title);
+      }
+    } catch (_) {
+      // Tags illisibles -- traite comme "pas de dedup possible" plus bas.
+    }
+    return null;
+  }
+
+  /// Separe [files] entre ceux deja presents dans la bibliotheque NAS
+  /// (tags locaux correspondant a un Track deja synchronise, meme
+  /// comparateur flou que l'import CSV -- MatchingService) et ceux a
+  /// effectivement uploader. Evite de dupliquer un fichier deja sur le NAS
+  /// (espace disque limite -- voir le RAID1 de l'utilisateur, 1 To
+  /// utilisable) au prix d'un aller-retour de lecture de tags local, sans
+  /// appel reseau.
+  Future<
+      (
+        List<File> toUpload,
+        List<String> alreadyPresentTrackIds,
+      )> _splitAlreadyInLibrary(List<File> files) async {
+    final toUpload = <File>[];
+    final alreadyPresentTrackIds = <String>[];
+    for (final file in files) {
+      final tags = await _readLocalTags(file);
+      Track? existing;
+      if (tags != null) {
+        final (artist, title) = tags;
+        for (final t in allTracks) {
+          if (MatchingService.titlesMatch(t.title, title) &&
+              MatchingService.artistsMatch(t.artist, artist, strict: true)) {
+            existing = t;
+            break;
+          }
+        }
+      }
+      if (existing != null) {
+        alreadyPresentTrackIds.add(existing.id);
+      } else {
+        toUpload.add(file);
+      }
+    }
+    return (toUpload, alreadyPresentTrackIds);
+  }
+
+  /// Decoupe [files] en lots d'au plus _importBatchMaxBytes / _importBatchMaxFiles
+  /// (ce qui vient en premier), pour que chaque upload reste une requete HTTP
+  /// raisonnable -- voir importLocalFilesToPlaylist.
+  Future<List<List<File>>> _batchFilesForImport(List<File> files) async {
+    final batches = <List<File>>[];
+    var current = <File>[];
+    var currentBytes = 0;
+    for (final file in files) {
+      final size = await file.length();
+      if (current.isNotEmpty &&
+          (currentBytes + size > _importBatchMaxBytes ||
+              current.length >= _importBatchMaxFiles)) {
+        batches.add(current);
+        current = [];
+        currentBytes = 0;
+      }
+      current.add(file);
+      currentBytes += size;
+    }
+    if (current.isNotEmpty) batches.add(current);
+    return batches;
+  }
+
+  /// Upload des fichiers audio locaux vers le NAS (download-worker POST
+  /// /imports : ecrit dans _manual-imports/, declenche+attend un scan
+  /// Navidrome, retrouve le song_id de chaque fichier), puis ajoute les
+  /// morceaux retrouves a une playlist (nouvelle ou existante) ou aux titres
+  /// likes. Voir ImportReviewScreen (mobile) et DesktopImportView (desktop)
+  /// pour l'UI de selection des fichiers.
+  ///
+  /// Fait un lot d'uploads plutot qu'une seule requete geante (voir
+  /// _batchFilesForImport) : un lot en echec (upload ou scan rate) n'annule
+  /// pas les autres, ses fichiers sont juste comptes comme non retrouves.
+  ///
+  /// Retourne null seulement si AUCUN lot n'a pu etre envoye du tout (NAS
+  /// injoignable des le premier essai, download-worker non configure...) ;
+  /// sinon un compte de morceaux ajoutes + la liste de ceux non retrouves
+  /// (tags illisibles, lot en echec...), a signaler a l'utilisateur plutot
+  /// qu'a ignorer.
+  Future<LocalImportResult?> importLocalFiles({
+    required List<File> files,
+    String? existingPlaylistId,
+    String? newPlaylistName,
+    bool addToLiked = false,
+  }) async {
+    assert(addToLiked
+        ? (existingPlaylistId == null && newPlaylistName == null)
+        : (existingPlaylistId == null) != (newPlaylistName == null));
+
+    final (toUpload, dedupTrackIds) = await _splitAlreadyInLibrary(files);
+
+    final batches = await _batchFilesForImport(toUpload);
+    final uploadedTrackIds = <String>[];
+    final unmatched = <String>[];
+    var anyBatchSucceeded = false;
+
+    for (final batch in batches) {
+      final jobId = await _downloadWorker.uploadImportFiles(batch);
+      if (jobId == null) {
+        unmatched.addAll(batch.map((f) => p.basename(f.path)));
+        continue;
+      }
+      final status = await _downloadWorker.waitForImportCompletion(jobId);
+      if (status.state != DownloadJobState.done) {
+        unmatched.addAll(batch.map((f) => p.basename(f.path)));
+        continue;
+      }
+      anyBatchSucceeded = true;
+      uploadedTrackIds
+          .addAll(status.files.where((f) => f.trackId != null).map((f) => f.trackId!));
+      unmatched.addAll(status.files
+          .where((f) => f.trackId == null)
+          .map((f) => f.originalFilename));
+    }
+
+    // Echec total seulement si rien n'a pu etre uploade ET qu'aucun doublon
+    // local n'a ete detecte -- un doublon detecte avant upload reste un
+    // resultat exploitable meme si le NAS est injoignable pour le reste.
+    if (!anyBatchSucceeded && dedupTrackIds.isEmpty) return null;
+
+    if (anyBatchSucceeded) {
+      // Un import en masse (ex: toute la bibliotheque "titres likes" d'un
+      // ami) peut toucher bien plus de 5 albums recents (defaut) une fois
+      // que Navidrome regroupe par tags ID3 -- au pire un album par fichier.
+      await syncRecentlyAdded(albumCount: min(200, max(5, toUpload.length)));
+    }
+
+    final allTrackIds = [...dedupTrackIds, ...uploadedTrackIds];
+
+    if (addToLiked) {
+      for (final id in allTrackIds) {
+        // toggleLike inverse l'etat actuel : un morceau tout juste uploade
+        // n'est jamais deja like, mais un doublon detecte localement
+        // (dedupTrackIds) pointe vers un Track existant qui peut deja
+        // l'etre -- ne togger que s'il ne l'est pas encore, sinon on le
+        // retirerait des titres likes au lieu de l'y laisser.
+        final track = _findTrackById(id);
+        if (track != null && !track.isLiked) {
+          await toggleLike(id);
+        }
+      }
+    } else {
+      final playlistId =
+          existingPlaylistId ?? await createPlaylist(newPlaylistName!);
+      for (final id in allTrackIds) {
+        await addToPlaylist(playlistId, id);
+      }
+    }
+
+    return LocalImportResult(
+      matchedCount: allTrackIds.length,
+      unmatchedFilenames: unmatched,
+      duplicateSkippedCount: dedupTrackIds.length,
+    );
   }
 
   Future<void> downloadTrackOffline(Track track) async {

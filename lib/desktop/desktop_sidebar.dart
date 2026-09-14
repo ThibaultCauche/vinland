@@ -8,7 +8,7 @@ import '../widgets/sync_status_banner.dart';
 import '../widgets/user_avatar.dart';
 import 'glass.dart';
 
-enum DesktopNavTab { home, search, library, friends }
+enum DesktopNavTab { home, search, library, friends, import_ }
 
 /// Rail d'icones a gauche : nav principale en haut, puis raccourcis
 /// (titres likes + playlists) sous forme de vignettes carrees defilantes,
@@ -84,6 +84,13 @@ class DesktopSidebar extends StatelessWidget {
               active: activeTab == DesktopNavTab.friends,
               tooltip: 'Amis',
               onPressed: () => onTabSelected(DesktopNavTab.friends),
+            ),
+            const SizedBox(height: 6),
+            GlassIconButton(
+              icon: Icons.upload_rounded,
+              active: activeTab == DesktopNavTab.import_,
+              tooltip: 'Importer des fichiers',
+              onPressed: () => onTabSelected(DesktopNavTab.import_),
             ),
             const SizedBox(height: 12),
             Padding(

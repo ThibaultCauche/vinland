@@ -39,81 +39,87 @@ class _QueuePanelOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 24, 24, 24 + 84 + 12),
-        child: SizedBox(
-          width: 360,
-          child: GlassPanel(
-            borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Selector<AppState, (Track?, List<Track>)>(
-                selector: (_, state) => (state.currentTrack, state.queue),
-                builder: (context, data, __) {
-                  final (currentTrack, queue) = data;
-                  final state = context.read<AppState>();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          const Text('File d\'attente',
+    // showGeneralDialog (contrairement a showDialog) ne fournit pas de
+    // Material ancestor -- necessaire ici pour l'effet d'encre des InkWell
+    // dans _QueueRow (sinon "No Material widget found" au premier tap).
+    return Material(
+      type: MaterialType.transparency,
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 24, 24, 24 + 84 + 12),
+          child: SizedBox(
+            width: 360,
+            child: GlassPanel(
+              borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Selector<AppState, (Track?, List<Track>)>(
+                  selector: (_, state) => (state.currentTrack, state.queue),
+                  builder: (context, data, __) {
+                    final (currentTrack, queue) = data;
+                    final state = context.read<AppState>();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Text('File d\'attente',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700)),
+                            const Spacer(),
+                            GlassIconButton(
+                              icon: Icons.close,
+                              size: 18,
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (currentTrack != null) ...[
+                          const Text('En cours de lecture',
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700)),
-                          const Spacer(),
-                          GlassIconButton(
-                            icon: Icons.close,
-                            size: 18,
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 6),
+                          _QueueRow(track: currentTrack, isCurrent: true),
+                          const SizedBox(height: 16),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (currentTrack != null) ...[
-                        const Text('En cours de lecture',
-                            style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600)),
+                        Text(
+                          'Ensuite${queue.isNotEmpty ? ' (${queue.length})' : ''}',
+                          style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(height: 6),
-                        _QueueRow(track: currentTrack, isCurrent: true),
-                        const SizedBox(height: 16),
-                      ],
-                      Text(
-                        'Ensuite${queue.isNotEmpty ? ' (${queue.length})' : ''}',
-                        style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 6),
-                      Flexible(
-                        child: queue.isEmpty
-                            ? const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 24),
-                                child: Text('Aucun titre a venir',
-                                    style: TextStyle(color: Colors.white38)),
-                              )
-                            : ReorderableListView.builder(
-                                shrinkWrap: true,
-                                buildDefaultDragHandles: false,
-                                itemCount: queue.length,
-                                onReorder: state.reorderQueue,
-                                itemBuilder: (context, i) => _QueueRow(
-                                  key: ValueKey('dq-$i-${queue[i].id}'),
-                                  track: queue[i],
-                                  index: i,
+                        Flexible(
+                          child: queue.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 24),
+                                  child: Text('Aucun titre a venir',
+                                      style: TextStyle(color: Colors.white38)),
+                                )
+                              : ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  buildDefaultDragHandles: false,
+                                  itemCount: queue.length,
+                                  onReorder: state.reorderQueue,
+                                  itemBuilder: (context, i) => _QueueRow(
+                                    key: ValueKey('dq-$i-${queue[i].id}'),
+                                    track: queue[i],
+                                    index: i,
+                                  ),
                                 ),
-                              ),
-                      ),
-                    ],
-                  );
-                },
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -187,8 +193,8 @@ class _QueueRow extends StatelessWidget {
                   Text(track.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 11)),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 11)),
                 ],
               ),
             ),
@@ -204,7 +210,8 @@ class _QueueRow extends StatelessWidget {
                 index: index!,
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4),
-                  child: Icon(Icons.drag_handle, color: Colors.white38, size: 18),
+                  child:
+                      Icon(Icons.drag_handle, color: Colors.white38, size: 18),
                 ),
               ),
             ],

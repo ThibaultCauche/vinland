@@ -48,14 +48,26 @@ void showPlayerOptions(BuildContext context, Track track) {
             label: "Acceder a l'album",
             onTap: () {
               Navigator.pop(ctx);
+              // Match par albumId Navidrome (identifiant reel, unique) quand
+              // il existe, plutot que par titre seul : deux albums
+              // differents peuvent partager le meme titre (reedition,
+              // compilation...), et matcher par titre pouvait ouvrir le
+              // mauvais album ou lui attribuer des titres d'un autre artiste
+              // (retour utilisateur).
+              final expectedId =
+                  track.albumId != null ? 'navidrome_${track.albumId}' : null;
               final album = state.albums.firstWhere(
-                (a) => a.title == track.album,
+                (a) => expectedId != null
+                    ? a.id == expectedId
+                    : a.title == track.album,
                 orElse: () => Album(
-                  id: track.album.hashCode.toString(),
+                  id: expectedId ?? track.album.hashCode.toString(),
                   title: track.album,
                   artist: track.albumArtist ?? track.artist,
                   trackIds: state.allTracks
-                      .where((t) => t.album == track.album)
+                      .where((t) => expectedId != null
+                          ? t.albumId == track.albumId
+                          : t.album == track.album)
                       .map((t) => t.id)
                       .toList(),
                   coverPath: track.coverPath,

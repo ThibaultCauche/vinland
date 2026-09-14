@@ -1,8 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image/image.dart' as img;
+import 'package:palette_generator/palette_generator.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
@@ -11,6 +9,7 @@ import '../models/discovered_track.dart';
 import '../models/discovered_album.dart';
 import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
+import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/download_button.dart';
 import '../widgets/cover_image.dart';
@@ -30,8 +29,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
   final ScrollController _scrollController = ScrollController();
   double _scrollOffset = 0;
   final _discovery = DiscoveryService();
+  final _downloadWorker = DownloadWorkerService();
   List<DiscoveredTrack> _discoveredTracks = [];
   bool _loadingDeezer = false;
+  final Map<int, DownloadUiState> _downloadStates = {};
 
   @override
   void initState() {
@@ -39,9 +40,20 @@ class _AlbumScreenState extends State<AlbumScreen> {
     _extractColor();
     _loadDeezerTracks();
     _scrollController.addListener(() {
-      if (mounted) setState(() => _scrollOffset = _scrollController.offset);
+      if (!mounted) return;
+      final newOffset = _scrollController.offset;
+      // Ne redessine (recalcule aussi la tracklist de l'album, potentiellement
+      // couteux sur une grosse bibliotheque) que si l'opacite affichee de
+      // l'AppBar change vraiment -- en dehors de la bande de transition de
+      // 80px, elle reste figee a 0 ou 1 quel que soit le defilement, inutile
+      // de reconstruire tout l'ecran a chaque pixel scrolle.
+      final changed = _appBarOpacity(newOffset) != _appBarOpacity(_scrollOffset);
+      _scrollOffset = newOffset;
+      if (changed) setState(() {});
     });
   }
+
+  double _appBarOpacity(double offset) => ((offset - 320) / 80).clamp(0.0, 1.0);
 
   @override
   void dispose() {
@@ -49,41 +61,24 @@ class _AlbumScreenState extends State<AlbumScreen> {
     super.dispose();
   }
 
+  /// Meme algorithme que AppState._extractDominantColorIsolate : la swatch
+  /// "vibrant" de PaletteGenerator (deja une dependance du projet) plutot
+  /// qu'une moyenne brute de quelques pixels, qui produisait une couleur
+  /// "boueuse" ne representant pas vraiment la cover.
   Future<void> _extractColor() async {
     final path = widget.album.coverPath;
     if (path == null) return;
     try {
-      final bytes = await File(path).readAsBytes();
-      final color = await compute(_dominantColorFromBytes, bytes);
+      final palette = await PaletteGenerator.fromImageProvider(
+        FileImage(File(path)),
+        size: const Size(100, 100),
+      );
+      final color = palette.vibrantColor?.color ??
+          palette.lightVibrantColor?.color ??
+          palette.dominantColor?.color ??
+          palette.mutedColor?.color;
       if (mounted) setState(() => _dominantColor = color);
     } catch (_) {}
-  }
-
-  static Color? _dominantColorFromBytes(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return null;
-    final w = decoded.width;
-    final h = decoded.height;
-    final samples = [
-      decoded.getPixel(w ~/ 2, h ~/ 2),
-      decoded.getPixel(w ~/ 4, h ~/ 4),
-      decoded.getPixel(w * 3 ~/ 4, h ~/ 4),
-      decoded.getPixel(w ~/ 4, h * 3 ~/ 4),
-      decoded.getPixel(w * 3 ~/ 4, h * 3 ~/ 4),
-    ];
-    int r = 0, g = 0, b = 0;
-    for (final p in samples) {
-      final pixel = p as dynamic;
-      r += (pixel.r as num).round();
-      g += (pixel.g as num).round();
-      b += (pixel.b as num).round();
-    }
-    return Color.fromRGBO(
-      r ~/ samples.length,
-      g ~/ samples.length,
-      b ~/ samples.length,
-      1,
-    );
   }
 
   Future<void> _loadDeezerTracks() async {
@@ -106,6 +101,36 @@ class _AlbumScreenState extends State<AlbumScreen> {
       print('Deezer album tracks error: $e');
     }
     if (mounted) setState(() => _loadingDeezer = false);
+  }
+
+  /// Demande le telechargement automatique d'un titre absent du NAS (voir
+  /// DownloadWorkerService) -- meme logique que DesktopAlbumView, jusqu'ici
+  /// jamais branchee cote mobile (retour utilisateur).
+  Future<void> _downloadTrack(DiscoveredTrack track) async {
+    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
+
+    final jobId = await _downloadWorker.requestDownload(
+      artist: track.artistName,
+      title: track.title,
+      album: track.albumName == 'Inconnu' ? null : track.albumName,
+    );
+    if (jobId == null) {
+      if (mounted) {
+        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+      }
+      return;
+    }
+
+    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+
+    if (status.state == DownloadJobState.done) {
+      await context.read<AppState>().syncRecentlyAdded();
+      if (mounted) await _loadDeezerTracks();
+      if (mounted) setState(() => _downloadStates.remove(track.id));
+    } else {
+      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+    }
   }
 
   void _recordRecent(AppState state) {
@@ -179,8 +204,19 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
+    // Match exact par id (widget.album.trackIds, deja assemble correctement
+    // par MusicService.rebuildAlbums) plutot que par similarite floue de
+    // titre : MatchingService.albumsMatch est concu pour rapprocher un album
+    // local d'un resultat de recherche en ligne (Deezer) malgre de petites
+    // variations de titre, pas pour filtrer toute la bibliotheque -- un
+    // titre d'album court/generique pouvait y matcher un album totalement
+    // different (ex: "99" matchant "99 Nights (Edition Deluxe)" par simple
+    // inclusion de sous-chaine), en plus de recalculer cette similarite sur
+    // toute la bibliotheque a chaque frame de scroll (retour utilisateur :
+    // page tres lente, titres d'un autre artiste en fin de liste).
+    final albumTrackIds = widget.album.trackIds.toSet();
     var albumTracks = appState.allTracks
-        .where((t) => MatchingService.albumsMatch(t.album, widget.album.title))
+        .where((t) => albumTrackIds.contains(t.id))
         .toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
@@ -203,7 +239,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
         ? Color.lerp(_dominantColor, Colors.black, 0.35)!
         : const Color(0xFF121212);
 
-    final appBarOpacity = ((_scrollOffset - 320) / 80).clamp(0.0, 1.0);
+    final appBarOpacity = _appBarOpacity(_scrollOffset);
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -274,9 +310,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
                         onMore: () => _showTrackOptions(context, track),
                       );
                     } else {
+                      final dt = item.discoveredTrack!;
                       return _DiscoveredTrackTile(
                         index: index,
-                        track: item.discoveredTrack!,
+                        track: dt,
+                        downloadState: _downloadStates[dt.id],
+                        showDownloadButton: _downloadWorker.isConfigured,
+                        onDownloadTap: () => _downloadTrack(dt),
                       );
                     }
                   },
@@ -855,10 +895,16 @@ class _AlbumTrackTile extends StatelessWidget {
 class _DiscoveredTrackTile extends StatelessWidget {
   final int index;
   final DiscoveredTrack track;
+  final DownloadUiState? downloadState;
+  final bool showDownloadButton;
+  final VoidCallback onDownloadTap;
 
   const _DiscoveredTrackTile({
     required this.index,
     required this.track,
+    required this.downloadState,
+    required this.showDownloadButton,
+    required this.onDownloadTap,
   });
 
   @override
@@ -910,7 +956,11 @@ class _DiscoveredTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.cloud_off, color: Colors.white24, size: 18),
+            DownloadStateIcon(
+              state: downloadState,
+              showDownloadButton: showDownloadButton,
+              onDownloadTap: onDownloadTap,
+            ),
           ],
         ),
       ),

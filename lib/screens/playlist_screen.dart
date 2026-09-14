@@ -330,10 +330,18 @@ class PlaylistScreen extends StatelessWidget {
               label: "Acceder a l'album",
               onTap: () {
                 Navigator.pop(ctx);
+                // Match par albumId Navidrome quand il existe : deux albums
+                // differents peuvent partager le meme titre, matcher par
+                // titre seul pouvait ouvrir le mauvais album.
+                final expectedId = track.albumId != null
+                    ? 'navidrome_${track.albumId}'
+                    : null;
                 final album = state.likedAlbums.firstWhere(
-                  (a) => a.title == track.album,
+                  (a) => expectedId != null
+                      ? a.id == expectedId
+                      : a.title == track.album,
                   orElse: () => Album(
-                    id: track.album.hashCode.toString(),
+                    id: expectedId ?? track.album.hashCode.toString(),
                     title: track.album,
                     artist: track.artist,
                     trackIds: [],

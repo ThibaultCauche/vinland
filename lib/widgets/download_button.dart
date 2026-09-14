@@ -2,6 +2,58 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
+import '../services/download_worker_service.dart';
+
+/// Icone de fin de ligne pour un titre non possede localement (album,
+/// artiste...) : cloud barre simple si le service de telechargement
+/// automatique n'est pas configure, sinon bouton de requete de
+/// telechargement avec ses propres etats (en cours/echec) -- partagee par
+/// tous les ecrans qui listent ce genre de titre plutot que reimplementee
+/// a chaque fois.
+class DownloadStateIcon extends StatelessWidget {
+  final DownloadUiState? state;
+  final bool showDownloadButton;
+  final VoidCallback onDownloadTap;
+  final double size;
+
+  const DownloadStateIcon({
+    super.key,
+    required this.state,
+    required this.showDownloadButton,
+    required this.onDownloadTap,
+    this.size = 18,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (state == DownloadUiState.downloading) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: const CircularProgressIndicator(
+            strokeWidth: 2, color: Colors.white38),
+      );
+    }
+    if (showDownloadButton) {
+      return InkWell(
+        onTap: onDownloadTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: Icon(
+            state == DownloadUiState.failed
+                ? Icons.error_outline
+                : Icons.download_rounded,
+            color:
+                state == DownloadUiState.failed ? Colors.redAccent : Colors.white54,
+            size: size,
+          ),
+        ),
+      );
+    }
+    return Icon(Icons.cloud_off, color: Colors.white24, size: size);
+  }
+}
 
 /// Bouton de telechargement hors-ligne reutilisable (album, playlist,
 /// titres likes...). Gere lui-meme son etat de progression et le dialogue

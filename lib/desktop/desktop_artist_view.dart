@@ -8,8 +8,10 @@ import '../models/discovered_track.dart';
 import '../models/recent_play.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
+import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/download_button.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'desktop_track_row.dart';
 import 'glass.dart';
@@ -56,6 +58,8 @@ class DesktopArtistView extends StatefulWidget {
 class _DesktopArtistViewState extends State<DesktopArtistView> {
   static final Map<String, _ArtistCache> _deezerCache = {};
   final _discovery = DiscoveryService();
+  final _downloadWorker = DownloadWorkerService();
+  final Map<int, DownloadUiState> _downloadStates = {};
 
   DiscoveredArtist? _discoveredArtist;
   List<DiscoveredAlbum> _discoveredAlbums = [];
@@ -176,6 +180,39 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
     );
     _deepMatchAlbums();
     _loadTrueTrackCounts();
+  }
+
+  /// Demande le telechargement automatique d'un titre populaire absent du
+  /// NAS (voir DownloadWorkerService) -- meme logique que DesktopAlbumView,
+  /// jusqu'ici jamais branchee sur cette page (retour utilisateur). Pas
+  /// besoin de recharger _topTracks apres coup : `popularTracks` (dans
+  /// build()) recroise deja _topTracks avec state.allTracks a chaque
+  /// reconstruction, donc syncRecentlyAdded() suffit a faire apparaitre le
+  /// titre comme disponible.
+  Future<void> _downloadTrack(DiscoveredTrack track) async {
+    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
+
+    final jobId = await _downloadWorker.requestDownload(
+      artist: track.artistName,
+      title: track.title,
+      album: track.albumName == 'Inconnu' ? null : track.albumName,
+    );
+    if (jobId == null) {
+      if (mounted) {
+        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+      }
+      return;
+    }
+
+    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+
+    if (status.state == DownloadJobState.done) {
+      await context.read<AppState>().syncRecentlyAdded();
+      if (mounted) setState(() => _downloadStates.remove(track.id));
+    } else {
+      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+    }
   }
 
   Future<void> _deepMatchAlbums() async {
@@ -406,6 +443,11 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                                   state.playTrack(popularTracks[index].local!);
                                 }
                               },
+                              downloadState: _downloadStates[
+                                  popularTracks[index].discovered.id],
+                              showDownloadButton: _downloadWorker.isConfigured,
+                              onDownloadTap: () => _downloadTrack(
+                                  popularTracks[index].discovered),
                             ),
                             childCount: popularTracks.length,
                           ),
@@ -678,11 +720,17 @@ class _PopularTrackRow extends StatelessWidget {
   final int index;
   final _PopularTrack track;
   final VoidCallback onPlay;
+  final DownloadUiState? downloadState;
+  final bool showDownloadButton;
+  final VoidCallback onDownloadTap;
 
   const _PopularTrackRow({
     required this.index,
     required this.track,
     required this.onPlay,
+    required this.downloadState,
+    required this.showDownloadButton,
+    required this.onDownloadTap,
   });
 
   @override
@@ -756,7 +804,12 @@ class _PopularTrackRow extends StatelessWidget {
               const Icon(Icons.play_circle_outline,
                   color: DesktopGlass.accent, size: 22)
             else
-              const Icon(Icons.cloud_off, color: Colors.white24, size: 18),
+              DownloadStateIcon(
+                state: downloadState,
+                showDownloadButton: showDownloadButton,
+                onDownloadTap: onDownloadTap,
+                size: 18,
+              ),
           ],
         ),
       ),

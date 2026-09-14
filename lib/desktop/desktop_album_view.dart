@@ -10,11 +10,10 @@ import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/download_button.dart';
 import '../widgets/smooth_scroll.dart';
 import 'desktop_track_row.dart';
 import 'glass.dart';
-
-enum _DownloadUiState { downloading, failed }
 
 /// Page album local desktop : equivalent de AlbumScreen (mobile). Affiche
 /// tout le tracklist Deezer de reference quand il est trouve -- les titres
@@ -57,7 +56,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
   // false : le contenu deja affiche reste visible pendant la mise a jour
   // silencieuse.
   bool _hasLoadedOnce = false;
-  final Map<int, _DownloadUiState> _downloadStates = {};
+  final Map<int, DownloadUiState> _downloadStates = {};
 
   AppState? _appState;
   bool _wasSyncing = false;
@@ -119,7 +118,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
   }
 
   Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = _DownloadUiState.downloading);
+    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
 
     final jobId = await _downloadWorker.requestDownload(
       artist: track.artistName,
@@ -128,7 +127,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
     );
     if (jobId == null) {
       if (mounted) {
-        setState(() => _downloadStates[track.id] = _DownloadUiState.failed);
+        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
       }
       return;
     }
@@ -141,7 +140,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
       if (mounted) await _loadDeezerTracks();
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
-      setState(() => _downloadStates[track.id] = _DownloadUiState.failed);
+      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
     }
   }
 
@@ -544,7 +543,7 @@ class _Header extends StatelessWidget {
 class _DiscoveredTrackRow extends StatelessWidget {
   final int index;
   final DiscoveredTrack track;
-  final _DownloadUiState? downloadState;
+  final DownloadUiState? downloadState;
   final bool showDownloadButton;
   final VoidCallback onDownloadTap;
 
@@ -593,32 +592,12 @@ class _DiscoveredTrackRow extends StatelessWidget {
               ],
             ),
           ),
-          if (downloadState == _DownloadUiState.downloading)
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child:
-                  CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
-            )
-          else if (showDownloadButton)
-            InkWell(
-              onTap: onDownloadTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Icon(
-                  downloadState == _DownloadUiState.failed
-                      ? Icons.error_outline
-                      : Icons.download_rounded,
-                  color: downloadState == _DownloadUiState.failed
-                      ? Colors.redAccent
-                      : Colors.white54,
-                  size: 18,
-                ),
-              ),
-            )
-          else
-            const Icon(Icons.cloud_off, color: Colors.white24, size: 16),
+          DownloadStateIcon(
+            state: downloadState,
+            showDownloadButton: showDownloadButton,
+            onDownloadTap: onDownloadTap,
+            size: 16,
+          ),
         ],
       ),
     );

@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../widgets/app_background.dart';
+import '../widgets/local_import_flow.dart';
 
 class ImportReviewScreen extends StatefulWidget {
   final List<String> filePaths;
@@ -336,30 +338,19 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
     );
   }
 
-  void _importSelected() {
-    final state = context.read<AppState>();
+  Future<void> _importSelected() async {
     final toImport = <Track>[];
-
     for (var i = 0; i < _previewTracks.length; i++) {
-      if (_selected[i]) {
-        toImport.add(_previewTracks[i]);
-      }
+      if (_selected[i]) toImport.add(_previewTracks[i]);
     }
+    if (toImport.isEmpty) return;
 
-    for (final track in toImport) {
-      state.musicService.addTrack(track);
-    }
-
-    state.musicService.rebuildAlbums();
-    state.musicService.saveToCache();
-
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${toImport.length} titre(s) importé(s)'),
-        backgroundColor: const Color(0xFF1DB954),
-      ),
+    final navigator = Navigator.of(context);
+    final proceeded = await runLocalImportFlow(
+      context,
+      toImport.map((t) => File(t.filePath!)).toList(),
     );
+    if (proceeded && mounted) navigator.pop(); // ferme l'ecran de revue
   }
 
   Widget _buildStatRow(IconData icon, Color color, String label, int count) {

@@ -10,7 +10,6 @@ import 'artist_screen.dart';
 import 'playlist_screen.dart';
 import '../screens/missing_tracks_screen.dart';
 import '../services/music_service.dart';
-import '../widgets/update_banner.dart';
 import '../widgets/sync_status_banner.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/user_avatar.dart';
@@ -107,7 +106,6 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: UpdateBanner()),
               const SliverToBoxAdapter(child: SyncStatusBanner()),
               _buildSectionTitle('Récemment écouté'),
               _buildRecentlyPlayed(state),

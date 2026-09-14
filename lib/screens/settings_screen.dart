@@ -7,6 +7,7 @@ import 'streaming_import_screen.dart';
 import 'bluetooth_trusted_devices_screen.dart';
 import 'feedback_screen.dart';
 import '../widgets/app_background.dart';
+import '../widgets/update_prompt.dart';
 import 'personalization_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -179,9 +180,13 @@ class SettingsScreen extends StatelessWidget {
                       icon: Icons.info,
                       title: 'Vinland v$version',
                       subtitle: update != null
-                          ? 'Nouvelle version disponible sur la page d\'accueil'
+                          ? 'Vinland ${update.latestVersion} disponible -- toucher pour installer'
                           : 'A jour -- toucher pour verifier',
                       onTap: () async {
+                        if (update != null) {
+                          triggerUpdate(context, update);
+                          return;
+                        }
                         final messenger = ScaffoldMessenger.of(context);
                         await state.checkForUpdate();
                         if (state.updateInfo == null) {

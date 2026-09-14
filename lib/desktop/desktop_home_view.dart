@@ -7,7 +7,6 @@ import '../models/recent_play.dart';
 import '../models/track.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/sync_status_banner.dart';
-import '../widgets/update_banner.dart';
 import '../widgets/cover_image.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'glass.dart';
@@ -119,7 +118,6 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                   fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
-            const UpdateBanner(),
             // Pendant une synchro normale, seul le petit cercle vert du
             // TopBar (a cote de l'avatar) suffit -- ce bandeau ne reapparait
             // que pour l'etat d'erreur (NAS injoignable), qui merite d'etre
