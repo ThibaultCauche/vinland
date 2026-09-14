@@ -71,6 +71,21 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // La reduction/renommage des ressources (active par defaut sur
+            // le build de release) supprimait les icones drawable des
+            // controles media personnalises (ic_notification,
+            // ic_notification_add) : elles ne sont referencees que par une
+            // chaine de texte envoyee depuis Dart a audio_service
+            // (ex: 'drawable/ic_notification_add'), jamais par du code
+            // Java/Kotlin, donc invisibles pour l'analyse statique de
+            // l'outil de reduction qui les traite comme "non utilisees" et
+            // les retire du build final. Consequence en prod (verifie via
+            // adb logcat sur un vrai appareil) : IllegalArgumentException
+            // "You must specify an icon resource id to build a CustomAction"
+            // a chaque mise a jour de position, empechant la notification
+            // (et donc les controles media notif/ecran de verrouillage) de
+            // jamais se construire correctement.
+            isShrinkResources = false
         }
     }
 }
