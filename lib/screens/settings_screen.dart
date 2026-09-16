@@ -7,6 +7,8 @@ import 'streaming_import_screen.dart';
 import 'bluetooth_trusted_devices_screen.dart';
 import 'feedback_screen.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
+import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/update_prompt.dart';
 import 'personalization_screen.dart';
 
@@ -17,6 +19,12 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : le fond (PlatformBackground/AppBackground)
+      // s'etend derriere l'AppBar transparente au lieu de s'arreter en
+      // dessous, pour un fond identique sur toute la page (retour
+      // utilisateur) -- voir appBarSafeTopPadding pour compenser cote
+      // contenu.
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -42,6 +50,9 @@ class SettingsScreen extends StatelessWidget {
         child: Consumer<AppState>(
           builder: (context, state, child) {
             return ListView(
+              padding: EdgeInsets.only(
+                  top: appBarSafeTopPadding(context),
+                  bottom: bottomBarReserve(context)),
               children: [
                 _buildSection('Compte'),
                 _buildTile(

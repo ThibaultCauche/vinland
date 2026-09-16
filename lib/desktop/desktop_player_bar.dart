@@ -38,10 +38,16 @@ class DesktopPlayerBar extends StatelessWidget {
         final (track, isPlaying, isRemote, remoteTrack, remoteIsPlaying,
             remoteDeviceName) = data;
 
-        // Rien ne joue localement mais un autre appareil du meme compte est
-        // hote (voir AppState.isPersonalSyncParticipant) : affiche son etat
-        // et propose de le piloter, sans jamais jouer l'audio ici.
-        if (track == null && isRemote && remoteTrack != null) {
+        // Un autre appareil du meme compte est hote (voir
+        // AppState.isPersonalSyncParticipant) : affiche son etat et propose
+        // de le piloter, sans jamais jouer l'audio ici. Ne pas conditionner
+        // sur `track == null` : `currentTrack` reste non-null ici des qu'un
+        // titre a deja ete joue localement par le passe (restaure au
+        // demarrage, voir togglePlayPause), meme si l'audio local est
+        // inactif -- ce qui masquait ce bandeau des le premier lancement
+        // local (retour utilisateur : "je vois juste la musique en cours,
+        // pas de controles").
+        if (isRemote && remoteTrack != null) {
           return Container(
             height: 84,
             margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -88,7 +94,7 @@ class DesktopPlayerBar extends StatelessWidget {
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 260,
+                                width: 300,
                                 child: _NowPlayingInfo(
                                   track: track,
                                   onOpenAlbum: onOpenAlbum,
@@ -97,7 +103,7 @@ class DesktopPlayerBar extends StatelessWidget {
                               ),
                               const Expanded(child: _TransportControls()),
                               SizedBox(
-                                width: 260,
+                                width: 300,
                                 child: RepaintBoundary(
                                     child: _PlayerExtras(track: track)),
                               ),
@@ -522,6 +528,16 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
           size: 18,
           tooltip: 'File',
           onPressed: () => showQueuePanel(context),
+        ),
+        Selector<AppState, bool>(
+          selector: (_, state) => state.isPersonalSyncParticipant,
+          builder: (context, isRemote, __) => GlassIconButton(
+            icon: Icons.devices,
+            active: isRemote,
+            size: 18,
+            tooltip: 'Peripheriques',
+            onPressed: () => showDeviceMenu(context),
+          ),
         ),
       ],
     );

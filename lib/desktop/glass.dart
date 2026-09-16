@@ -23,7 +23,7 @@ class DesktopGlass {
   /// desktop_app_shell.dart) : le contenu qui defile passe dessous
   /// plutot que d'etre coupe net par une limite arbitraire au milieu de
   /// l'ecran, jusqu'au vrai bord haut de la fenetre.
-  static const topInset = titleBarHeight + 4 + 44 + 8;
+  static const topInset = titleBarHeight + 44 + 8;
 
   /// Variante reduite de topInset, pour les vues poussees dans la pile
   /// locale (playlist/album/artiste) : leur propre en-tete pinned (hero qui

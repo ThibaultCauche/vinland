@@ -1,7 +1,10 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
+import '../models/pinned_item.dart';
+import '../models/playlist.dart';
 import '../models/track.dart';
 import '../models/recent_play.dart';
 import '../screens/settings_screen.dart';
@@ -13,7 +16,15 @@ import '../services/music_service.dart';
 import '../widgets/sync_status_banner.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/album_options_sheet.dart';
+import '../widgets/artist_avatar.dart';
+import '../widgets/artist_options_sheet.dart';
+import '../widgets/bottom_sheet_common.dart';
+import '../widgets/playlist_options_sheet.dart';
+import '../widgets/playlist_cover.dart';
+import 'friend_profile_screen.dart';
 import 'search_screen.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -33,7 +44,8 @@ class HomeScreen extends StatelessWidget {
           List<Album>,
           String?,
           List<Map<String, dynamic>>,
-          int
+          int,
+          List<RecentPlay>
         )>(
       selector: (_, state) => (
         state.homeWeeklyTracks,
@@ -43,6 +55,7 @@ class HomeScreen extends StatelessWidget {
         state.userName,
         state.missingTracks,
         state.avatarVersion,
+        state.homeShelfEntries,
       ),
       builder: (context, data, child) {
         final (
@@ -52,72 +65,82 @@ class HomeScreen extends StatelessWidget {
           newOnServer,
           userName,
           missingTracks,
-          avatarVersion
+          avatarVersion,
+          _,
         ) = data;
         final state = context.read<AppState>();
         return SafeArea(
           bottom: false,
-          child: CustomScrollView(
-            key: const Key('mobileHomeScrollView'),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      GestureDetector(
-                        onTap: () => _showProfileMenu(context),
-                        child: UserAvatar(
-                          username: userName ?? 'U',
-                          size: 36,
-                          cacheBust: avatarVersion,
-                        ),
+          child: Column(
+            children: [
+              // Barre fixe (avatar + recherche) : seul endroit d'acces a la
+              // recherche sur mobile, elle doit rester joignable quel que
+              // soit le defilement plutot que scroller avec le contenu
+              // (retour utilisateur).
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(
+                      onTap: () => _showProfileMenu(context),
+                      child: UserAvatar(
+                        username: userName ?? 'U',
+                        size: 36,
+                        cacheBust: avatarVersion,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => state.pushOverlay(const SearchScreen()),
-                          child: Container(
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2A2A2A),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Row(
-                              children: [
-                                SizedBox(width: 12),
-                                Icon(Icons.search,
-                                    color: Colors.white54, size: 20),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Rechercher des titres, artistes...',
-                                  style: TextStyle(
-                                      color: Colors.white38, fontSize: 14),
-                                ),
-                              ],
-                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => state.pushOverlay(const SearchScreen()),
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A2A2A),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Row(
+                            children: [
+                              SizedBox(width: 12),
+                              Icon(Icons.search,
+                                  color: Colors.white54, size: 20),
+                              SizedBox(width: 8),
+                              Text(
+                                'Rechercher des titres, artistes...',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 14),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const SyncIndicator(),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    const SyncIndicator(),
+                  ],
                 ),
               ),
-              const SliverToBoxAdapter(child: SyncStatusBanner()),
-              _buildSectionTitle('Récemment écouté'),
-              _buildRecentlyPlayed(state),
-              _buildSectionTitle('Écoutés cette semaine'),
-              _buildWeeklyTracks(state, weeklyTracks),
-              _buildSectionTitle('Artistes du moment'),
-              _buildTopArtists(state, topArtists),
-              _buildSectionTitle('Découverte'),
-              _buildDiscovery(state, discoveryAlbums),
-              _buildSectionTitle('Nouveautés du NAS'),
-              _buildNewOnServer(state, newOnServer),
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              Expanded(
+                child: CustomScrollView(
+                  key: const Key('mobileHomeScrollView'),
+                  slivers: [
+                    const SliverToBoxAdapter(child: SyncStatusBanner()),
+                    _buildSectionTitle('Récemment écouté'),
+                    _buildRecentlyPlayed(state),
+                    _buildSectionTitle('Écoutés cette semaine'),
+                    _buildWeeklyTracks(state, weeklyTracks),
+                    _buildSectionTitle('Artistes du moment'),
+                    _buildTopArtists(state, topArtists),
+                    _buildSectionTitle('Découverte'),
+                    _buildDiscovery(state, discoveryAlbums),
+                    _buildSectionTitle('Nouveautés du NAS'),
+                    _buildNewOnServer(state, newOnServer),
+                    SliverToBoxAdapter(
+                        child: SizedBox(height: bottomBarReserve(context))),
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -153,7 +176,8 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildRecentlyPlayed(AppState state) {
-    final recentPlays = state.recentPlays; // deja limite a 6 par AppState
+    // Tuiles epinglees + recemment ecoute, deja fusionnees/limitees a 10.
+    final recentPlays = state.homeShelfEntries;
 
     if (recentPlays.isEmpty) {
       return _buildEmpty('Commencez à écouter de la musique');
@@ -171,46 +195,75 @@ class HomeScreen extends StatelessWidget {
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final entry = recentPlays[index];
+            final pinned = _isEntryPinned(state, entry);
 
             return GestureDetector(
               onTap: () => _openRecentPlay(context, state, entry),
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  children: [
-                    _RecentPlayCover(entry: entry),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              entry.title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+              onLongPress: () => _openRecentPlayOptions(context, state, entry),
+              child: Stack(
+                // expand : sans ca, les enfants non-Positioned d'un Stack
+                // recoivent des contraintes "loose" au lieu des contraintes
+                // "tight" de la cellule de la grille -- ce Container(height:
+                // 56) etait avant automatiquement etire/centre par la grille,
+                // le Stack le laissait a sa hauteur demandee et colle en haut
+                // au lieu de rester centre, supprimant la petite marge du
+                // haut (retour utilisateur).
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A2A2A),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      children: [
+                        _RecentPlayCover(entry: entry),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  entry.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  entry.subtitle,
+                                  style: const TextStyle(
+                                      color: Colors.white38, fontSize: 11),
+                                ),
+                              ],
                             ),
-                            Text(
-                              entry.subtitle,
-                              style: const TextStyle(
-                                  color: Colors.white38, fontSize: 11),
-                            ),
-                          ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (pinned)
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      // Rotation -45deg puis miroir horizontal : la rotation
+                      // seule pointait vers le sud-est, pas le sud-ouest
+                      // voulu (retour utilisateur explicite).
+                      child: Transform.flip(
+                        flipX: true,
+                        child: Transform.rotate(
+                          angle: -pi / 4,
+                          child: const Icon(Icons.push_pin,
+                              color: Color(0xFF1DB954), size: 14),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                ],
               ),
             );
           },
@@ -255,6 +308,7 @@ class HomeScreen extends StatelessWidget {
                 width: 130,
                 child: GestureDetector(
                   onTap: () => state.pushOverlay(AlbumScreen(album: album)),
+                  onLongPress: () => showAlbumOptions(context, album),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -358,8 +412,12 @@ class HomeScreen extends StatelessWidget {
     }
 
     return SliverToBoxAdapter(
+      // Hauteur ajustee au contenu reel (avatar 88 + marge 8 + une ligne de
+      // texte) au lieu de 150 -- le Column ne s'etirait pas pour combler la
+      // hauteur du SizedBox, laissant ~35px de vide sous le nom de chaque
+      // artiste (retour utilisateur).
       child: SizedBox(
-        height: 150,
+        height: 124,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -373,6 +431,8 @@ class HomeScreen extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () =>
                       state.pushOverlay(ArtistScreen(artistName: artist)),
+                  onLongPress: () =>
+                      showArtistOptions(context, artist, coverPath: coverPath),
                   child: Column(
                     children: [
                       ClipOval(
@@ -406,6 +466,20 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  /// Pour la petite punaise affichee sur une tuile epinglee -- convertit le
+  /// type RecentPlay (utilise pour l'affichage fusionne, voir
+  /// AppState.homeShelfEntries) vers le type PinnedItem correspondant.
+  bool _isEntryPinned(AppState state, RecentPlay entry) {
+    final type = switch (entry.type) {
+      RecentPlayType.album => PinnedItemType.album,
+      RecentPlayType.playlist => PinnedItemType.playlist,
+      RecentPlayType.artist => PinnedItemType.artist,
+      RecentPlayType.friend => null,
+    };
+    if (type == null) return false;
+    return state.isPinned(type, entry.id);
+  }
+
   void _openRecentPlay(BuildContext context, AppState state, RecentPlay entry) {
     switch (entry.type) {
       case RecentPlayType.album:
@@ -416,10 +490,11 @@ class HomeScreen extends StatelessWidget {
         break;
       case RecentPlayType.playlist:
         if (entry.id == kLikedSongsRecentId) {
-          final liked = state.likedTracks;
-          if (liked.isNotEmpty) {
-            state.playTrack(liked.first, trackList: liked);
-          }
+          // Ouvre la page "Titres likes" de la bibliotheque plutot que de
+          // lancer direct la lecture -- coherent avec toutes les autres
+          // tuiles (album/playlist/artiste), qui ouvrent leur page au lieu
+          // de jouer un titre au hasard (retour utilisateur).
+          state.setTab(1);
           return;
         }
         final playlists = state.playlists.where((p) => p.id == entry.id);
@@ -430,7 +505,65 @@ class HomeScreen extends StatelessWidget {
       case RecentPlayType.artist:
         state.pushOverlay(ArtistScreen(artistName: entry.id));
         break;
+      case RecentPlayType.friend:
+        state.resolveFriend(entry.id).then((friend) {
+          if (friend != null)
+            state.pushOverlay(FriendProfileScreen(friend: friend));
+        });
+        break;
     }
+  }
+
+  /// Meme resolution que _openRecentPlay, mais ouvre la feuille d'options au
+  /// lieu de naviguer -- pas d'equivalent pour un ami (pas un container
+  /// album/playlist/artiste). "Titres likes" n'a qu'une seule option
+  /// possible (epingler), pas un vrai Playlist pour le reste.
+  void _openRecentPlayOptions(
+      BuildContext context, AppState state, RecentPlay entry) {
+    switch (entry.type) {
+      case RecentPlayType.album:
+        final albums = state.albums.where((a) => a.id == entry.id);
+        if (albums.isNotEmpty) showAlbumOptions(context, albums.first);
+        break;
+      case RecentPlayType.playlist:
+        if (entry.id == kLikedSongsRecentId) {
+          _showLikedSongsPinOptions(context, state);
+          return;
+        }
+        final playlists = state.playlists.where((p) => p.id == entry.id);
+        if (playlists.isNotEmpty) {
+          showPlaylistOptions(context, playlists.first);
+        }
+        break;
+      case RecentPlayType.artist:
+        showArtistOptions(context, entry.id, coverPath: entry.coverPath);
+        break;
+      case RecentPlayType.friend:
+        break;
+    }
+  }
+
+  void _showLikedSongsPinOptions(BuildContext context, AppState state) {
+    final pinned = state.isPinned(PinnedItemType.playlist, kLikedSongsRecentId);
+    showOptionsSheet(context,
+        builder: (ctx) => [
+              SheetTile(
+                icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                label: pinned
+                    ? "Desepingler de l'accueil"
+                    : "Epingler a l'accueil",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.togglePin(const PinnedItem(
+                    type: PinnedItemType.playlist,
+                    id: kLikedSongsRecentId,
+                    title: 'Titres likes',
+                    subtitle: 'Playlist',
+                  ));
+                },
+              ),
+              const SizedBox(height: 8),
+            ]);
   }
 
   void _showProfileMenu(BuildContext context) {
@@ -457,10 +590,6 @@ class HomeScreen extends StatelessWidget {
                   state.userName ?? 'Utilisateur',
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text(
-                  state.navidromeUrl ?? '',
-                  style: const TextStyle(color: Colors.white54),
                 ),
               ),
               const Divider(color: Color(0xFF2A2A2A)),
@@ -556,15 +685,102 @@ class _RecentPlayCover extends StatelessWidget {
             : Icons.queue_music;
       case RecentPlayType.artist:
         return Icons.person;
+      case RecentPlayType.friend:
+        return Icons.person;
     }
   }
 
-  BorderRadius get _shape => entry.type == RecentPlayType.artist
-      ? const BorderRadius.all(Radius.circular(28))
-      : const BorderRadius.horizontal(left: Radius.circular(6));
+  BorderRadius get _shape =>
+      entry.type == RecentPlayType.artist || entry.type == RecentPlayType.friend
+          ? const BorderRadius.all(Radius.circular(28))
+          : const BorderRadius.horizontal(left: Radius.circular(6));
 
   @override
   Widget build(BuildContext context) {
+    // Avatar d'ami : image reseau via AvatarService (username), pas une
+    // cover locale -- voir DesktopHomeView._RecentPlayCover pour la meme
+    // logique cote desktop.
+    if (entry.type == RecentPlayType.friend) {
+      return ClipRRect(
+        borderRadius: _shape,
+        child: UserAvatar(username: entry.id, size: 56),
+      );
+    }
+
+    // "Titres likes" : meme vert que le coeur du mini-player plutot que le
+    // meme gris neutre que tout le reste (retour utilisateur, rend l'app
+    // moins terne). Une vraie Playlist normale se rabat sur PlaylistCover
+    // (Playlist n'a pas de cover dediee cote Navidrome -- collage a partir
+    // des covers de ses propres titres, comme Spotify).
+    if (entry.type == RecentPlayType.playlist) {
+      if (entry.id == kLikedSongsRecentId) {
+        return Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1DB954),
+            borderRadius: _shape,
+          ),
+          child: const Icon(Icons.favorite, color: Colors.white),
+        );
+      }
+      final playlist = context
+          .read<AppState>()
+          .playlists
+          .cast<Playlist?>()
+          .firstWhere((p) => p?.id == entry.id, orElse: () => null);
+      if (playlist != null) {
+        return PlaylistCover(
+            playlist: playlist, size: 56, borderRadius: _shape);
+      }
+    }
+
+    // Vraie photo d'artiste (pas de cover generique) -- necessaire pour une
+    // tuile epinglee, qui ne transporte pas de coverPath (voir PinnedItem),
+    // et strictement meilleur pour une tuile "recemment ecoute" classique
+    // aussi.
+    if (entry.type == RecentPlayType.artist) {
+      return ClipRRect(
+        borderRadius: _shape,
+        child: ArtistAvatar(
+          artistName: entry.id,
+          fallbackCoverPath: entry.coverPath,
+          size: 56,
+        ),
+      );
+    }
+
+    // Album : resout la cover REELLE depuis la bibliotheque par id plutot
+    // que de se fier au coverPath stocke dans l'entree -- une tuile epinglee
+    // n'en a pas du tout (voir PinnedItem), et ca evite aussi une cover
+    // figee/perimee pour une entree "recemment ecoute" classique.
+    if (entry.type == RecentPlayType.album) {
+      final album = context
+          .read<AppState>()
+          .albums
+          .cast<Album?>()
+          .firstWhere((a) => a?.id == entry.id, orElse: () => null);
+      if (album?.coverPath != null) {
+        final exists =
+            context.read<MusicService>().coverExists(album!.coverPath);
+        if (exists) {
+          return Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              borderRadius: _shape,
+              image: DecorationImage(
+                image: coverImageProvider(context,
+                    path: album.coverPath!, width: 56, height: 56),
+                fit: BoxFit.cover,
+                onError: (_, __) {},
+              ),
+            ),
+          );
+        }
+      }
+    }
+
     final path = entry.coverPath;
     final exists = context.read<MusicService>().coverExists(path);
 

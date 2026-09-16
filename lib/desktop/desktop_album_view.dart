@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_track.dart';
+import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
@@ -13,6 +14,9 @@ import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
 import '../widgets/smooth_scroll.dart';
+import 'desktop_hero_card.dart'
+    show DesktopHeroMenuAction, DesktopMoreMenuButton, pickPlaylistAndAddTracks;
+import '../widgets/artist_avatar.dart';
 import 'desktop_track_row.dart';
 import 'glass.dart';
 
@@ -30,14 +34,12 @@ import 'glass.dart';
 class DesktopAlbumView extends StatefulWidget {
   final Album album;
   final String? filterArtist;
-  final VoidCallback onBack;
   final ValueChanged<String> onOpenArtist;
 
   const DesktopAlbumView({
     super.key,
     required this.album,
     this.filterArtist,
-    required this.onBack,
     required this.onOpenArtist,
   });
 
@@ -105,7 +107,8 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
           await _discovery.searchAlbums(widget.album.title, limit: 10);
       DiscoveredAlbum? match;
       for (final a in albums) {
-        if (MatchingService.albumsMatch(a.title, widget.album.title)) {
+        if (MatchingService.artistsMatch(a.artistName, widget.album.artist) &&
+            MatchingService.albumsMatch(a.title, widget.album.title)) {
           match = a;
           break;
         }
@@ -238,13 +241,6 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              GlassIconButton(
-                  icon: Icons.arrow_back_rounded, onPressed: widget.onBack),
-            ],
-          ),
-          const SizedBox(height: 12),
           Expanded(
             child: CustomScrollView(
               controller: _scrollController,
@@ -274,6 +270,47 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                             state.playTrack(shuffled.first,
                                 trackList: shuffled);
                           },
+                    moreActions: [
+                      DesktopHeroMenuAction(
+                        label: state.isPinned(
+                                PinnedItemType.album, widget.album.id)
+                            ? "Désépingler de l'accueil"
+                            : "Épingler à l'accueil",
+                        icon: state.isPinned(
+                                PinnedItemType.album, widget.album.id)
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
+                        onTap: () => state.togglePin(PinnedItem(
+                          type: PinnedItemType.album,
+                          id: widget.album.id,
+                          title: widget.album.title,
+                          subtitle: widget.album.artist,
+                        )),
+                      ),
+                      if (albumTracks.isNotEmpty) ...[
+                        DesktopHeroMenuAction(
+                          label: "Ajouter à la file d'attente",
+                          icon: Icons.playlist_add,
+                          onTap: () {
+                            for (final t in albumTracks) {
+                              state.addToQueue(t);
+                            }
+                          },
+                        ),
+                        DesktopHeroMenuAction(
+                          label: 'Télécharger',
+                          icon: Icons.download_outlined,
+                          onTap: () =>
+                              state.downloadTracksOffline(albumTracks),
+                        ),
+                        DesktopHeroMenuAction(
+                          label: 'Ajouter à une playlist',
+                          icon: Icons.playlist_add_check,
+                          onTap: () => pickPlaylistAndAddTracks(
+                              context, state, albumTracks),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -399,6 +436,7 @@ class _Header extends StatelessWidget {
   final VoidCallback onOpenArtist;
   final VoidCallback? onPlay;
   final VoidCallback? onShuffle;
+  final List<DesktopHeroMenuAction> moreActions;
 
   const _Header({
     required this.album,
@@ -408,6 +446,7 @@ class _Header extends StatelessWidget {
     required this.onOpenArtist,
     required this.onPlay,
     required this.onShuffle,
+    this.moreActions = const [],
   });
 
   @override
@@ -466,19 +505,14 @@ class _Header extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircleAvatar(
-                      radius: 13,
-                      backgroundColor: const Color(0xFF3E3E3E),
-                      backgroundImage: exists && coverPath != null
-                          ? coverImageProvider(context,
-                              path: coverPath, width: 26, height: 26)
-                          : null,
-                      onBackgroundImageError:
-                          exists && coverPath != null ? (_, __) {} : null,
-                      child: !exists || coverPath == null
-                          ? const Icon(Icons.person,
-                              color: Colors.white54, size: 13)
-                          : null,
+                    // Vraie photo d'artiste (pas la cover de CET album) --
+                    // meme widget que l'etagere "Artistes du moment" de
+                    // l'accueil (retour utilisateur : ce badge montrait la
+                    // cover de l'album au lieu du compositeur/artiste).
+                    ArtistAvatar(
+                      artistName: album.artist,
+                      fallbackCoverPath: coverPath,
+                      size: 26,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -546,6 +580,10 @@ class _Header extends StatelessWidget {
                           title: album.title,
                           subtitle: album.artist),
                     ),
+                  ],
+                  if (moreActions.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    DesktopMoreMenuButton(actions: moreActions),
                   ],
                 ],
               ),

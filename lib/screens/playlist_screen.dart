@@ -6,11 +6,14 @@ import '../models/track.dart';
 import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/download_button.dart';
-import '../widgets/cover_image.dart';
+import '../widgets/bottom_sheet_common.dart';
+import '../widgets/playlist_options_sheet.dart';
+import '../widgets/playlist_cover.dart';
 import 'artist_screen.dart';
 import 'album_screen.dart';
 import '../models/album.dart';
 import '../services/deep_link_service.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 class PlaylistScreen extends StatelessWidget {
   final Playlist playlist;
@@ -58,11 +61,18 @@ class PlaylistScreen extends StatelessWidget {
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
             actions: readOnly
-                ? null
+                ? [
+                    IconButton(
+                      icon: const Icon(Icons.playlist_add, color: Colors.white),
+                      tooltip: 'Ajouter à ma bibliothèque',
+                      onPressed: () => _copyToLibrary(context, state, playlist),
+                    ),
+                  ]
                 : [
                     IconButton(
                       icon: const Icon(Icons.more_vert, color: Colors.white),
-                      onPressed: () => _showPlaylistOptions(context, playlist),
+                      onPressed: () => showPlaylistOptions(context, playlist,
+                          onDeleted: state.popOverlay),
                     ),
                   ],
           ),
@@ -72,15 +82,10 @@ class PlaylistScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF2A2A2A),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.queue_music,
-                          color: Colors.white54, size: 48),
+                    PlaylistCover(
+                      playlist: playlist,
+                      size: 120,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -156,7 +161,9 @@ class PlaylistScreen extends StatelessWidget {
                             style: TextStyle(color: Colors.white38)),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 100),
+                        key: PageStorageKey('playlist_${playlist.id}'),
+                        padding:
+                            EdgeInsets.only(bottom: bottomBarReserve(context)),
                         itemCount: tracks.length,
                         itemBuilder: (context, i) => Selector<AppState, Track?>(
                           selector: (_, s) => s.currentTrack,
@@ -181,356 +188,118 @@ class PlaylistScreen extends StatelessWidget {
     );
   }
 
-  void _showPlaylistOptions(BuildContext context, Playlist playlist) {
-    final state = context.read<AppState>();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2A2A2A),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Icon(Icons.queue_music,
-                        color: Colors.white54, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          playlist.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${playlist.trackIds.length} titre(s)',
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            ListTile(
-              leading: Icon(playlist.isPublic ? Icons.public : Icons.public_off,
-                  color: Colors.white, size: 26),
-              title: Text(
-                  playlist.isPublic
-                      ? 'Rendre privee'
-                      : 'Rendre publique (visible par les amis)',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500)),
-              onTap: () {
-                Navigator.pop(ctx);
-                context
-                    .read<AppState>()
-                    .setPlaylistPublic(playlist.id, !playlist.isPublic);
-              },
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline,
-                  color: Colors.white, size: 26),
-              title: const Text('Supprimer la playlist',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500)),
-              onTap: () {
-                Navigator.pop(ctx);
-                final state = context.read<AppState>();
-                state.deletePlaylist(playlist.id);
-                state.popOverlay();
-              },
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            ),
-            ListTile(
-              leading: const Icon(Icons.ios_share, color: Colors.white, size: 26),
-              title: const Text('Partager',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500)),
-              onTap: () {
-                Navigator.pop(ctx);
-                sharePlaylist(context, playlist);
-              },
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            ),
-            if (state.shareInboxConfigured)
-              ListTile(
-                leading: const Icon(Icons.send_outlined,
-                    color: Colors.white, size: 26),
-                title: const Text('Envoyer a un ami',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  showSendToFriendDialog(context,
-                      type: 'playlist',
-                      title: playlist.name,
-                      subtitle: '${playlist.trackIds.length} titre(s)',
-                      playlistForPrivacyCheck: playlist);
-                },
-                minLeadingWidth: 24,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  Future<void> _copyToLibrary(
+      BuildContext context, AppState state, Playlist playlist) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await state.copyFriendPlaylist(playlist);
+    messenger.showSnackBar(SnackBar(
+      content: Text('"${playlist.name}" ajoutée à ta bibliothèque'),
+    ));
   }
 
   void _showTrackOptions(BuildContext context, Track track,
       {bool readOnly = false}) {
     final state = context.read<AppState>();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _BottomSheetHeader(
-              coverPath: track.coverPath,
-              title: track.title,
-              subtitle: track.artist,
-            ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            if (!readOnly)
-              _SheetTile(
-                icon: Icons.remove_circle_outline,
-                label: 'Retirer de la playlist',
+    showOptionsSheet(context,
+        builder: (ctx) => [
+              BottomSheetHeader(
+                coverPath: track.coverPath,
+                title: track.title,
+                subtitle: track.artist,
+              ),
+              const Divider(color: Color(0xFF2A2A2A), height: 1),
+              if (!readOnly)
+                SheetTile(
+                  icon: Icons.remove_circle_outline,
+                  label: 'Retirer de la playlist',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    state.removeFromPlaylist(playlist.id, track.id);
+                  },
+                ),
+              SheetTile(
+                icon: Icons.playlist_play,
+                label: 'Lire ensuite',
                 onTap: () {
                   Navigator.pop(ctx);
-                  state.removeFromPlaylist(playlist.id, track.id);
+                  state.playNext(track);
                 },
               ),
-            _SheetTile(
-              icon: Icons.playlist_play,
-              label: 'Lire ensuite',
-              onTap: () {
-                Navigator.pop(ctx);
-                state.playNext(track);
-              },
-            ),
-            _SheetTile(
-              icon: Icons.queue_music,
-              label: "Ajouter a la file d'attente",
-              onTap: () {
-                Navigator.pop(ctx);
-                state.addToQueue(track);
-              },
-            ),
-            _SheetTile(
-              icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
-              label: track.isLiked
-                  ? 'Retirer des titres likes'
-                  : 'Ajouter aux titres likes',
-              iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
-              onTap: () {
-                Navigator.pop(ctx);
-                state.toggleLike(track.id);
-              },
-            ),
-            _SheetTile(
-              icon: Icons.album_outlined,
-              label: "Acceder a l'album",
-              onTap: () {
-                Navigator.pop(ctx);
-                // Match par albumId Navidrome quand il existe : deux albums
-                // differents peuvent partager le meme titre, matcher par
-                // titre seul pouvait ouvrir le mauvais album.
-                final expectedId = track.albumId != null
-                    ? 'navidrome_${track.albumId}'
-                    : null;
-                final album = state.likedAlbums.firstWhere(
-                  (a) => expectedId != null
-                      ? a.id == expectedId
-                      : a.title == track.album,
-                  orElse: () => Album(
-                    id: expectedId ?? track.album.hashCode.toString(),
-                    title: track.album,
-                    artist: track.artist,
-                    trackIds: [],
-                  ),
-                );
-                state.pushOverlay(AlbumScreen(album: album));
-              },
-            ),
-            _SheetTile(
-              icon: Icons.person_outline,
-              label: "Acceder a l'artiste",
-              onTap: () {
-                Navigator.pop(ctx);
-                state.pushOverlay(ArtistScreen(artistName: track.artist));
-              },
-            ),
-            _SheetTile(
-              icon: Icons.ios_share,
-              label: 'Partager',
-              onTap: () {
-                Navigator.pop(ctx);
-                shareTrack(track);
-              },
-            ),
-            if (state.shareInboxConfigured)
-              _SheetTile(
-                icon: Icons.send_outlined,
-                label: 'Envoyer a un ami',
+              SheetTile(
+                icon: Icons.queue_music,
+                label: "Ajouter a la file d'attente",
                 onTap: () {
                   Navigator.pop(ctx);
-                  showSendToFriendDialog(context,
-                      type: 'track',
-                      itemId: track.id,
-                      title: track.title,
-                      subtitle: track.artist);
+                  state.addToQueue(track);
                 },
               ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomSheetHeader extends StatelessWidget {
-  final String? coverPath;
-  final String title;
-  final String subtitle;
-
-  const _BottomSheetHeader({
-    required this.coverPath,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final path = coverPath;
-    final exists = context.read<AppState>().coverExists(coverPath);
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: const Color(0xFF2A2A2A),
-              image: exists && path != null
-                  ? DecorationImage(
-                      image: coverImageProvider(context,
-                          path: path, width: 48, height: 48),
-                      fit: BoxFit.cover,
-                      onError: (_, __) {},
-                    )
-                  : null,
-            ),
-            child: !exists || coverPath == null
-                ? const Icon(Icons.album, color: Colors.white54, size: 24)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              SheetTile(
+                icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
+                label: track.isLiked
+                    ? 'Retirer des titres likes'
+                    : 'Ajouter aux titres likes',
+                iconColor:
+                    track.isLiked ? const Color(0xFF1DB954) : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.toggleLike(track.id);
+                },
+              ),
+              SheetTile(
+                icon: Icons.album_outlined,
+                label: "Acceder a l'album",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  // Match par albumId Navidrome quand il existe : deux albums
+                  // differents peuvent partager le meme titre, matcher par
+                  // titre seul pouvait ouvrir le mauvais album.
+                  final expectedId = track.albumId != null
+                      ? 'navidrome_${track.albumId}'
+                      : null;
+                  final album = state.likedAlbums.firstWhere(
+                    (a) => expectedId != null
+                        ? a.id == expectedId
+                        : a.title == track.album,
+                    orElse: () => Album(
+                      id: expectedId ?? track.album.hashCode.toString(),
+                      title: track.album,
+                      artist: track.artist,
+                      trackIds: [],
+                    ),
+                  );
+                  state.pushOverlay(AlbumScreen(album: album));
+                },
+              ),
+              SheetTile(
+                icon: Icons.person_outline,
+                label: "Acceder a l'artiste",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.pushOverlay(ArtistScreen(artistName: track.artist));
+                },
+              ),
+              SheetTile(
+                icon: Icons.ios_share,
+                label: 'Partager',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  shareTrack(track);
+                },
+              ),
+              if (state.shareInboxConfigured)
+                SheetTile(
+                  icon: Icons.send_outlined,
+                  label: 'Envoyer a un ami',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    showSendToFriendDialog(context,
+                        type: 'track',
+                        itemId: track.id,
+                        title: track.title,
+                        subtitle: track.artist);
+                  },
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? iconColor;
-
-  const _SheetTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor ?? Colors.white, size: 26),
-      title: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      onTap: onTap,
-      minLeadingWidth: 24,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-    );
+              const SizedBox(height: 8),
+            ]);
   }
 }

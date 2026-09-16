@@ -526,6 +526,7 @@ class NavidromeService {
                   'public': pl['public'] == true,
                   'comment': pl['comment']?.toString() ?? '',
                   'songCount': pl['songCount'] ?? 0,
+                  'changed': pl['changed']?.toString() ?? '',
                 })
             .toList();
       }

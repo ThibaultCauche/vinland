@@ -43,6 +43,14 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
       selector: (_, state) => (state.playlists, state.likedAlbums),
       builder: (context, data, __) {
         final (playlists, albums) = data;
+        final allTracks = context.read<AppState>().allTracks;
+        String? firstTrackCover(Playlist pl) {
+          if (pl.trackIds.isEmpty) return null;
+          for (final t in allTracks) {
+            if (t.id == pl.trackIds.first) return t.coverPath;
+          }
+          return null;
+        }
 
         // top: DesktopGlass.topInset -- meme raison que DesktopSearchView :
         // le titre fixe de cette page doit demarrer sous la TopBar flottante
@@ -52,7 +60,7 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Bibliotheque',
+              const Text('Bibliothèque',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 24,
@@ -85,7 +93,7 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
                           return _GridTile(
                             title: pl.name,
                             subtitle: '${pl.trackIds.length} titre(s)',
-                            coverPath: null,
+                            coverPath: firstTrackCover(pl),
                             icon: Icons.queue_music,
                             onTap: () => widget.onOpenPlaylist(pl),
                           );
@@ -125,12 +133,19 @@ class _DesktopLibraryViewState extends State<DesktopLibraryView> {
     }
     return GridView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.only(bottom: DesktopGlass.playerBarReserve),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5,
-        childAspectRatio: 0.8,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
+      padding: const EdgeInsets.only(
+          right: 24, bottom: DesktopGlass.playerBarReserve),
+      // maxCrossAxisExtent (pas un nombre de colonnes fixe) : meme modele
+      // que les tuiles album de l'accueil/la recherche -- avec un nombre de
+      // colonnes fige a 5, les tuiles devenaient enormes des que la fenetre
+      // etait large et qu'il n'y avait que 1-2 playlists (retour
+      // utilisateur), au lieu de rester a taille raisonnable et laisser de
+      // nouvelles colonnes apparaitre.
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 166,
+        mainAxisExtent: 210,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
       ),
       itemCount: count,
       itemBuilder: (context, i) => builder(i),
@@ -190,48 +205,51 @@ class _GridTile extends StatelessWidget {
 
     return DesktopHoverable(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final double side =
-                    constraints.maxWidth.isFinite ? constraints.maxWidth : 200;
-                return Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A2A2A),
-                    borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-                    image: exists && path != null
-                        ? DecorationImage(
-                            image: coverImageProvider(context,
-                                path: path, width: side, height: side),
-                            fit: BoxFit.cover,
-                            onError: (_, __) {},
-                          )
-                        : null,
-                  ),
-                  child: !exists
-                      ? Icon(icon, color: Colors.white54, size: 40)
-                      : null,
-                );
-              },
+      // Padding(8) autour de la colonne, pas seulement de la cover : meme
+      // habillage que les tuiles album de l'accueil (_albumShelf), ou la
+      // surbrillance au survol deborde legerement de la cover au lieu de la
+      // suivre au pixel pres (retour utilisateur).
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Taille fixe (pas Expanded sur toute la cellule) -- meme
+            // modele que DesktopShelfCover (accueil/recherche/"tout
+            // afficher").
+            Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+                image: exists && path != null
+                    ? DecorationImage(
+                        image: coverImageProvider(context,
+                            path: path, width: 150, height: 150),
+                        fit: BoxFit.cover,
+                        onError: (_, __) {},
+                      )
+                    : null,
+              ),
+              child: !exists
+                  ? Icon(icon, color: Colors.white54, size: 40)
+                  : null,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500)),
-          Text(subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white54, fontSize: 11)),
-        ],
+            const SizedBox(height: 8),
+            Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500)),
+            Text(subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white54, fontSize: 11)),
+          ],
+        ),
       ),
     );
   }

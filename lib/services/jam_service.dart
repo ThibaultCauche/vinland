@@ -12,12 +12,21 @@ class JamStateMessage {
   final int ts;
   final String? deviceName;
 
+  /// Ids de la file d'attente de l'hote, non-null seulement quand elle a
+  /// change depuis le dernier envoi (voir AppState._broadcastJamState) --
+  /// evite de rerepeter potentiellement des milliers d'ids a chaque
+  /// battement de 5s. Permet au participant de refleter la vraie file de
+  /// l'hote (voir AppState._applyJamState) plutot que sa propre file locale,
+  /// jamais lue tant qu'on suit un hote.
+  final List<String>? queueIds;
+
   const JamStateMessage({
     required this.trackId,
     required this.positionMs,
     required this.isPlaying,
     required this.ts,
     this.deviceName,
+    this.queueIds,
   });
 
   factory JamStateMessage.fromJson(Map<String, dynamic> json) =>
@@ -27,14 +36,20 @@ class JamStateMessage {
         isPlaying: json['isPlaying'] as bool,
         ts: json['ts'] as int,
         deviceName: json['deviceName'] as String?,
+        queueIds: (json['queueIds'] as List?)?.cast<String>(),
       );
 }
 
-/// Commande de controle a distance (play/pause/suivant/precedent), envoyee
-/// par un participant et recue uniquement par l'hote -- voir sendCommand.
+/// Commande de controle a distance (play/pause/suivant/precedent, ou ajout a
+/// la file -- action 'queue_add'/'play_next' + trackId), envoyee par un
+/// participant et recue uniquement par l'hote -- voir sendCommand. Un
+/// participant ne pilote jamais sa propre file d'attente (elle n'est jamais
+/// lue tant qu'on suit un hote, voir AppState.playTrack/_advanceQueue) : ce
+/// canal est le seul moyen pour lui d'influencer ce qui va vraiment jouer.
 class JamCommandMessage {
   final String action;
-  const JamCommandMessage(this.action);
+  final String? trackId;
+  const JamCommandMessage(this.action, {this.trackId});
 }
 
 /// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
@@ -67,11 +82,25 @@ class JamService {
   final _participantCountController = StreamController<int>.broadcast();
   Stream<int> get participantCountStream => _participantCountController.stream;
 
+  /// Pseudos des participants actuels (voir _Peer.username cote relais) --
+  /// permet a l'hote de choisir a qui ceder l'hebergement (voir
+  /// sendTransferHost). Emis en meme temps que participantCountStream.
+  final _participantsController = StreamController<List<String>>.broadcast();
+  Stream<List<String>> get participantsStream => _participantsController.stream;
+
   final _errorController = StreamController<String>.broadcast();
   Stream<String> get errorStream => _errorController.stream;
 
   final _commandController = StreamController<JamCommandMessage>.broadcast();
   Stream<JamCommandMessage> get commandStream => _commandController.stream;
+
+  /// Emis quand ce peer change de role suite a un transfert d'hebergement
+  /// (voir sendTransferHost) : true s'il vient de devenir hote, false s'il
+  /// vient d'etre retrograde en participant. Ne concerne que les deux
+  /// extremites du transfert -- les autres participants suivent simplement
+  /// le nouvel hote sans rien remarquer.
+  final _hostTransferredController = StreamController<bool>.broadcast();
+  Stream<bool> get hostTransferredStream => _hostTransferredController.stream;
 
   String? _relayUrl() {
     final baseUrl = _navidrome.baseUrl;
@@ -126,6 +155,7 @@ class JamService {
       channel.sink.add(jsonEncode({
         'type': asHost ? 'host' : 'join',
         'sessionId': sessionId,
+        'username': _navidrome.username,
       }));
     } catch (_) {
       if (!completer.isCompleted) completer.complete(false);
@@ -172,9 +202,18 @@ class JamService {
         break;
       case 'participant_count':
         _participantCountController.add(msg['count'] as int? ?? 0);
+        final usernames = (msg['usernames'] as List?)?.cast<String>();
+        if (usernames != null) _participantsController.add(usernames);
         break;
       case 'command':
-        _commandController.add(JamCommandMessage(msg['action'] as String? ?? ''));
+        _commandController.add(JamCommandMessage(
+          msg['action'] as String? ?? '',
+          trackId: msg['trackId'] as String?,
+        ));
+        break;
+      case 'host_transferred':
+        _isHost = msg['role'] == 'host';
+        _hostTransferredController.add(_isHost);
         break;
     }
   }
@@ -184,6 +223,7 @@ class JamService {
     required int positionMs,
     required bool isPlaying,
     String? deviceName,
+    List<String>? queueIds,
   }) {
     if (!_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
@@ -193,14 +233,31 @@ class JamService {
       'isPlaying': isPlaying,
       'ts': DateTime.now().millisecondsSinceEpoch,
       'deviceName': deviceName,
+      if (queueIds != null) 'queueIds': queueIds,
     }));
   }
 
   /// Envoie une commande de controle a distance vers l'hote (voir
   /// commandStream cote hote) -- reserve aux participants.
-  void sendCommand(String action) {
+  void sendCommand(String action, {String? trackId}) {
     if (_isHost || _channel == null) return;
-    _channel!.sink.add(jsonEncode({'type': 'command', 'action': action}));
+    _channel!.sink.add(jsonEncode({
+      'type': 'command',
+      'action': action,
+      if (trackId != null) 'trackId': trackId,
+    }));
+  }
+
+  /// Cede l'hebergement a un participant nomme (voir participantsStream
+  /// pour la liste des pseudos disponibles) -- reserve a l'hote actuel.
+  /// Les deux extremites sont notifiees via hostTransferredStream ; les
+  /// autres participants ne voient que le prochain 'state' venir d'ailleurs.
+  void sendTransferHost(String targetUsername) {
+    if (!_isHost || _channel == null) return;
+    _channel!.sink.add(jsonEncode({
+      'type': 'transfer_host',
+      'targetUsername': targetUsername,
+    }));
   }
 
   Future<void> leave() async {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 import '../widgets/local_import_flow.dart';
 
 class ImportReviewScreen extends StatefulWidget {
@@ -65,6 +66,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -86,12 +90,14 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
         ],
       ),
       body: AppBackground(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF1DB954)))
-            : Column(
-                children: [
-                  _buildStatsCard(),
+        child: Padding(
+          padding: EdgeInsets.only(top: appBarSafeTopPadding(context)),
+          child: _isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF1DB954)))
+              : Column(
+                  children: [
+                    _buildStatsCard(),
                   if (_previewTracks.isNotEmpty) ...[
                     _buildValidationWarning(),
                     _buildSelectAllBar(selectedCount),
@@ -114,6 +120,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
                     ),
                 ],
               ),
+        ),
       ),
     );
   }

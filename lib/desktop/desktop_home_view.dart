@@ -1,14 +1,20 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
+import '../models/pinned_item.dart';
 import '../models/playlist.dart';
 import '../models/recent_play.dart';
 import '../models/track.dart';
+import '../widgets/artist_avatar.dart';
+import '../widgets/playlist_cover.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/sync_status_banner.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/user_avatar.dart';
 import 'desktop_horizontal_shelf.dart';
+import 'desktop_see_all_view.dart';
 import 'glass.dart';
 
 /// Accueil desktop : shelves horizontales dans des cartes en verre, comme
@@ -19,6 +25,8 @@ class DesktopHomeView extends StatefulWidget {
   final ValueChanged<String> onOpenArtist;
   final VoidCallback onOpenLikedSongs;
   final ValueChanged<Playlist> onOpenPlaylist;
+  final ValueChanged<String> onOpenFriendProfile;
+  final void Function(String title, List<DesktopSeeAllItem> items) onSeeAll;
 
   const DesktopHomeView({
     super.key,
@@ -27,6 +35,8 @@ class DesktopHomeView extends StatefulWidget {
     required this.onOpenArtist,
     required this.onOpenLikedSongs,
     required this.onOpenPlaylist,
+    required this.onOpenFriendProfile,
+    required this.onSeeAll,
   });
 
   @override
@@ -62,6 +72,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
       case RecentPlayType.artist:
         onOpenArtist(entry.id);
         break;
+      case RecentPlayType.friend:
+        widget.onOpenFriendProfile(entry.id);
+        break;
     }
   }
 
@@ -88,7 +101,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
         state.homeDiscoveryAlbums,
         state.homeNewOnServerAlbums,
         state.userName,
-        state.recentPlays,
+        state.homeShelfEntries,
         state.isSyncing,
       ),
       builder: (context, data, __) {
@@ -127,13 +140,29 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
               _recentPlayGrid(context, state, recentPlays),
               const SizedBox(height: 8),
             ],
-            _sectionTitle('Écoutés cette semaine'),
+            _sectionTitle('Écoutés cette semaine',
+                onSeeAll: weeklyTracks.isEmpty
+                    ? null
+                    : () => widget.onSeeAll('Écoutés cette semaine',
+                        _trackItems(context, weeklyTracks))),
             _trackShelf(context, weeklyTracks),
-            _sectionTitle('Artistes du moment'),
+            _sectionTitle('Artistes du moment',
+                onSeeAll: topArtists.isEmpty
+                    ? null
+                    : () => widget.onSeeAll(
+                        'Artistes du moment', _artistItems(topArtists))),
             _artistShelf(context, topArtists),
-            _sectionTitle('Découverte'),
+            _sectionTitle('Découverte',
+                onSeeAll: discoveryAlbums.isEmpty
+                    ? null
+                    : () => widget.onSeeAll(
+                        'Découverte', _albumItems(discoveryAlbums))),
             _albumShelf(context, discoveryAlbums),
-            _sectionTitle('Nouveautés du NAS'),
+            _sectionTitle('Nouveautés du NAS',
+                onSeeAll: newOnServer.isEmpty
+                    ? null
+                    : () => widget.onSeeAll(
+                        'Nouveautés du NAS', _albumItems(newOnServer))),
             _albumShelf(context, newOnServer),
           ],
         );
@@ -141,14 +170,68 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
     );
   }
 
-  Widget _sectionTitle(String text) => Padding(
+  Widget _sectionTitle(String text, {VoidCallback? onSeeAll}) => Padding(
         padding: const EdgeInsets.fromLTRB(4, 20, 4, 12),
-        child: Text(text,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600)),
+        child: Row(
+          children: [
+            Text(text,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            if (onSeeAll != null)
+              TextButton(
+                onPressed: onSeeAll,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white54,
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Tout afficher',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+          ],
+        ),
       );
+
+  List<DesktopSeeAllItem> _trackItems(
+      BuildContext context, List<Track> tracks) {
+    final state = context.read<AppState>();
+    return [
+      for (final t in tracks)
+        DesktopSeeAllItem(
+          title: t.title,
+          subtitle: t.artist,
+          coverPath: t.coverPath,
+          onTap: () => state.playTrack(t, trackList: tracks),
+        ),
+    ];
+  }
+
+  List<DesktopSeeAllItem> _albumItems(List<Album> albums) => [
+        for (final a in albums)
+          DesktopSeeAllItem(
+            title: a.title,
+            subtitle: a.artist,
+            coverPath: a.coverPath,
+            onTap: () => onOpenAlbum(a),
+          ),
+      ];
+
+  List<DesktopSeeAllItem> _artistItems(
+          List<(String artist, String? coverPath)> picks) =>
+      [
+        for (final (artist, coverPath) in picks)
+          DesktopSeeAllItem(
+            title: artist,
+            coverPath: coverPath,
+            circle: true,
+            onTap: () => onOpenArtist(artist),
+          ),
+      ];
 
   Widget _emptyShelf(String text) => SizedBox(
         height: 60,
@@ -161,6 +244,10 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      // right: 24 -- sans ca la derniere colonne touchait pile le bord de
+      // la fenetre (SliverGridDelegateWithMaxCrossAxisExtent etire les
+      // tuiles pour remplir toute la largeur offerte), retour utilisateur.
+      padding: const EdgeInsets.only(right: 24),
       // maxCrossAxisExtent (et non un nombre de colonnes fixe) : la tuile ne
       // contient qu'une petite cover 48x48 + un titre sur une ligne, un
       // nombre de colonnes fixe l'etirait sur toute la largeur disponible
@@ -204,7 +291,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ShelfCover(coverPath: track.coverPath, size: 150),
+                    DesktopShelfCover(coverPath: track.coverPath, size: 150),
                     const SizedBox(height: 8),
                     Text(track.title,
                         maxLines: 1,
@@ -246,7 +333,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _ShelfCover(coverPath: album.coverPath, size: 150),
+                    DesktopShelfCover(coverPath: album.coverPath, size: 150),
                     const SizedBox(height: 8),
                     Text(album.title,
                         maxLines: 1,
@@ -291,10 +378,10 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
             child: DesktopHoverable(
               onTap: () => onOpenArtist(artist),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ClipOval(
-                    child: _ShelfCover(coverPath: coverPath, size: 96),
-                  ),
+                  ArtistAvatar(
+                      artistName: artist, fallbackCoverPath: coverPath, size: 96),
                   const SizedBox(height: 8),
                   Text(artist,
                       maxLines: 1,
@@ -322,37 +409,73 @@ class _RecentPlayTile extends StatelessWidget {
   final VoidCallback onTap;
   const _RecentPlayTile({required this.entry, required this.onTap});
 
+  bool _isPinned(AppState state) {
+    final type = switch (entry.type) {
+      RecentPlayType.album => PinnedItemType.album,
+      RecentPlayType.playlist => PinnedItemType.playlist,
+      RecentPlayType.artist => PinnedItemType.artist,
+      RecentPlayType.friend => null,
+    };
+    if (type == null) return false;
+    return state.isPinned(type, entry.id);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-          ),
-          child: Row(
-            children: [
-              _RecentPlayCover(entry: entry),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    entry.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600),
+    final pinned = _isPinned(context.watch<AppState>());
+    return DesktopHoverable(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+      child: Stack(
+        // expand : sans ca, ce Container (sans hauteur propre) se
+        // retrecirait a la taille de son contenu au lieu de remplir la
+        // cellule de la grille -- un Stack donne des contraintes "loose" a
+        // ses enfants non-Positioned par defaut.
+        fit: StackFit.expand,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+            ),
+            child: Row(
+              children: [
+                const SizedBox(width: 8),
+                _RecentPlayCover(entry: entry),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          if (pinned)
+            Positioned(
+              top: 4,
+              right: 4,
+              // Rotation -45deg puis miroir horizontal : la rotation seule
+              // pointait vers le sud-est, pas le sud-ouest voulu (retour
+              // utilisateur explicite).
+              child: Transform.flip(
+                flipX: true,
+                child: Transform.rotate(
+                  angle: -pi / 4,
+                  child: const Icon(Icons.push_pin,
+                      color: Color(0xFF1DB954), size: 14),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -372,16 +495,98 @@ class _RecentPlayCover extends StatelessWidget {
             : Icons.queue_music;
       case RecentPlayType.artist:
         return Icons.person;
+      case RecentPlayType.friend:
+        return Icons.person;
     }
   }
 
-  BorderRadius get _shape => entry.type == RecentPlayType.artist
-      ? const BorderRadius.all(Radius.circular(48))
-      : const BorderRadius.horizontal(
-          left: Radius.circular(DesktopGlass.radiusSm));
+  // Circulaire pour artiste/ami, sinon carre arrondi sur les 4 coins -- la
+  // cover n'est plus collee au bord gauche de la tuile (SizedBox de 8 dans
+  // _RecentPlayTile, retour utilisateur), donc plus de raison de ne garder
+  // que les coins de droite arrondis comme avant.
+  BorderRadius get _shape =>
+      entry.type == RecentPlayType.artist || entry.type == RecentPlayType.friend
+          ? const BorderRadius.all(Radius.circular(48))
+          : BorderRadius.circular(DesktopGlass.radiusSm);
 
   @override
   Widget build(BuildContext context) {
+    // Avatar d'ami : image reseau via AvatarService (username), pas une
+    // cover locale -- rendu different du reste (voir UserAvatar), d'ou ce
+    // cas a part plutot qu'un chemin de cover qui n'existe pas pour un ami.
+    if (entry.type == RecentPlayType.friend) {
+      return ClipRRect(
+        borderRadius: _shape,
+        child: UserAvatar(username: entry.id, size: 48),
+      );
+    }
+
+    // "Titres likes" : meme vert que le mini-player plutot que le meme gris
+    // neutre que tout le reste. Une vraie Playlist se rabat sur
+    // PlaylistCover (Playlist n'a pas de cover dediee cote Navidrome --
+    // collage a partir des covers de ses propres titres, comme Spotify).
+    // Meme fix que la home mobile (retour utilisateur).
+    if (entry.type == RecentPlayType.playlist) {
+      if (entry.id == kLikedSongsRecentId) {
+        return Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+              color: const Color(0xFF1DB954), borderRadius: _shape),
+          child: const Icon(Icons.favorite, color: Colors.white, size: 20),
+        );
+      }
+      final playlist = context
+          .read<AppState>()
+          .playlists
+          .cast<Playlist?>()
+          .firstWhere((p) => p?.id == entry.id, orElse: () => null);
+      if (playlist != null) {
+        return PlaylistCover(playlist: playlist, size: 48, borderRadius: _shape);
+      }
+    }
+
+    // Vraie photo d'artiste -- necessaire pour une tuile epinglee (pas de
+    // coverPath, voir PinnedItem), et strictement meilleur pour une entree
+    // "recemment ecoute" classique aussi.
+    if (entry.type == RecentPlayType.artist) {
+      return ClipRRect(
+        borderRadius: _shape,
+        child: ArtistAvatar(
+          artistName: entry.id,
+          fallbackCoverPath: entry.coverPath,
+          size: 48,
+        ),
+      );
+    }
+
+    // Album : resout la cover REELLE depuis la bibliotheque par id plutot
+    // que de se fier au coverPath stocke dans l'entree -- une tuile
+    // epinglee n'en a pas du tout.
+    if (entry.type == RecentPlayType.album) {
+      final album = context
+          .read<AppState>()
+          .albums
+          .cast<Album?>()
+          .firstWhere((a) => a?.id == entry.id, orElse: () => null);
+      if (album?.coverPath != null &&
+          context.read<AppState>().coverExists(album!.coverPath)) {
+        return Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: _shape,
+            image: DecorationImage(
+              image: coverImageProvider(context,
+                  path: album.coverPath!, width: 48, height: 48),
+              fit: BoxFit.cover,
+              onError: (_, __) {},
+            ),
+          ),
+        );
+      }
+    }
+
     final path = entry.coverPath;
     final exists = context.read<AppState>().coverExists(path);
     return Container(
@@ -405,10 +610,12 @@ class _RecentPlayCover extends StatelessWidget {
   }
 }
 
-class _ShelfCover extends StatelessWidget {
+/// Cover carree utilisee par les etageres de l'accueil -- publique pour etre
+/// reutilisee par DesktopSeeAllView (grille "Tout afficher").
+class DesktopShelfCover extends StatelessWidget {
   final String? coverPath;
   final double size;
-  const _ShelfCover({required this.coverPath, required this.size});
+  const DesktopShelfCover({super.key, required this.coverPath, required this.size});
 
   @override
   Widget build(BuildContext context) {

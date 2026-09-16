@@ -11,7 +11,18 @@ import 'glass.dart';
 /// bordure (main.dart, TitleBarStyle.hidden), donc sans ca il n'y aurait
 /// plus aucun moyen de deplacer/reduire/fermer la fenetre.
 class DesktopTitleBar extends StatefulWidget {
-  const DesktopTitleBar({super.key});
+  final bool canGoBack;
+  final bool canGoForward;
+  final VoidCallback onGoBack;
+  final VoidCallback onGoForward;
+
+  const DesktopTitleBar({
+    super.key,
+    required this.canGoBack,
+    required this.canGoForward,
+    required this.onGoBack,
+    required this.onGoForward,
+  });
 
   @override
   State<DesktopTitleBar> createState() => _DesktopTitleBarState();
@@ -47,6 +58,20 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
       height: DesktopGlass.titleBarHeight,
       child: Row(
         children: [
+          // Navigation avant/arriere façon navigateur, remplace le bouton
+          // retour qui prenait sa propre ligne en haut de chaque page
+          // poussee (album/artiste/playlist...) -- retour utilisateur.
+          // Grises (onPressed null) quand inutilisables plutot que masques :
+          // occuper toujours la meme largeur evite que le reste de la barre
+          // ne saute d'un cote a l'autre au fil de la navigation.
+          _TitleBarButton(
+            icon: Icons.arrow_back_rounded,
+            onPressed: widget.canGoBack ? widget.onGoBack : null,
+          ),
+          _TitleBarButton(
+            icon: Icons.arrow_forward_rounded,
+            onPressed: widget.canGoForward ? widget.onGoForward : null,
+          ),
           // Plus de logo/texte ici : personne ne les lisait, et l'espace
           // sert desormais entierement de zone de glisser-deposer pour
           // deplacer la fenetre (double-tap = maximiser/restaurer), laissee
@@ -105,7 +130,11 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
 
 class _TitleBarButton extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  // Nullable : un bouton grise (navigation avant/arriere indisponible)
+  // occupe toujours sa place plutot que de disparaitre -- InkWell.onTap nul
+  // desactive deja proprement le tap/hover/splash, pas besoin de gerer ca a
+  // la main.
+  final VoidCallback? onPressed;
   final Color? hoverColor;
   final Color? color;
   final double iconSize;
@@ -120,6 +149,7 @@ class _TitleBarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onPressed == null;
     return SizedBox(
       width: 46,
       height: DesktopGlass.titleBarHeight,
@@ -128,7 +158,9 @@ class _TitleBarButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           hoverColor: hoverColor ?? Colors.white.withOpacity(0.08),
-          child: Icon(icon, size: iconSize, color: color ?? Colors.white70),
+          child: Icon(icon,
+              size: iconSize,
+              color: disabled ? Colors.white24 : (color ?? Colors.white70)),
         ),
       ),
     );

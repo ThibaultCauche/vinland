@@ -7,6 +7,14 @@ void main() {
       expect(MatchingService.normalize('Café Del Mar'),
           MatchingService.normalize('Cafe Del Mar'));
     });
+
+    test('garde les lettres non-latines (pas de \\w ASCII-only)', () {
+      // Bug reel : \w en Dart ne reconnait que [A-Za-z0-9_], donc un nom
+      // 100% non-ASCII comme "美波" finissait entierement efface -> chaine
+      // vide -> matchait n'importe quel artiste ailleurs (voir
+      // artistFieldContains ci-dessous).
+      expect(MatchingService.normalize('美波'), '美波');
+    });
   });
 
   group('titlesMatch', () {
@@ -59,6 +67,15 @@ void main() {
       expect(loose, isTrue);
       expect(strict, isFalse);
     });
+
+    test(
+        'un mot court et courant partage ne suffit pas a confondre deux '
+        'artistes differents (bug reel : la page de "Jace June" recuperait '
+        'les titres de "June" et "Cloudy June")', () {
+      expect(MatchingService.artistsMatch('Jace June', 'June'), isFalse);
+      expect(MatchingService.artistsMatch('Jace June', 'Cloudy June'), isFalse);
+      expect(MatchingService.artistsMatch('Jace June', 'Jace June'), isTrue);
+    });
   });
 
   group('albumsMatch', () {
@@ -68,6 +85,14 @@ void main() {
             'Arcane Season 2 (Original Soundtrack)', 'Arcane Season 2'),
         isTrue,
       );
+    });
+
+    test(
+        'deux titres courts au prefixe generique commun ne matchent pas '
+        '(faux positif observe : "The Crux" vs "The Call")', () {
+      expect(MatchingService.albumsMatch('The Crux', 'The Call'), isFalse);
+      expect(MatchingService.albumsMatch('The Crux', 'The Code'), isFalse);
+      expect(MatchingService.albumsMatch('The Crux', 'the cure'), isFalse);
     });
   });
 
@@ -82,6 +107,24 @@ void main() {
     test('renvoie faux pour un champ vide ou nul', () {
       expect(MatchingService.artistFieldContains(null, 'Queen'), isFalse);
       expect(MatchingService.artistFieldContains('', 'Queen'), isFalse);
+    });
+
+    test(
+        'un artiste au nom non-latin ne matche pas tout le monde '
+        '(bug reel : la page artiste de "美波" listait des albums de Djo, '
+        'Orelsan, Twenty One Pilots...)', () {
+      expect(MatchingService.artistFieldContains('Djo', '美波'), isFalse);
+      expect(MatchingService.artistFieldContains('Orelsan', '美波'), isFalse);
+      expect(MatchingService.artistFieldContains('美波', '美波'), isTrue);
+    });
+
+    test(
+        'un mot court partage ne suffit pas (memes deux sens : champ court '
+        'dans recherche longue, et recherche courte dans champ long)', () {
+      expect(MatchingService.artistFieldContains('June', 'Jace June'), isFalse);
+      expect(MatchingService.artistFieldContains('Cloudy June', 'Jace June'),
+          isFalse);
+      expect(MatchingService.artistFieldContains('Jace June', 'June'), isFalse);
     });
   });
 }

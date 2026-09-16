@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../services/matching_service.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 
 class StreamingMatchScreen extends StatefulWidget {
   final List<Map<String, String>> tracks;
@@ -269,6 +270,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -288,64 +292,68 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         ],
       ),
       body: PlatformBackground(
-        child: _isLoading
-            ? const Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+        child: Padding(
+          padding: EdgeInsets.only(top: appBarSafeTopPadding(context)),
+          child: _isLoading
+              ? const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF1DB954)),
+                      SizedBox(height: 16),
+                      Text('Recherche des correspondances...',
+                          style: TextStyle(color: Colors.white54)),
+                    ],
+                  ),
+                )
+              : Column(
                   children: [
-                    CircularProgressIndicator(color: Color(0xFF1DB954)),
-                    SizedBox(height: 16),
-                    Text('Recherche des correspondances...',
-                        style: TextStyle(color: Colors.white54)),
+                    // ── DEBUG INFO ──
+                    if (_debugInfo != null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E1E1E),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _debugInfo!,
+                          style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 11,
+                              fontFamily: 'monospace'),
+                        ),
+                      ),
+                    _buildSummary(matched.length, unmatched.length,
+                        alreadyLiked, duplicates.length),
+                    _buildFilterBar(
+                        matched.length, unmatched.length, duplicates.length),
+                    Expanded(
+                      child: _filteredMatches.isEmpty
+                          ? Center(
+                              child: Text(
+                                _showMissingOnly
+                                    ? 'Aucun titre manquant'
+                                    : _showDuplicatesOnly
+                                        ? 'Aucun doublon'
+                                        : 'Aucune correspondance',
+                                style: const TextStyle(color: Colors.white38),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: _filteredMatches.length,
+                              itemBuilder: (context, index) => _buildMatchTile(
+                                  _filteredMatches[index],
+                                  duplicateIds.contains(_filteredMatches[index]
+                                      .matchedTrack
+                                      ?.id)),
+                            ),
+                    ),
                   ],
                 ),
-              )
-            : Column(
-                children: [
-                  // ── DEBUG INFO ──
-                  if (_debugInfo != null)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E1E1E),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _debugInfo!,
-                        style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 11,
-                            fontFamily: 'monospace'),
-                      ),
-                    ),
-                  _buildSummary(matched.length, unmatched.length, alreadyLiked,
-                      duplicates.length),
-                  _buildFilterBar(
-                      matched.length, unmatched.length, duplicates.length),
-                  Expanded(
-                    child: _filteredMatches.isEmpty
-                        ? Center(
-                            child: Text(
-                              _showMissingOnly
-                                  ? 'Aucun titre manquant'
-                                  : _showDuplicatesOnly
-                                      ? 'Aucun doublon'
-                                      : 'Aucune correspondance',
-                              style: const TextStyle(color: Colors.white38),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: _filteredMatches.length,
-                            itemBuilder: (context, index) => _buildMatchTile(
-                                _filteredMatches[index],
-                                duplicateIds.contains(
-                                    _filteredMatches[index].matchedTrack?.id)),
-                          ),
-                  ),
-                ],
-              ),
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/streaming_import_service.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 import 'streaming_match_screen.dart';
 
 class StreamingImportScreen extends StatefulWidget {
@@ -20,6 +21,9 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -29,7 +33,8 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
       ),
       body: PlatformBackground(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+              16, appBarSafeTopPadding(context) + 16, 16, 16),
           children: [
             _buildSectionTitle('1. Plateformes supportees'),
             const SizedBox(height: 8),
@@ -356,6 +361,11 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page). Pas besoin
+      // de compenser le contenu ici (Center le recentre deja sur tout
+      // l'ecran, sous une AppBar fine et transparente).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -7,8 +7,12 @@ import '../models/discovered_track.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
+import '../services/local_track_matcher.dart';
+import '../widgets/artist_avatar.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/player/player_options_sheet.dart';
 import 'artist_screen.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 enum _DownloadUiState { downloading, failed }
 
@@ -140,50 +144,11 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
     return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
   }
 
-  /// Trouve la track locale correspondante à une track Deezer
-  Track? _findLocalTrack(DiscoveredTrack dt) {
-    final state = context.read<AppState>();
-    final localTracks = state.allTracks;
-
-    String norm(String s) => s
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^\w\s]'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    // Un champ vide (tag manquant sur le fichier local) ne doit jamais
-    // "matcher" via contains('') -- en Dart toute chaine contient la chaine
-    // vide, ce qui ferait correspondre n'importe quel morceau mal tague a
-    // n'importe quelle recherche.
-    bool looseMatch(String a, String b) {
-      if (a.isEmpty || b.isEmpty) return a == b;
-      return a == b || a.contains(b) || b.contains(a);
-    }
-
-    final dtArtist = norm(dt.artistName);
-    final dtTitle = norm(dt.title);
-    // "Inconnu" est un texte d'affichage (album Deezer manquant pour ce
-    // titre), pas un vrai nom d'album -- le comparer bloquerait tout match
-    // legitime.
-    final dtAlbum = dt.albumName == 'Inconnu' ? null : norm(dt.albumName);
-
-    for (final lt in localTracks) {
-      final artistMatch = looseMatch(norm(lt.artist), dtArtist);
-      // Egalite stricte pour le titre (pas looseMatch/contains) : "Around
-      // the World" est un prefixe litteral de "Around the World (Radio
-      // Edit)" une fois normalise, alors que ce sont des enregistrements
-      // differents -- possede l'un ne veut pas dire que l'autre est lisible.
-      // DiscoveryService.isInLibrary a deja fait un match plus fin (voir
-      // discovery_service.dart) avant que ce bouton soit meme cliquable.
-      final titleMatch = norm(lt.title) == dtTitle;
-      final albumMatch = dtAlbum == null || looseMatch(norm(lt.album), dtAlbum);
-
-      if (artistMatch && titleMatch && albumMatch) {
-        return lt;
-      }
-    }
-    return null;
-  }
+  /// Trouve la track locale correspondante à une track Deezer -- voir
+  /// findLocalTrackMatch (partagee avec DesktopDiscoveredAlbumView cote
+  /// desktop) pour la logique de matching.
+  Track? _findLocalTrack(DiscoveredTrack dt) =>
+      findLocalTrackMatch(dt, context.read<AppState>().allTracks);
 
   @override
   Widget build(BuildContext context) {
@@ -205,6 +170,27 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
             .where((t) => _artistContains(t.artistName, widget.filterArtist!))
             .toList()
         : _tracks;
+
+    // album.artistName vient du champ "artist" de l'ALBUM cote Deezer, qui
+    // est "Inconnu" pour certaines sorties (compilations, singles mal
+    // catalogues...) meme quand les TITRES individuels ont, eux, un artiste
+    // correctement renseigne -- repli sur le premier titre qui en a un
+    // plutot que d'afficher "Inconnu" alors que l'info existe ailleurs.
+    // Meme fix que DesktopDiscoveredAlbumView (retour utilisateur).
+    final resolvedArtistName = album.artistName != 'Inconnu'
+        ? album.artistName
+        : _tracks
+            .map((t) => t.artistName)
+            .firstWhere((a) => a != 'Inconnu', orElse: () => album.artistName);
+
+    // Calcule chaque match une seule fois (findLocalTrackMatch scanne toute
+    // la bibliotheque locale par titre) au lieu de le refaire separement
+    // pour le bouton "Telecharger" puis pour chaque ligne plus bas.
+    final localMatches = {
+      for (final dt in displayTracks) dt.id: _findLocalTrack(dt)
+    };
+    final missingTracks =
+        displayTracks.where((dt) => localMatches[dt.id] == null).toList();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -269,28 +255,23 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
                   GestureDetector(
                     onTap: () {
                       state.pushOverlay(
-                        ArtistScreen(artistName: album.artistName),
+                        ArtistScreen(artistName: resolvedArtistName),
                       );
                     },
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: 12,
-                          backgroundColor: const Color(0xFF3E3E3E),
-                          backgroundImage: album.coverUrl != null
-                              ? coverImageProvider(context,
-                                  path: album.coverUrl!, width: 24, height: 24)
-                              : null,
-                          onBackgroundImageError:
-                              album.coverUrl != null ? (_, __) {} : null,
-                          child: album.coverUrl == null
-                              ? const Icon(Icons.person,
-                                  color: Colors.white54, size: 12)
-                              : null,
+                        // Vraie photo d'artiste (pas la cover de CET album) --
+                        // meme widget que AlbumScreen/l'etagere "Artistes du
+                        // moment", meme fix que DesktopDiscoveredAlbumView
+                        // (retour utilisateur).
+                        ArtistAvatar(
+                          artistName: resolvedArtistName,
+                          fallbackCoverPath: album.coverUrl,
+                          size: 24,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          album.artistName,
+                          resolvedArtistName,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
@@ -305,6 +286,24 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
                     'Album • ${displayTracks.length} titres',
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
+                  if (missingTracks.isNotEmpty &&
+                      _downloadWorker.isConfigured) ...[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        for (final dt in missingTracks) {
+                          _downloadTrack(dt);
+                        }
+                      },
+                      icon: const Icon(Icons.download_rounded, size: 18),
+                      label: Text(
+                          'Telecharger (${missingTracks.length} titre${missingTracks.length > 1 ? 's' : ''})'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white38),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -313,26 +312,27 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, index) => _DiscoveredTrackTile(
-                  index: index,
-                  track: displayTracks[index],
-                  downloadState: _downloadStates[displayTracks[index].id],
-                  showDownloadButton: _downloadWorker.isConfigured,
-                  onTap: () {
-                    if (displayTracks[index].isInLibrary) {
-                      final localTrack = _findLocalTrack(displayTracks[index]);
-                      if (localTrack != null) {
-                        state.playTrack(localTrack);
-                      }
-                    }
-                  },
-                  onDownloadTap: () => _downloadTrack(displayTracks[index]),
-                ),
+                (context, index) {
+                  final track = displayTracks[index];
+                  final localTrack = localMatches[track.id];
+                  return _DiscoveredTrackTile(
+                    index: index,
+                    track: track,
+                    localTrack: localTrack,
+                    downloadState: _downloadStates[track.id],
+                    showDownloadButton: _downloadWorker.isConfigured,
+                    onTap: () {
+                      if (localTrack != null) state.playTrack(localTrack);
+                    },
+                    onDownloadTap: () => _downloadTrack(track),
+                  );
+                },
                 childCount: displayTracks.length,
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 220)),
+          SliverToBoxAdapter(
+              child: SizedBox(height: bottomBarReserve(context))),
         ],
       ),
     );
@@ -342,6 +342,15 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
 class _DiscoveredTrackTile extends StatelessWidget {
   final int index;
   final DiscoveredTrack track;
+  // Titre local resolu (voir _findLocalTrack) : non-null exactement quand
+  // le titre est reellement lisible/likable/"..."-able. Remplace
+  // track.isInLibrary (un matching separe, plus permissif -- pouvait dire
+  // "disponible" pour un titre qu'aucune tracklist locale ne retrouvait
+  // vraiment, ex: "Instant Crush (Drumless Edition)" affiche en blanc/
+  // cliquable sans qu'aucune version drumless soit sur le NAS) comme signal
+  // pour tout le style/l'etat de cette ligne, meme logique que
+  // DesktopDiscoveredAlbumView._DiscoveredTrackRow.
+  final Track? localTrack;
   final VoidCallback onTap;
   final _DownloadUiState? downloadState;
   final bool showDownloadButton;
@@ -350,6 +359,7 @@ class _DiscoveredTrackTile extends StatelessWidget {
   const _DiscoveredTrackTile({
     required this.index,
     required this.track,
+    required this.localTrack,
     required this.onTap,
     required this.downloadState,
     required this.showDownloadButton,
@@ -358,8 +368,9 @@ class _DiscoveredTrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAvailable = localTrack != null;
     return InkWell(
-      onTap: track.isInLibrary ? onTap : null,
+      onTap: isAvailable ? onTap : null,
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -370,7 +381,7 @@ class _DiscoveredTrackTile extends StatelessWidget {
               child: Text(
                 '${index + 1}',
                 style: TextStyle(
-                  color: track.isInLibrary ? Colors.white54 : Colors.white38,
+                  color: isAvailable ? Colors.white54 : Colors.white38,
                   fontSize: 14,
                 ),
                 textAlign: TextAlign.center,
@@ -384,7 +395,7 @@ class _DiscoveredTrackTile extends StatelessWidget {
                   Text(
                     track.title,
                     style: TextStyle(
-                      color: track.isInLibrary ? Colors.white : Colors.white38,
+                      color: isAvailable ? Colors.white : Colors.white38,
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
                       letterSpacing: -0.3,
@@ -394,10 +405,12 @@ class _DiscoveredTrackTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    track.artistName,
+                    // Le vrai tag local quand on l'a (fiable), pas le champ
+                    // Deezer (peut etre "Inconnu" pour ce titre precis meme
+                    // quand le titre est bien identifie/lisible).
+                    localTrack?.artist ?? track.artistName,
                     style: TextStyle(
-                      color:
-                          track.isInLibrary ? Colors.white54 : Colors.white24,
+                      color: isAvailable ? Colors.white54 : Colors.white24,
                       fontSize: 12,
                     ),
                     maxLines: 1,
@@ -406,13 +419,26 @@ class _DiscoveredTrackTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (track.isInLibrary)
-              const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: Icon(Icons.check_circle,
-                    color: Color(0xFF1DB954), size: 16),
-              )
-            else if (downloadState == _DownloadUiState.downloading)
+            if (isAvailable) ...[
+              IconButton(
+                icon: Icon(
+                  localTrack!.isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: localTrack!.isLiked
+                      ? const Color(0xFF1DB954)
+                      : Colors.white54,
+                  size: 18,
+                ),
+                onPressed: () =>
+                    context.read<AppState>().toggleLike(localTrack!.id),
+                splashRadius: 18,
+              ),
+              IconButton(
+                icon: const Icon(Icons.more_vert,
+                    color: Colors.white54, size: 18),
+                onPressed: () => showPlayerOptions(context, localTrack!),
+                splashRadius: 18,
+              ),
+            ] else if (downloadState == _DownloadUiState.downloading)
               const SizedBox(
                 width: 16,
                 height: 16,

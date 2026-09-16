@@ -8,6 +8,7 @@ import '../models/collab_playlist.dart';
 import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/download_button.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 /// Vue fusionnee d'une playlist collaborative (voir MusicService.
 /// fetchCollabPlaylist) : contrairement a PlaylistScreen, le contenu affiche
@@ -185,7 +186,8 @@ class _CollabPlaylistScreenState extends State<CollabPlaylistScreen> {
                                   style: TextStyle(color: Colors.white38)),
                             )
                           : ListView.builder(
-                              padding: const EdgeInsets.only(bottom: 100),
+                              padding: EdgeInsets.only(
+                                  bottom: bottomBarReserve(context)),
                               itemCount: tracks.length,
                               itemBuilder: (context, i) {
                                 final track = tracks[i];

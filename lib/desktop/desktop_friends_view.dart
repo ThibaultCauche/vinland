@@ -235,10 +235,14 @@ class _FriendCard extends StatelessWidget {
           '${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}');
     }
 
-    return Selector<AppState, Track?>(
-      selector: (_, state) => _findNowPlaying(state),
-      builder: (context, nowPlayingTrack, __) {
+    return Selector<AppState, (Track?, bool, String?)>(
+      selector: (_, state) =>
+          (_findNowPlaying(state), state.isJamActive, state.jamSessionId),
+      builder: (context, data, __) {
+        final (nowPlayingTrack, isJamActive, currentJamSessionId) = data;
         final inJam = friend.jamSessionId != null;
+        final alreadyInThisJam =
+            inJam && isJamActive && currentJamSessionId == friend.jamSessionId;
         return DesktopHoverable(
           onTap: onTap,
           borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
@@ -277,15 +281,54 @@ class _FriendCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (inJam)
+                if (alreadyInThisJam)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.groups, color: Colors.white38, size: 16),
+                        SizedBox(width: 6),
+                        Text('En cours',
+                            style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )
+                else if (inJam)
                   Material(
                     color: DesktopGlass.accent,
                     borderRadius: BorderRadius.circular(16),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(16),
-                      onTap: () => context
-                          .read<AppState>()
-                          .joinJamSession(friend.jamSessionId!),
+                      // Le curseur main par defaut d'InkWell ne se
+                      // declenchait pas de maniere fiable ici (meme fix que
+                      // DesktopHoverable, voir plus haut dans ce fichier) :
+                      // on le force explicitement plutot que de compter sur
+                      // MaterialStateMouseCursor.
+                      mouseCursor: SystemMouseCursors.click,
+                      hoverColor: Colors.white.withOpacity(0.18),
+                      splashColor: Colors.white.withOpacity(0.12),
+                      onTap: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final ok = await context
+                            .read<AppState>()
+                            .joinJamSession(friend.jamSessionId!);
+                        if (!ok) {
+                          messenger.showSnackBar(SnackBar(
+                            content: Text(
+                                '${friend.username} n\'écoute plus -- session introuvable'),
+                            backgroundColor: Colors.red,
+                          ));
+                        }
+                      },
                       child: const Padding(
                         padding:
                             EdgeInsets.symmetric(horizontal: 14, vertical: 8),

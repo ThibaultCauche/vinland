@@ -1,4 +1,4 @@
-enum RecentPlayType { album, playlist, artist }
+enum RecentPlayType { album, playlist, artist, friend }
 
 /// Id virtuel utilise pour representer la collection "Titres likes" en tant
 /// que playlist dans la section "Recemment ecoute" (elle n'a pas d'id reel).

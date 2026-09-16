@@ -52,10 +52,20 @@ class MatchingService {
 
   /// Normalise pour comparaison : minuscule, sans accents, sans ponctuation,
   /// espaces uniques.
+  ///
+  /// `\w` (utilise avant) ne reconnait que [A-Za-z0-9_] en Dart, meme avec
+  /// une regex "unicode" -- un nom comme "美波" (aucun caractere ASCII)
+  /// finissait donc entierement remplace par des espaces puis vide apres
+  /// trim(). Une chaine normalisee vide fait ensuite matcher N'IMPORTE QUEL
+  /// artiste/titre dans artistFieldContains (`f.contains('')` vaut toujours
+  /// true), d'ou des albums d'artistes sans rapport affiches sur la page
+  /// d'un artiste au nom non-latin. `\p{L}`/`\p{N}` (proprietes Unicode,
+  /// necessitent `unicode: true`) reconnaissent les lettres/chiffres de
+  /// n'importe quelle langue, donc "美波" reste "美波" au lieu de "".
   static String normalize(String text) {
     if (text.isEmpty) return '';
     var t = removeDiacritics(text.toLowerCase());
-    t = t.replaceAll(RegExp(r'[^\w\s]'), ' ');
+    t = t.replaceAll(RegExp(r'[^\p{L}\p{N}_\s]', unicode: true), ' ');
     t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
     return t;
   }
@@ -268,7 +278,13 @@ class MatchingService {
     if (coreA == coreB) return true;
     if (coreA.contains(coreB) || coreB.contains(coreA)) return true;
 
-    return similarity(a, b) > 0.50;
+    // coreA/coreB (pas a/b) : deux titres courts commencant tous les deux
+    // par un mot generique ("The Crux" / "The Call") restaient similaires a
+    // plus de 50% sur les chaines completes rien qu'a cause du prefixe
+    // partage, ce qui fusionnait des singles sans rapport dans le mauvais
+    // album (retour utilisateur). Comparer les titres deja debarrasses de
+    // ces mots generiques evite ce faux positif.
+    return similarity(coreA, coreB) > 0.50;
   }
 
   /// Deux champs artiste designent-ils le meme artiste principal ?
@@ -281,21 +297,39 @@ class MatchingService {
     final b = coreArtist(rawB);
     if (a.isEmpty || b.isEmpty) return false;
     if (a == b) return true;
-    if (a.contains(b) || b.contains(a)) {
-      final minLen = a.length < b.length ? a.length : b.length;
-      if (minLen >= 2) return true;
-    }
+
+    // minLen >= 2 laissait passer un artiste "June" des qu'il apparaissait
+    // comme sous-chaine de n'importe quel autre nom ("Jace June", "Cloudy
+    // June"...) -- un mot court et courant ne prouve rien a lui seul. On
+    // n'accepte la simple inclusion que si le nom inclus est assez long
+    // pour ne pas etre juste un mot generique partage (retour utilisateur :
+    // page artiste "Jace June" recuperant les titres de "June"). Le cas
+    // legitime ("Daft Punk" dans le champ multi-artiste "Daft Punk/Pharrell
+    // Williams") reste couvert, "Daft Punk" etant bien plus long que 6.
+    final shorter = a.length < b.length ? a : b;
+    final longer = a.length < b.length ? b : a;
+    if (longer.contains(shorter) && shorter.length >= 6) return true;
 
     final minWordLen = strict ? 1 : 2;
     final aWords = a.split(' ').where((w) => w.length > minWordLen).toSet();
     final bWords = b.split(' ').where((w) => w.length > minWordLen).toSet();
-    if (aWords.isEmpty || bWords.isEmpty) return false;
+    // Recouvrement de mots seulement si les deux noms en ont reellement
+    // plusieurs -- sinon un artiste au nom d'un seul mot ("June") atteint
+    // toujours 100% de recouvrement avec lui-meme des qu'il apparait dans
+    // l'autre nom, meme si le reste du nom ("Jace"/"Cloudy") n'a rien a voir.
+    if (aWords.length < 2 || bWords.length < 2) return false;
     final common = aWords.intersection(bWords);
+    // >= 2 mots communs obligatoire (pas juste une alternative en mode non
+    // strict comme avant) : "Cloudy June" et "Jace June" ont chacun 2 mots
+    // et un seul en commun ("june"), ce qui atteignait deja 50% du plus
+    // court -- un seul mot partage, aussi frequent que "June", ne suffit
+    // pas a conclure que c'est le meme artiste. Un vrai doublon ("arctic
+    // monkeys tour" / "arctic monkeys revival") partage lui au moins 2 mots.
+    if (common.length < 2) return false;
 
     final threshold = strict ? 0.7 : 0.5;
     return common.length >= aWords.length * threshold ||
-        common.length >= bWords.length * threshold ||
-        (!strict && common.length >= 2);
+        common.length >= bWords.length * threshold;
   }
 
   /// Le champ artiste brut d'une piste NAS (ex: "Daft Punk/Pharrell
@@ -307,8 +341,17 @@ class MatchingService {
     }
     final s = normalize(search);
     final f = normalize(artistField);
+    // s vide (ex: nom compose uniquement de symboles) : f.contains('') vaut
+    // toujours true en Dart, ce qui matcherait n'importe quel artiste --
+    // voir le commentaire de normalize() pour le cas qui declenchait ca.
+    if (s.isEmpty) return false;
     if (f == s) return true;
-    if (f.contains(s)) return true;
+    // s.length >= 6 : meme garde-fou que le contains-shortcut d'artistsMatch
+    // -- un terme cherche court ("June") ne doit pas matcher des qu'il
+    // apparait comme simple sous-chaine d'un champ plus long ("Jace June"),
+    // seul un vrai nom "en entier" dans le champ (ex: "David Bowie" dans
+    // "Queen/David Bowie") est un signal fiable.
+    if (s.length >= 6 && f.contains(s)) return true;
     if (f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s)) return true;
     return artistsMatch(artistField, search);
   }

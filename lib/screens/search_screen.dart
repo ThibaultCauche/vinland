@@ -13,6 +13,7 @@ import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import '../screens/discovered_album_screen.dart';
 import '../models/album.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -248,7 +249,8 @@ class _SearchScreenState extends State<SearchScreen>
             ] else if (_history.isNotEmpty) ...[
               Expanded(
                 child: ListView.builder(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: EdgeInsets.only(
+                      top: 8, bottom: bottomBarReserve(context)),
                   itemCount: _history.length + 1,
                   itemBuilder: (context, index) {
                     if (index == 0) {
@@ -341,7 +343,7 @@ class _SearchScreenState extends State<SearchScreen>
     }
     final state = context.read<AppState>();
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
+      padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
       itemCount: _localTracks.length,
       itemBuilder: (context, i) {
         final track = _localTracks[i];
@@ -405,7 +407,7 @@ class _SearchScreenState extends State<SearchScreen>
       );
     }
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
+      padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
       itemCount: _artists.length,
       itemBuilder: (context, i) {
         final artist = _artists[i];
@@ -458,7 +460,7 @@ class _SearchScreenState extends State<SearchScreen>
       );
     }
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, bottomBarReserve(context)),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         childAspectRatio: 0.75,

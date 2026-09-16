@@ -4,6 +4,7 @@ import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../services/download_worker_service.dart';
 import '../widgets/track_tile.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 class MissingTracksScreen extends StatefulWidget {
   const MissingTracksScreen({super.key});
@@ -19,7 +20,8 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Association manuelle : le fichier est deja sur le NAS (cas typique --
@@ -35,8 +37,9 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
       builder: (_) => _TrackPickerSheet(
         title: 'Associer "$initialQuery" a...',
         initialQuery: initialQuery,
-        search: (query) =>
-            query.trim().isEmpty ? const [] : state.musicService.searchTracks(query),
+        search: (query) => query.trim().isEmpty
+            ? const []
+            : state.musicService.searchTracks(query),
       ),
     );
     if (picked == null) return;
@@ -120,8 +123,8 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title:
-            const Text('Est-ce le bon titre ?', style: TextStyle(color: Colors.white)),
+        title: const Text('Est-ce le bon titre ?',
+            style: TextStyle(color: Colors.white)),
         content: Text(
           '${candidate.title}\n${candidate.artist} • ${candidate.album}',
           style: const TextStyle(color: Colors.white70),
@@ -178,10 +181,8 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
                   ),
                 )
               : ListView.builder(
-                  // bottom: 160 (~2 tuiles de cette liste) au lieu du 16
-                  // uniforme -- sinon le dernier titre finit sous le
-                  // mini-player + la barre de nav du bas.
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
+                  padding: EdgeInsets.fromLTRB(
+                      16, 16, 16, bottomBarReserve(context)),
                   itemCount: missing.length,
                   itemBuilder: (context, index) {
                     final track = missing[index];

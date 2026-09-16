@@ -5,6 +5,7 @@ import '../models/friend_profile.dart';
 import '../models/track.dart';
 import '../services/share_inbox_service.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/bottom_bar_reserve.dart';
 import 'friend_profile_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
@@ -50,12 +51,12 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       color: const Color(0xFF1DB954),
                       onRefresh: () => state.loadFriends(),
                       child: ListView(
-                        padding: const EdgeInsets.only(top: 8, bottom: 100),
+                        padding: EdgeInsets.only(
+                            top: 8, bottom: bottomBarReserve(context)),
                         children: [
                           if (state.pendingShares.isNotEmpty) ...[
                             const Padding(
-                              padding:
-                                  EdgeInsets.fromLTRB(16, 8, 16, 4),
+                              padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
                               child: Text('Partages recus',
                                   style: TextStyle(
                                       color: Colors.white54,
@@ -145,7 +146,8 @@ class _ReceivedShareTile extends StatelessWidget {
         child: Icon(_icon, color: Colors.white70, size: 20),
       ),
       title: Text(share.title,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+          style:
+              const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
           maxLines: 1,
           overflow: TextOverflow.ellipsis),
       subtitle: Text(
@@ -158,7 +160,8 @@ class _ReceivedShareTile extends StatelessWidget {
       ),
       onTap: () async {
         final state = context.read<AppState>();
-        final ok = await state.openSharedItem(type: share.type, id: share.itemId);
+        final ok =
+            await state.openSharedItem(type: share.type, id: share.itemId);
         if (ok) await state.dismissShare(share);
       },
       trailing: IconButton(
@@ -194,10 +197,14 @@ class _FriendTile extends StatelessWidget {
       return null;
     }
 
-    return Selector<AppState, Track?>(
-      selector: (_, state) => findNowPlaying(state),
-      builder: (context, nowPlayingTrack, __) {
+    return Selector<AppState, (Track?, bool, String?)>(
+      selector: (_, state) =>
+          (findNowPlaying(state), state.isJamActive, state.jamSessionId),
+      builder: (context, data, __) {
+        final (nowPlayingTrack, isJamActive, currentJamSessionId) = data;
         final inJam = friend.jamSessionId != null;
+        final alreadyInThisJam =
+            inJam && isJamActive && currentJamSessionId == friend.jamSessionId;
         return ListTile(
           onTap: onTap,
           leading: UserAvatar(username: friend.username, size: 44),
@@ -218,18 +225,47 @@ class _FriendTile extends StatelessWidget {
                       : parts.join(' · '),
                   style: const TextStyle(color: Colors.white54, fontSize: 13),
                 ),
-          trailing: inJam
-              ? TextButton.icon(
-                  onPressed: () => context
-                      .read<AppState>()
-                      .joinJamSession(friend.jamSessionId!),
-                  icon: const Icon(Icons.groups, size: 16),
-                  label: const Text('Rejoindre'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF1DB954),
-                  ),
-                )
-              : const Icon(Icons.chevron_right, color: Colors.white38),
+          trailing: !inJam
+              ? const Icon(Icons.chevron_right, color: Colors.white38)
+              : alreadyInThisJam
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.groups, size: 16, color: Colors.white38),
+                          SizedBox(width: 6),
+                          Text('En cours',
+                              style: TextStyle(
+                                  color: Colors.white38, fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  : TextButton.icon(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final ok = await context
+                            .read<AppState>()
+                            .joinJamSession(friend.jamSessionId!);
+                        if (!ok) {
+                          messenger.showSnackBar(SnackBar(
+                            content: Text(
+                                '${friend.username} n\'écoute plus -- session introuvable'),
+                            backgroundColor: Colors.red,
+                          ));
+                        }
+                      },
+                      icon: const Icon(Icons.groups, size: 16),
+                      label: const Text('Rejoindre'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF1DB954),
+                      ),
+                    ),
         );
       },
     );

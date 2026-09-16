@@ -28,7 +28,6 @@ class DesktopCollectionView extends StatefulWidget {
   final List<Track> tracks;
   final bool? isLiked;
   final VoidCallback? onToggleLike;
-  final VoidCallback onBack;
   // Optionnels : sans eux la colonne album / les noms d'artiste des lignes
   // restent de simples textes non cliquables (voir DesktopTrackRow).
   final void Function(Album album)? onOpenAlbum;
@@ -38,19 +37,32 @@ class DesktopCollectionView extends StatefulWidget {
   final VoidCallback? onShare;
   final VoidCallback? onSendToFriend;
 
+  /// Enregistre cette collection dans "Recemment ecoute" (accueil) --
+  /// l'appelant construit le RecentPlay (id/titre different pour une
+  /// playlist vs "Titres likes", voir DesktopAppShell), cette vue se
+  /// contente d'appeler au bon moment. Sans ce callback, jouer depuis une
+  /// playlist ou les titres likes ne l'ajoutait jamais aux tuiles de
+  /// l'accueil (contrairement a un album/artiste) -- retour utilisateur.
+  final VoidCallback? onRecordRecent;
+
+  /// Actions du menu "..." de la hero card (voir DesktopHeroCard) -- vide
+  /// (defaut) pour "Titres likes", qui n'a pas de vraie playlist derriere.
+  final List<DesktopHeroMenuAction> moreActions;
+
   const DesktopCollectionView({
     super.key,
     required this.title,
     required this.subtitle,
     required this.coverPath,
     required this.tracks,
-    required this.onBack,
     this.isLiked,
     this.onToggleLike,
     this.onOpenAlbum,
     this.onOpenArtist,
     this.onShare,
     this.onSendToFriend,
+    this.onRecordRecent,
+    this.moreActions = const [],
   });
 
   @override
@@ -93,7 +105,6 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
     final tracks = widget.tracks;
     final isLiked = widget.isLiked;
     final onToggleLike = widget.onToggleLike;
-    final onBack = widget.onBack;
     final state = context.read<AppState>();
     final songCount = '${tracks.length} titre${tracks.length > 1 ? 's' : ''}';
 
@@ -141,16 +152,17 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
               coverPath: coverPath,
               isLiked: isLiked ?? false,
               onToggleLike: onToggleLike,
-              onBack: onBack,
               onShuffle: playableTracks.isEmpty
                   ? () {}
                   : () {
+                      widget.onRecordRecent?.call();
                       final shuffled = List<Track>.of(playableTracks)
                         ..shuffle();
                       state.playTrack(shuffled.first, trackList: shuffled);
                     },
               onShare: widget.onShare,
               onSendToFriend: widget.onSendToFriend,
+              moreActions: widget.moreActions,
             ),
           ),
           // 20 -> 10 : l'espace entre le bloc et la liste etait trop
@@ -186,8 +198,10 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
                       return DesktopTrackRow(
                         track: track,
                         isPlaying: currentTrack?.id == track.id,
-                        onTap: () => state.playTrack(track,
-                            trackList: playableTracks),
+                        onTap: () {
+                          widget.onRecordRecent?.call();
+                          state.playTrack(track, trackList: playableTracks);
+                        },
                         onLike: () => state.toggleLike(track.id),
                         onMore: () {},
                         onOpenAlbum: album == null || widget.onOpenAlbum == null
@@ -308,9 +322,9 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
   final bool isLiked;
   final VoidCallback? onToggleLike;
   final VoidCallback onShuffle;
-  final VoidCallback onBack;
   final VoidCallback? onShare;
   final VoidCallback? onSendToFriend;
+  final List<DesktopHeroMenuAction> moreActions;
 
   _CollapsingHeroDelegate({
     required this.title,
@@ -318,11 +332,11 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
     required this.metaLabel,
     required this.coverPath,
     required this.onShuffle,
-    required this.onBack,
     this.isLiked = false,
     this.onToggleLike,
     this.onShare,
     this.onSendToFriend,
+    this.moreActions = const [],
   });
 
   static const double _maxExtent = 220;
@@ -331,11 +345,6 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
   // etales sur une seule ligne une fois reduit (pas empiles), donc pas
   // besoin d'une barre aussi haute que lorsqu'ils etaient sur 2 "etages".
   static const double _minExtent = 88;
-
-  // Seuil de bascule plein format <-> reduit, partage avec DesktopHeroCard
-  // (showSubtitle) : sous ce seuil, la fleche retour flottante ci-dessous
-  // laisse place a celle integree a la ligne titre/bouton de DesktopHeroCard.
-  static const double _compactThreshold = 0.55;
 
   @override
   double get maxExtent => _maxExtent;
@@ -348,38 +357,22 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     final double shrink =
         (shrinkOffset / (_maxExtent - _minExtent)).clamp(0.0, 1.0);
-    // Plein format : fleche flottante au-dessus de l'image, coin superieur
-    // gauche. Reduit : DesktopHeroCard integre sa propre fleche dans la
-    // ligne titre/bouton (retour testeurs : la fleche flottante etait mal
-    // placee une fois la barre reduite) -- les deux sont donc exclusives.
-    final bool expanded = shrink < _compactThreshold;
     return Padding(
       // right: 24 -- marge du bloc entier par rapport au bord de la
       // fenetre (retour testeurs), pas seulement de l'image a l'interieur.
       padding: const EdgeInsets.only(bottom: 4, right: 24),
-      child: Stack(
-        children: [
-          DesktopHeroCard(
-            title: title,
-            subtitle: subtitle,
-            metaLabel: metaLabel,
-            coverPath: coverPath,
-            isLiked: isLiked,
-            onToggleLike: onToggleLike,
-            onShuffle: onShuffle,
-            onBack: onBack,
-            onShare: onShare,
-            onSendToFriend: onSendToFriend,
-            shrink: shrink,
-          ),
-          if (expanded)
-            Positioned(
-              top: 12,
-              left: 12,
-              child: GlassIconButton(
-                  icon: Icons.arrow_back_rounded, onPressed: onBack),
-            ),
-        ],
+      child: DesktopHeroCard(
+        title: title,
+        subtitle: subtitle,
+        metaLabel: metaLabel,
+        coverPath: coverPath,
+        isLiked: isLiked,
+        onToggleLike: onToggleLike,
+        onShuffle: onShuffle,
+        onShare: onShare,
+        onSendToFriend: onSendToFriend,
+        moreActions: moreActions,
+        shrink: shrink,
       ),
     );
   }
@@ -393,7 +386,6 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
         isLiked != oldDelegate.isLiked ||
         onToggleLike != oldDelegate.onToggleLike ||
         onShuffle != oldDelegate.onShuffle ||
-        onBack != oldDelegate.onBack ||
         onShare != oldDelegate.onShare ||
         onSendToFriend != oldDelegate.onSendToFriend;
   }

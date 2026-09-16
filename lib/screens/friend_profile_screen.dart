@@ -8,6 +8,7 @@ import '../models/recent_play.dart';
 import '../services/navidrome_service.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/bottom_bar_reserve.dart';
 import 'playlist_screen.dart';
 
 /// Profil d'un ami : titres likes en premier (comme une page d'artiste),
@@ -50,10 +51,15 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final friend = widget.friend;
-    return Selector<AppState, List<Track>>(
-      selector: (_, state) => state.allTracks,
-      builder: (context, allTracks, child) {
+    return Selector<AppState, (List<Track>, bool, String?)>(
+      selector: (_, state) =>
+          (state.allTracks, state.isJamActive, state.jamSessionId),
+      builder: (context, data, child) {
+        final (allTracks, isJamActive, currentJamSessionId) = data;
         final state = context.read<AppState>();
+        final alreadyInThisJam = friend.jamSessionId != null &&
+            isJamActive &&
+            currentJamSessionId == friend.jamSessionId;
         final byId = {for (final t in allTracks) t.id: t};
         final likedTracks = (friend.likesPlaylist?.trackIds ?? [])
             .map((id) => byId[id])
@@ -68,8 +74,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
 
         void recordRecent() {
           state.recordRecentPlay(RecentPlay(
-            type: RecentPlayType.artist,
-            id: 'friend_${friend.username}',
+            type: RecentPlayType.friend,
+            id: friend.username,
             title: friend.username,
             subtitle: 'Ami',
             playedAt: DateTime.now(),
@@ -133,19 +139,52 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                             }),
                             if (friend.jamSessionId != null) ...[
                               const SizedBox(height: 10),
-                              ElevatedButton.icon(
-                                onPressed: () =>
-                                    state.joinJamSession(friend.jamSessionId!),
-                                icon: const Icon(Icons.groups, size: 18),
-                                label: const Text('Rejoindre le Jam'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1DB954),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                ),
-                              ),
+                              alreadyInThisJam
+                                  ? Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 16, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white10,
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.groups,
+                                              size: 18, color: Colors.white38),
+                                          SizedBox(width: 8),
+                                          Text('En cours',
+                                              style: TextStyle(
+                                                  color: Colors.white38)),
+                                        ],
+                                      ),
+                                    )
+                                  : ElevatedButton.icon(
+                                      onPressed: () async {
+                                        final messenger =
+                                            ScaffoldMessenger.of(context);
+                                        final ok = await state.joinJamSession(
+                                            friend.jamSessionId!);
+                                        if (!ok) {
+                                          messenger.showSnackBar(SnackBar(
+                                            content: Text(
+                                                '${friend.username} n\'écoute plus -- session introuvable'),
+                                            backgroundColor: Colors.red,
+                                          ));
+                                        }
+                                      },
+                                      icon: const Icon(Icons.groups, size: 18),
+                                      label: const Text('Rejoindre le Jam'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            const Color(0xFF1DB954),
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                      ),
+                                    ),
                             ],
                           ],
                         ),
@@ -246,7 +285,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Ecoute recemment',
+                          'Écouté récemment',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 18,
@@ -293,7 +332,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
                     child: Text(
-                      'Playlists partagees',
+                      'Playlists partagées',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -330,7 +369,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                     ),
                   ),
                 ),
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              SliverToBoxAdapter(
+                  child: SizedBox(height: bottomBarReserve(context))),
             ],
           ),
         );

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../services/feedback_service.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 
 class FeedbackScreen extends StatefulWidget {
   const FeedbackScreen({super.key});
@@ -67,6 +68,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -75,7 +79,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       ),
       body: PlatformBackground(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.fromLTRB(
+              16, appBarSafeTopPadding(context) + 16, 16, 16),
           children: [
             const Text(
               "Envoye directement dans le salon Discord de l'app -- "

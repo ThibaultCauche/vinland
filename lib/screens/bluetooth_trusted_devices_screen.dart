@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 
 /// Choix des appareils Bluetooth "de confiance" : quand un d'entre eux se
 /// connecte, l'app reprend automatiquement la derniere lecture en fond, sans
@@ -64,6 +65,9 @@ class _BluetoothTrustedDevicesScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -71,14 +75,16 @@ class _BluetoothTrustedDevicesScreenState
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: AppBackground(
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF1DB954)))
-            : _permissionDenied
-                ? _PermissionDenied(onRetry: _load)
-                : ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
+        child: Padding(
+          padding: EdgeInsets.only(top: appBarSafeTopPadding(context)),
+          child: _loading
+              ? const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF1DB954)))
+              : _permissionDenied
+                  ? _PermissionDenied(onRetry: _load)
+                  : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
                       const Text(
                         "Coche un ou plusieurs appareils appaires (casque, enceinte...) : "
                         "quand l'un d'eux se connecte, Vinland reprend automatiquement "
@@ -108,8 +114,9 @@ class _BluetoothTrustedDevicesScreenState
                               value: _trusted.contains(d.address),
                               onChanged: (v) => _toggle(d.address, v),
                             )),
-                    ],
-                  ),
+                      ],
+                    ),
+        ),
       ),
     );
   }

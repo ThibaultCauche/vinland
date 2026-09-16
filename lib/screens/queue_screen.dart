@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 import '../widgets/cover_image.dart';
 import '../services/music_service.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 /// "File d'attente" façon Spotify : titre en cours + titres à venir,
 /// réordonnables par glisser-déposer (poignée dédiée, pour ne pas entrer en
@@ -25,6 +27,13 @@ class QueueScreen extends StatelessWidget {
 
         return Scaffold(
           backgroundColor: Colors.transparent,
+          // extendBodyBehindAppBar : le fond ci-dessous (AppBackground)
+          // s'etend derriere l'AppBar transparente au lieu de s'arreter en
+          // dessous -- sinon cette zone, hors du body, n'est couverte par
+          // rien et affiche une bande d'une autre couleur en haut de
+          // l'ecran (retour utilisateur : le fond doit etre exactement le
+          // meme partout sur la page, pas juste une couleur assortie).
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -36,53 +45,57 @@ class QueueScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.white)),
           ),
           body: AppBackground(
-            child: currentTrack == null
-                ? const Center(
-                    child: Text('Rien en cours de lecture',
-                        style: TextStyle(color: Colors.white38)),
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: Text('En cours de lecture',
-                            style: TextStyle(
+            child: Padding(
+              padding: EdgeInsets.only(top: appBarSafeTopPadding(context)),
+              child: currentTrack == null
+                  ? const Center(
+                      child: Text('Rien en cours de lecture',
+                          style: TextStyle(color: Colors.white38)),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          child: Text('En cours de lecture',
+                              style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                        _CurrentTrackTile(track: currentTrack),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                          child: Text(
+                            'Ensuite'
+                            '${queue.isNotEmpty ? ' (${queue.length})' : ''}',
+                            style: const TextStyle(
                                 color: Colors.white54,
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                      _CurrentTrackTile(track: currentTrack),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                        child: Text(
-                          'Ensuite'
-                          '${queue.isNotEmpty ? ' (${queue.length})' : ''}',
-                          style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600),
+                                fontWeight: FontWeight.w600),
+                          ),
                         ),
-                      ),
-                      Expanded(
-                        child: queue.isEmpty
-                            ? const Center(
-                                child: Text('Aucun titre à venir',
-                                    style: TextStyle(color: Colors.white38)),
-                              )
-                            : ReorderableListView.builder(
-                                padding: const EdgeInsets.only(bottom: 24),
-                                itemCount: queue.length,
-                                onReorder: state.reorderQueue,
-                                itemBuilder: (context, i) => _QueueTile(
-                                  key: ValueKey('queue-$i-${queue[i].id}'),
-                                  index: i,
-                                  track: queue[i],
+                        Expanded(
+                          child: queue.isEmpty
+                              ? const Center(
+                                  child: Text('Aucun titre à venir',
+                                      style: TextStyle(color: Colors.white38)),
+                                )
+                              : ReorderableListView.builder(
+                                  padding: EdgeInsets.only(
+                                      bottom: bottomBarReserve(context)),
+                                  itemCount: queue.length,
+                                  onReorder: state.reorderQueue,
+                                  itemBuilder: (context, i) => _QueueTile(
+                                    key: ValueKey('queue-$i-${queue[i].id}'),
+                                    index: i,
+                                    track: queue[i],
+                                  ),
                                 ),
-                              ),
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         );
       },
@@ -124,8 +137,7 @@ class _CurrentTrackTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text(track.artist,
-                    style:
-                        const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ],
@@ -184,16 +196,15 @@ class _QueueTile extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close,
-                      color: Colors.white38, size: 18),
+                  icon:
+                      const Icon(Icons.close, color: Colors.white38, size: 18),
                   onPressed: () => state.removeFromQueue(index),
                 ),
                 ReorderableDragStartListener(
                   index: index,
                   child: const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child:
-                        Icon(Icons.drag_handle, color: Colors.white38),
+                    child: Icon(Icons.drag_handle, color: Colors.white38),
                   ),
                 ),
               ],

@@ -6,6 +6,7 @@ import '../models/playlist.dart';
 import '../models/track.dart';
 import '../models/recent_play.dart';
 import '../services/navidrome_service.dart';
+import '../screens/playlist_screen.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/user_avatar.dart';
 import 'desktop_track_row.dart';
@@ -17,12 +18,10 @@ import 'glass.dart';
 /// partagees) que la version mobile.
 class DesktopFriendProfileView extends StatefulWidget {
   final FriendProfile friend;
-  final VoidCallback onBack;
 
   const DesktopFriendProfileView({
     super.key,
     required this.friend,
-    required this.onBack,
   });
 
   @override
@@ -75,8 +74,8 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
 
         void recordRecent() {
           state.recordRecentPlay(RecentPlay(
-            type: RecentPlayType.artist,
-            id: 'friend_${friend.username}',
+            type: RecentPlayType.friend,
+            id: friend.username,
             title: friend.username,
             subtitle: 'Ami',
             playedAt: DateTime.now(),
@@ -89,13 +88,6 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  GlassIconButton(
-                      icon: Icons.arrow_back_rounded, onPressed: widget.onBack),
-                ],
-              ),
-              const SizedBox(height: 12),
               Expanded(
                 child: CustomScrollView(
                   controller: _scrollController,
@@ -124,9 +116,9 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                       ),
                     ),
                     if (recentTracks.isNotEmpty) ...[
-                      const _SectionTitle('Ecoute recemment'),
+                      const _SectionTitle('Écouté récemment'),
                       _trackList(
-                        recentTracks,
+                        recentTracks.take(5).toList(),
                         onTap: (t) {
                           recordRecent();
                           state.playTrack(t, trackList: recentTracks);
@@ -146,7 +138,7 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                       ),
                     ],
                     if (friend.playlists.isNotEmpty) ...[
-                      const _SectionTitle('Playlists partagees'),
+                      const _SectionTitle('Playlists partagées'),
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         sliver: SliverList(
@@ -156,14 +148,29 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                               return _PlaylistRow(
                                 playlist: pl,
                                 onTap: () async {
+                                  // Ouvre la playlist en lecture seule (voir
+                                  // PlaylistScreen.readOnly, meme ecran que
+                                  // mobile) plutot que de la lancer direct :
+                                  // permet de la parcourir et de l'ajouter a
+                                  // sa bibliotheque (retour utilisateur).
                                   final tracks =
                                       await _resolvePlaylistTracks(state, pl);
                                   if (!context.mounted || tracks.isEmpty) {
                                     return;
                                   }
-                                  recordRecent();
-                                  state.playTrack(tracks.first,
-                                      trackList: tracks);
+                                  final refreshed = Playlist(
+                                    id: pl.id,
+                                    name: pl.name,
+                                    trackIds: tracks.map((t) => t.id).toList(),
+                                    serverId: pl.serverId,
+                                    isPublic: true,
+                                    ownerUsername: pl.ownerUsername,
+                                    isLikesMirror: pl.isLikesMirror,
+                                  );
+                                  state.pushOverlay(
+                                      PlaylistScreen(
+                                          playlist: refreshed,
+                                          readOnly: true));
                                 },
                               );
                             },
@@ -329,32 +336,81 @@ class _Header extends StatelessWidget {
                     GlassIconButton(icon: Icons.shuffle, onPressed: onShuffle),
                     if (friend.jamSessionId != null) ...[
                       const SizedBox(width: 12),
-                      Material(
-                        color: DesktopGlass.accent,
-                        borderRadius: BorderRadius.circular(20),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () => context
-                              .read<AppState>()
-                              .joinJamSession(friend.jamSessionId!),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.groups,
-                                    color: Colors.white, size: 18),
-                                SizedBox(width: 6),
-                                Text('Rejoindre le Jam',
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600)),
-                              ],
+                      Selector<AppState, (bool, String?)>(
+                        selector: (_, state) =>
+                            (state.isJamActive, state.jamSessionId),
+                        builder: (context, data, __) {
+                          final (isJamActive, currentJamSessionId) = data;
+                          final alreadyInThisJam = isJamActive &&
+                              currentJamSessionId == friend.jamSessionId;
+                          if (alreadyInThisJam) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.white10,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.groups,
+                                      color: Colors.white38, size: 18),
+                                  SizedBox(width: 6),
+                                  Text('En cours',
+                                      style: TextStyle(
+                                          color: Colors.white38,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            );
+                          }
+                          return Material(
+                            color: DesktopGlass.accent,
+                            borderRadius: BorderRadius.circular(20),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(20),
+                              // Meme fix que DesktopHoverable (voir glass.dart) :
+                              // curseur/hover explicites, le comportement par
+                              // defaut d'InkWell n'etait pas fiable ici.
+                              mouseCursor: SystemMouseCursors.click,
+                              hoverColor: Colors.white.withOpacity(0.18),
+                              splashColor: Colors.white.withOpacity(0.12),
+                              onTap: () async {
+                                final messenger =
+                                    ScaffoldMessenger.of(context);
+                                final ok = await context
+                                    .read<AppState>()
+                                    .joinJamSession(friend.jamSessionId!);
+                                if (!ok) {
+                                  messenger.showSnackBar(SnackBar(
+                                    content: Text(
+                                        '${friend.username} n\'écoute plus -- session introuvable'),
+                                    backgroundColor: Colors.red,
+                                  ));
+                                }
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.groups,
+                                        color: Colors.white, size: 18),
+                                    SizedBox(width: 6),
+                                    Text('Rejoindre le Jam',
+                                        style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ],
                   ],

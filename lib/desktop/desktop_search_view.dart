@@ -103,10 +103,22 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
     ]);
 
     if (!mounted) return;
+    final artists = results[0] as List<DiscoveredArtist>;
+    final albums = results[1] as List<DiscoveredAlbum>;
+    // L'endpoint /search/album de Deezer, contrairement a /search/artist,
+    // ne renvoie aucun score de popularite -- on approxime "le plus connu"
+    // par le nombre de fans de son artiste (deja recupere par la recherche
+    // artistes ci-dessus, nb_fan) plutot que d'ajouter un appel reseau par
+    // album juste pour ca (retour utilisateur : les albums les plus connus
+    // doivent sortir en premier).
+    final fansByArtistId = {for (final a in artists) a.id: a.nbFans ?? 0};
+    albums.sort((a, b) => (fansByArtistId[b.artistId] ?? 0)
+        .compareTo(fansByArtistId[a.artistId] ?? 0));
+
     setState(() {
       _localTracks = local;
-      _artists = results[0] as List<DiscoveredArtist>;
-      _albums = results[1] as List<DiscoveredAlbum>;
+      _artists = artists;
+      _albums = albums;
       _isLoading = false;
     });
   }
@@ -172,51 +184,70 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
 
   @override
   Widget build(BuildContext context) {
-    // top: DesktopGlass.topInset -- la TopBar du shell (avatar/spinner sur
-    // cet onglet) flotte au-dessus du contenu, cette page a son propre
-    // champ de recherche fixe qui doit donc demarrer en dessous plutot que
-    // se superposer avec elle.
+    // top: titleBarHeight (pas topInset) -- l'onglet Recherche masque la
+    // barre de recherche persistante du shell (voir _TopBar.showSearchBar
+    // dans desktop_app_shell.dart), donc plus besoin de lui reserver de
+    // place ici : ce champ de recherche demarre juste sous la barre de
+    // titre plutot que sous un grand vide (retour utilisateur).
     return Padding(
-      padding: const EdgeInsets.only(top: DesktopGlass.topInset),
+      padding: const EdgeInsets.only(top: DesktopGlass.titleBarHeight),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GlassPanel(
-            borderRadius: BorderRadius.circular(24),
-            blurSigma: 0,
-            tint: Colors.white.withOpacity(0.06),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: SizedBox(
-              height: 46,
-              child: Row(
-                children: [
-                  const Icon(Icons.search, color: Colors.white54, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      autofocus: true,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                      decoration: const InputDecoration(
-                        hintText: 'Titres, artistes, albums...',
-                        hintStyle: TextStyle(color: Colors.white38),
-                        border: InputBorder.none,
+          Padding(
+            // right: 24 -- meme raison que les tuiles de l'accueil : sans
+            // ca ce champ de recherche pleine largeur touchait le bord
+            // droit de la fenetre (retour utilisateur).
+            padding: const EdgeInsets.only(right: 24),
+            child: GlassPanel(
+              // Meme habillage (rayon/hauteur/padding/tailles) que le pill
+              // de recherche persistant du shell (_TopBar dans
+              // desktop_app_shell.dart) -- avant, cette page avait son
+              // propre style plus grand/plus arrondi, incoherent avec le
+              // reste de l'appli (retour utilisateur).
+              borderRadius: BorderRadius.circular(20),
+              blurSigma: 0,
+              tint: Colors.white.withOpacity(0.06),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: SizedBox(
+                height: 36,
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: Colors.white54, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        autofocus: true,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 13),
+                        decoration: const InputDecoration(
+                          hintText: 'Titres, artistes, albums...',
+                          // fontSize explicite : sans lui le hint retombe
+                          // sur la taille par defaut du theme (plus grande
+                          // que le texte tape a cote, `style` ci-dessus),
+                          // retour utilisateur.
+                          hintStyle:
+                              TextStyle(color: Colors.white38, fontSize: 13),
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                        onChanged: _onChanged,
+                        onSubmitted: _search,
                       ),
-                      onChanged: _onChanged,
-                      onSubmitted: _search,
                     ),
-                  ),
-                  if (_controller.text.isNotEmpty)
-                    GlassIconButton(
-                      icon: Icons.clear,
-                      size: 16,
-                      onPressed: () {
-                        _controller.clear();
-                        _onChanged('');
-                        setState(() {});
-                      },
-                    ),
-                ],
+                    if (_controller.text.isNotEmpty)
+                      GlassIconButton(
+                        icon: Icons.clear,
+                        size: 16,
+                        onPressed: () {
+                          _controller.clear();
+                          _onChanged('');
+                          setState(() {});
+                        },
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -342,20 +373,23 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
         ],
         if (_albums.isNotEmpty) ...[
           _sectionTitle('Albums'),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 160,
-              childAspectRatio: 0.72,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 18,
-            ),
+          // Une seule rangee qui defile horizontalement, comme la rangee
+          // Artistes juste au-dessus -- retour utilisateur : ca permet de
+          // parcourir les resultats plus vite qu'une grille sur plusieurs
+          // lignes.
+          DesktopHorizontalShelf(
+            height: 210,
             itemCount: _albums.length,
             itemBuilder: (context, i) {
               final album = _albums[i];
-              return _AlbumResultCard(
-                  album: album, onTap: () => _openAlbumResult(album));
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  width: 166,
+                  child: _AlbumResultCard(
+                      album: album, onTap: () => _openAlbumResult(album)),
+                ),
+              );
             },
           ),
         ],
@@ -483,10 +517,23 @@ class _HistoryRow extends StatefulWidget {
 class _HistoryRowState extends State<_HistoryRow> {
   bool _hover = false;
 
+  /// Prefixe le type de resultat ("Titre"/"Album"/"Artiste") devant l'ancien
+  /// sous-titre (juste le nom de l'artiste pour titre/album, rien pour
+  /// artiste) -- sans ça rien ne distinguait un titre d'un album au premier
+  /// coup d'oeil dans "Recemment consultes" (retour utilisateur).
+  String _typeLabel(String type) => switch (type) {
+        'artist' => 'Artiste',
+        'album' => 'Album',
+        _ => 'Titre',
+      };
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
     final isArtist = item.type == 'artist';
+    final label = _typeLabel(item.type);
+    final subtitleLine =
+        item.subtitle == null ? label : '$label · ${item.subtitle}';
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -542,12 +589,11 @@ class _HistoryRowState extends State<_HistoryRow> {
                             fontWeight: FontWeight.w500),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
-                    if (item.subtitle != null)
-                      Text(item.subtitle!,
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 12),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                    Text(subtitleLine,
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),

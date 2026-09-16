@@ -3,7 +3,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
+import '../screens/album_screen.dart';
 import '../screens/queue_screen.dart';
+import 'album_options_sheet.dart';
 import 'player/like_button.dart';
 import 'player/play_pause_button.dart';
 import 'player/player_slider.dart';
@@ -78,21 +80,34 @@ class PlayerScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                track.title,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
+                              GestureDetector(
+                                onTap: () {
+                                  final state = context.read<AppState>();
+                                  state.pushOverlay(AlbumScreen(
+                                    album: resolveTrackAlbum(state, track),
+                                    scrollToTrackId: track.id,
+                                  ));
+                                },
+                                child: Text(
+                                  track.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                track.artist,
-                                style: const TextStyle(
-                                    color: Colors.white54, fontSize: 14),
+                              GestureDetector(
+                                onTap: () =>
+                                    showArtistAlbumPicker(context, track),
+                                child: Text(
+                                  track.artist,
+                                  style: const TextStyle(
+                                      color: Colors.white54, fontSize: 14),
+                                ),
                               ),
                             ],
                           ),

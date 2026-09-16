@@ -12,14 +12,19 @@ import '../models/recent_play.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/download_button.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/album_options_sheet.dart';
+import '../widgets/artist_options_sheet.dart';
+import '../widgets/bottom_sheet_common.dart';
+import '../widgets/playlist_options_sheet.dart';
+import '../widgets/playlist_cover.dart';
 import 'package:path/path.dart' as p;
 import 'import_review_screen.dart';
 import 'streaming_import_screen.dart';
 import '../services/music_service.dart';
 import 'album_screen.dart';
-import 'artist_screen.dart';
 import 'playlist_screen.dart';
 import 'collab_playlist_screen.dart';
+import '../widgets/bottom_bar_reserve.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -112,10 +117,20 @@ class _LibraryScreenState extends State<LibraryScreen>
                   Tab(text: 'Playlists'),
                 ],
               ),
-              AnimatedContainer(
+              // AnimatedSize (pas AnimatedContainer avec height: null/0) :
+              // animer entre une hauteur "null" (intrinseque) et 0 n'a pas
+              // de valeur intermediaire bien definie, ce qui faisait
+              // disparaitre la barre instantanement plutot qu'en douceur --
+              // et AnimatedContainer ne decoupe pas son enfant par defaut,
+              // laissant l'icone de recherche deborder pendant que le
+              // conteneur retrecit (retour utilisateur). AnimatedSize mesure
+              // et anime son enfant proprement, avec decoupe (clipBehavior
+              // par defaut deja Clip.hardEdge).
+              AnimatedSize(
                 duration: const Duration(milliseconds: 200),
-                height: _showSearchBars[_tabController.index] ? null : 0,
-                child: _buildSearchBar(_tabController.index),
+                child: _showSearchBars[_tabController.index]
+                    ? _buildSearchBar(_tabController.index)
+                    : const SizedBox(width: double.infinity),
               ),
               Expanded(
                 child: TabBarView(
@@ -218,8 +233,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (filtered.isEmpty) {
       return _buildEmpty('Aucun resultat');
     }
-    final playableCount =
-        likedTracks.where((t) => !t.isPlaceholder).length;
+    final playableCount = likedTracks.where((t) => !t.isPlaceholder).length;
     // File de lecture reservee aux vrais titres (voir isPlaceholder plus
     // haut) : un titre fantome n'a pas de fichier a jouer.
     final playableFiltered = filtered.where((t) => !t.isPlaceholder).toList();
@@ -228,33 +242,41 @@ class _LibraryScreenState extends State<LibraryScreen>
         _onScroll(0, n);
         return false;
       },
-      child: ListView.builder(
+      // thumbVisibility/interactive : scrollbar toujours visible et
+      // cliquable/glissable pour naviguer vite dans une longue liste
+      // (retour utilisateur).
+      child: Scrollbar(
         controller: _scrollControllers[0],
-        padding: const EdgeInsets.only(bottom: 100),
-        itemCount: filtered.length,
-        itemBuilder: (context, i) {
-          final track = filtered[i];
-          return Selector<AppState, Track?>(
-            selector: (_, s) => s.currentTrack,
-            builder: (context, currentTrack, __) => TrackTile(
-              track: track,
-              isPlaying: currentTrack?.id == track.id,
-              onTap: () {
-                state.recordRecentPlay(RecentPlay(
-                  type: RecentPlayType.playlist,
-                  id: kLikedSongsRecentId,
-                  title: 'Titres likés',
-                  subtitle:
-                      '$playableCount titre${playableCount > 1 ? 's' : ''}',
-                  playedAt: DateTime.now(),
-                ));
-                state.playTrack(track, trackList: playableFiltered);
-              },
-              onLike: () => state.toggleLike(track.id),
-              onMore: () => _showTrackOptions(context, track),
-            ),
-          );
-        },
+        thumbVisibility: true,
+        interactive: true,
+        child: ListView.builder(
+          controller: _scrollControllers[0],
+          padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
+          itemCount: filtered.length,
+          itemBuilder: (context, i) {
+            final track = filtered[i];
+            return Selector<AppState, Track?>(
+              selector: (_, s) => s.currentTrack,
+              builder: (context, currentTrack, __) => TrackTile(
+                track: track,
+                isPlaying: currentTrack?.id == track.id,
+                onTap: () {
+                  state.recordRecentPlay(RecentPlay(
+                    type: RecentPlayType.playlist,
+                    id: kLikedSongsRecentId,
+                    title: 'Titres likés',
+                    subtitle:
+                        '$playableCount titre${playableCount > 1 ? 's' : ''}',
+                    playedAt: DateTime.now(),
+                  ));
+                  state.playTrack(track, trackList: playableFiltered);
+                },
+                onLike: () => state.toggleLike(track.id),
+                onMore: () => _showTrackOptions(context, track),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -278,72 +300,78 @@ class _LibraryScreenState extends State<LibraryScreen>
         _onScroll(1, n);
         return false;
       },
-      child: GridView.builder(
+      child: Scrollbar(
         controller: _scrollControllers[1],
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 0.75,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-        ),
-        itemCount: filtered.length,
-        itemBuilder: (context, i) {
-          final album = filtered[i];
-          return GestureDetector(
-            onTap: () {
-              final appState = context.read<AppState>();
-              appState.pushOverlay(AlbumScreen(album: album));
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _AlbumCoverGrid(coverPath: album.coverPath),
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: GestureDetector(
-                          onTap: () => state.toggleLikeAlbum(album.id),
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(
-                              Icons.favorite,
-                              color: Color(0xFF1DB954),
-                              size: 18,
+        thumbVisibility: true,
+        interactive: true,
+        child: GridView.builder(
+          controller: _scrollControllers[1],
+          padding: EdgeInsets.fromLTRB(16, 16, 16, bottomBarReserve(context)),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: filtered.length,
+          itemBuilder: (context, i) {
+            final album = filtered[i];
+            return GestureDetector(
+              onTap: () {
+                final appState = context.read<AppState>();
+                appState.pushOverlay(AlbumScreen(album: album));
+              },
+              onLongPress: () => showAlbumOptions(context, album),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _AlbumCoverGrid(coverPath: album.coverPath),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () => state.toggleLikeAlbum(album.id),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Icon(
+                                Icons.favorite,
+                                color: Color(0xFF1DB954),
+                                size: 18,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  album.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 8),
+                  Text(
+                    album.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  album.artist,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
-              ],
-            ),
-          );
-        },
+                  Text(
+                    album.artist,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -363,196 +391,161 @@ class _LibraryScreenState extends State<LibraryScreen>
         _onScroll(2, n);
         return false;
       },
-      child: ListView.builder(
+      child: Scrollbar(
         controller: _scrollControllers[2],
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-        itemCount: filtered.length,
-        itemBuilder: (context, i) {
-          final pl = filtered[i];
+        thumbVisibility: true,
+        interactive: true,
+        child: ListView.builder(
+          controller: _scrollControllers[2],
+          padding: EdgeInsets.fromLTRB(16, 8, 16, bottomBarReserve(context)),
+          itemCount: filtered.length,
+          itemBuilder: (context, i) {
+            final pl = filtered[i];
 
-          return ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-            leading: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2A2A2A),
-                borderRadius: BorderRadius.circular(4),
+            return ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              leading: pl.collabGroupId != null
+                  ? Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2A2A2A),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(Icons.groups, color: Colors.white54),
+                    )
+                  : PlaylistCover(playlist: pl, size: 56),
+              title: Text(
+                pl.name,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
               ),
-              child: Icon(
-                  pl.collabGroupId != null ? Icons.groups : Icons.queue_music,
-                  color: Colors.white54),
-            ),
-            title: Text(
-              pl.name,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(
-              pl.collabGroupId != null
-                  ? 'Collaborative'
-                  : '${pl.trackIds.length} titre${pl.trackIds.length > 1 ? 's' : ''}',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            trailing: IconButton(
-              icon: const Icon(Icons.more_vert, color: Colors.white54),
-              onPressed: () => _showPlaylistOptions(context, pl),
-            ),
-            onTap: () {
-              state.pushOverlay(pl.collabGroupId != null
-                  ? CollabPlaylistScreen(playlist: pl)
-                  : PlaylistScreen(playlist: pl));
-            },
-          );
-        },
+              subtitle: Text(
+                pl.collabGroupId != null
+                    ? 'Collaborative'
+                    : '${pl.trackIds.length} titre${pl.trackIds.length > 1 ? 's' : ''}',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.more_vert, color: Colors.white54),
+                onPressed: () => showPlaylistOptions(context, pl),
+              ),
+              onTap: () {
+                state.pushOverlay(pl.collabGroupId != null
+                    ? CollabPlaylistScreen(playlist: pl)
+                    : PlaylistScreen(playlist: pl));
+              },
+              onLongPress: () => showPlaylistOptions(context, pl),
+            );
+          },
+        ),
       ),
     );
   }
 
   void _showTrackOptions(BuildContext context, Track track) {
     final state = context.read<AppState>();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _BottomSheetHeader(
-              coverPath: track.coverPath,
-              title: track.title,
-              subtitle: track.artist,
-            ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            _SheetTile(
-              icon: Icons.add_circle_outline,
-              label: 'Ajouter a la playlist',
-              onTap: () {
-                Navigator.pop(ctx);
-                _showAddToPlaylistDialog(context, track);
-              },
-            ),
-            _SheetTile(
-              icon: Icons.playlist_play,
-              label: 'Lire ensuite',
-              onTap: () {
-                Navigator.pop(ctx);
-                state.playNext(track);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('"${track.title}" sera joue ensuite'),
-                    backgroundColor: const Color(0xFF1DB954),
-                  ),
-                );
-              },
-            ),
-            _SheetTile(
-              icon: Icons.queue_music,
-              label: "Ajouter a la file d'attente",
-              onTap: () {
-                Navigator.pop(ctx);
-                state.addToQueue(track);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('"${track.title}" ajoute a la file'),
-                    backgroundColor: const Color(0xFF1DB954),
-                  ),
-                );
-              },
-            ),
-            _SheetTile(
-              icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
-              label: track.isLiked
-                  ? 'Retirer des titres likes'
-                  : 'Ajouter aux titres likes',
-              iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
-              onTap: () {
-                Navigator.pop(ctx);
-                state.toggleLike(track.id);
-              },
-            ),
-            _SheetTile(
-              icon: Icons.album_outlined,
-              label: "Acceder a l'album",
-              onTap: () {
-                Navigator.pop(ctx);
-                // Cherche dans TOUS les albums, pas seulement les likés.
-                // Match par albumId Navidrome quand il existe : deux albums
-                // differents peuvent partager le meme titre (reedition,
-                // compilation...), et matcher par titre seul pouvait ouvrir
-                // le mauvais album ou lui attribuer des titres d'un autre
-                // artiste (retour utilisateur).
-                final expectedId = track.albumId != null
-                    ? 'navidrome_${track.albumId}'
-                    : null;
-                final album = state.albums.firstWhere(
-                  (a) => expectedId != null
-                      ? a.id == expectedId
-                      : a.title == track.album,
-                  orElse: () => Album(
-                    id: expectedId ?? track.album.hashCode.toString(),
-                    title: track.album,
-                    artist: track.albumArtist ?? track.artist,
-                    trackIds: state.allTracks
-                        .where((t) => expectedId != null
-                            ? t.albumId == track.albumId
-                            : t.album == track.album)
-                        .map((t) => t.id)
-                        .toList(),
-                    coverPath: track.coverPath,
-                  ),
-                );
-                state.pushOverlay(AlbumScreen(album: album));
-              },
-            ),
-            _SheetTile(
-              icon: Icons.person_outline,
-              label: "Aller a l'artiste",
-              onTap: () {
-                Navigator.pop(ctx);
-                _showArtistPicker(context, track.artist);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showPlaylistOptions(BuildContext context, Playlist playlist) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _BottomSheetHeader(
-              coverPath: null,
-              title: playlist.name,
-              subtitle: '${playlist.trackIds.length} titre(s)',
-            ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            _SheetTile(
-              icon: Icons.delete_outline,
-              label: 'Supprimer la playlist',
-              onTap: () {
-                Navigator.pop(ctx);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+    showOptionsSheet(context,
+        builder: (ctx) => [
+              BottomSheetHeader(
+                coverPath: track.coverPath,
+                title: track.title,
+                subtitle: track.artist,
+              ),
+              const Divider(color: Color(0xFF2A2A2A), height: 1),
+              SheetTile(
+                icon: Icons.add_circle_outline,
+                label: 'Ajouter a la playlist',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddToPlaylistDialog(context, track);
+                },
+              ),
+              SheetTile(
+                icon: Icons.playlist_play,
+                label: 'Lire ensuite',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.playNext(track);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('"${track.title}" sera joue ensuite'),
+                      backgroundColor: const Color(0xFF1DB954),
+                    ),
+                  );
+                },
+              ),
+              SheetTile(
+                icon: Icons.queue_music,
+                label: "Ajouter a la file d'attente",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.addToQueue(track);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('"${track.title}" ajoute a la file'),
+                      backgroundColor: const Color(0xFF1DB954),
+                    ),
+                  );
+                },
+              ),
+              SheetTile(
+                icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
+                label: track.isLiked
+                    ? 'Retirer des titres likes'
+                    : 'Ajouter aux titres likes',
+                iconColor:
+                    track.isLiked ? const Color(0xFF1DB954) : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.toggleLike(track.id);
+                },
+              ),
+              SheetTile(
+                icon: Icons.album_outlined,
+                label: "Acceder a l'album",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  // Cherche dans TOUS les albums, pas seulement les likés.
+                  // Match par albumId Navidrome quand il existe : deux albums
+                  // differents peuvent partager le meme titre (reedition,
+                  // compilation...), et matcher par titre seul pouvait ouvrir
+                  // le mauvais album ou lui attribuer des titres d'un autre
+                  // artiste (retour utilisateur).
+                  final expectedId = track.albumId != null
+                      ? 'navidrome_${track.albumId}'
+                      : null;
+                  final album = state.albums.firstWhere(
+                    (a) => expectedId != null
+                        ? a.id == expectedId
+                        : a.title == track.album,
+                    orElse: () => Album(
+                      id: expectedId ?? track.album.hashCode.toString(),
+                      title: track.album,
+                      artist: track.albumArtist ?? track.artist,
+                      trackIds: state.allTracks
+                          .where((t) => expectedId != null
+                              ? t.albumId == track.albumId
+                              : t.album == track.album)
+                          .map((t) => t.id)
+                          .toList(),
+                      coverPath: track.coverPath,
+                    ),
+                  );
+                  state.pushOverlay(AlbumScreen(album: album));
+                },
+              ),
+              SheetTile(
+                icon: Icons.person_outline,
+                label: "Aller a l'artiste",
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showArtistPicker(context, track.artist);
+                },
+              ),
+              const SizedBox(height: 8),
+            ]);
   }
 
   void _showAddToPlaylistDialog(BuildContext context, Track track) {
@@ -603,60 +596,6 @@ class _LibraryScreenState extends State<LibraryScreen>
                 const Text('Annuler', style: TextStyle(color: Colors.white54)),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showArtistPicker(BuildContext context, String artistsField) {
-    final artists = artistsField
-        .split(RegExp(r'[/&,]'))
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-
-    if (artists.length <= 1) {
-      context
-          .read<AppState>()
-          .pushOverlay(ArtistScreen(artistName: artistsField));
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'Selectionner un artiste',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const Divider(color: Color(0xFF2A2A2A), height: 1),
-            ...artists.map((artist) => ListTile(
-                  leading: const Icon(Icons.person, color: Colors.white),
-                  title:
-                      Text(artist, style: const TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    context
-                        .read<AppState>()
-                        .pushOverlay(ArtistScreen(artistName: artist));
-                  },
-                )),
-            const SizedBox(height: 8),
-          ],
-        ),
       ),
     );
   }
@@ -1103,110 +1042,5 @@ class _AlbumCoverGrid extends StatelessWidget {
             : null,
       );
     });
-  }
-}
-
-class _BottomSheetHeader extends StatelessWidget {
-  final String? coverPath;
-  final String title;
-  final String subtitle;
-
-  const _BottomSheetHeader({
-    required this.coverPath,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final path = coverPath;
-    final exists = context.read<AppState>().coverExists(coverPath);
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: const Color(0xFF2A2A2A),
-              image: exists && path != null
-                  ? DecorationImage(
-                      image: coverImageProvider(context,
-                          path: path, width: 48, height: 48),
-                      fit: BoxFit.cover,
-                      onError: (_, __) {},
-                    )
-                  : null,
-            ),
-            child: !exists || coverPath == null
-                ? const Icon(Icons.album, color: Colors.white54, size: 24)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? iconColor;
-
-  const _SheetTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor ?? Colors.white, size: 26),
-      title: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      onTap: onTap,
-      minLeadingWidth: 24,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-    );
   }
 }

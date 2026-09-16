@@ -34,9 +34,15 @@ class DesktopSidebar extends StatelessWidget {
       // top/bottom : la barre de titre et la barre de lecture flottent
       // desormais par-dessus la sidebar (voir desktop_app_shell.dart)
       // plutot que de reserver leur propre espace -- garde ces marges pour
-      // ne pas demarrer/finir derriere elles.
-      margin: const EdgeInsets.fromLTRB(12, DesktopGlass.titleBarHeight + 4, 6,
-          DesktopGlass.playerBarReserve),
+      // ne pas demarrer/finir derriere elles. Top a 0 marge additionnelle
+      // (collee a la zone de drag de la fenetre, retour utilisateur).
+      // Bottom : playerBarReserve seul amenait le bas de la sidebar pile au
+      // contact du haut de la barre de lecture (les deux cartes en verre se
+      // touchaient, seul l'arrondi des coins laissait deviner un pixel de
+      // fond) -- +12 pour un vrai espace visible entre les deux (retour
+      // utilisateur).
+      margin: const EdgeInsets.fromLTRB(12, DesktopGlass.titleBarHeight, 6,
+          DesktopGlass.playerBarReserve + 12),
       child: GlassPanel(
         borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
         child: Column(
@@ -46,16 +52,6 @@ class DesktopSidebar extends StatelessWidget {
               image: AssetImage('assets/icon/app_icon_foreground.png'),
               width: 32,
               height: 32,
-            ),
-            const SizedBox(height: 10),
-            // Synchro NAS : discret ici, ne pousse rien quand elle n'est pas
-            // active (SyncIndicator se replie a taille nulle), et vit dans
-            // la sidebar plutot que dans le TopBar flottant pour rester
-            // visible meme sur les vues poussees ou celui-ci se cache
-            // (playlist/album/artiste).
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 2),
-              child: SyncIndicator(size: 16),
             ),
             const SizedBox(height: 10),
             GlassIconButton(
@@ -130,6 +126,16 @@ class DesktopSidebar extends StatelessWidget {
               child: Divider(color: Colors.white.withOpacity(0.12), height: 1),
             ),
             const SizedBox(height: 12),
+            // Synchro NAS : discret ici, ne pousse rien quand elle n'est pas
+            // active (SyncIndicator se replie a taille nulle). Juste
+            // au-dessus de l'avatar de profil (retour utilisateur) plutot
+            // qu'en haut de la sidebar, pour rester visuellement associee au
+            // compte plutot qu'a la nav principale.
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 2),
+              child: SyncIndicator(size: 16),
+            ),
+            const SizedBox(height: 8),
             // Avatar de profil deplace ici (bas de la sidebar) depuis le
             // TopBar flottant : il y occupait en permanence de la place en
             // haut de l'ecran meme sur les vues sans TopBar visible

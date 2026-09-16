@@ -5,14 +5,17 @@ import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_artist.dart';
 import '../models/discovered_track.dart';
+import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/track.dart';
+import '../services/artist_discography.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
-import 'desktop_horizontal_shelf.dart';
+import 'desktop_hero_card.dart'
+    show DesktopHeroMenuAction, DesktopMoreMenuButton, trackMoreMenuActions;
 import 'desktop_track_row.dart';
 import 'glass.dart';
 import '../widgets/smooth_scroll.dart';
@@ -36,19 +39,19 @@ class _ArtistCache {
 /// d'AppState.
 class DesktopArtistView extends StatefulWidget {
   final String artistName;
-  final VoidCallback onBack;
   final void Function(Album album, {String? filterArtist}) onOpenAlbum;
   final void Function(
       {DiscoveredAlbum? album,
       int? albumId,
       String? filterArtist}) onOpenDiscoveredAlbum;
+  final void Function(String artistName) onOpenDiscography;
 
   const DesktopArtistView({
     super.key,
     required this.artistName,
-    required this.onBack,
     required this.onOpenAlbum,
     required this.onOpenDiscoveredAlbum,
+    required this.onOpenDiscography,
   });
 
   @override
@@ -149,23 +152,10 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   }
 
   Future<void> _loadDeezerData() async {
-    final artists = await _discovery.searchArtists(widget.artistName, limit: 5);
-    DiscoveredArtist? match;
-    for (final a in artists) {
-      if (MatchingService.artistsMatch(a.name, widget.artistName)) {
-        match = a;
-        break;
-      }
-    }
-
-    if (match != null) {
-      _discoveredArtist = match;
-      final albumsFuture = _discovery.getArtistAlbums(match.id, limit: 50);
-      final topFuture = _discovery.getArtistTopTracks(match.id, limit: 5);
-      final results = await Future.wait([albumsFuture, topFuture]);
-      _discoveredAlbums = results[0] as List<DiscoveredAlbum>;
-      _topTracks = results[1] as List<DiscoveredTrack>;
-    }
+    final data = await loadArtistDeezerData(_discovery, widget.artistName);
+    _discoveredArtist = data.artist;
+    _discoveredAlbums = data.albums;
+    _topTracks = data.topTracks;
 
     if (mounted) {
       setState(() {
@@ -217,54 +207,13 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
 
   Future<void> _deepMatchAlbums() async {
     final state = context.read<AppState>();
-    final allLocalTracks = state.allTracks;
 
-    final localAlbumSignatures = <String, Set<String>>{};
-    for (final t in allLocalTracks) {
-      if (!MatchingService.artistsMatch(t.artist, widget.artistName)) continue;
-      final albumKey = MatchingService.normalize(t.album);
-      localAlbumSignatures.putIfAbsent(albumKey, () => {}).add(t.title);
-    }
-
-    final unmatched = _discoveredAlbums.where((a) => !a.isInLibrary).toList();
-    if (unmatched.isEmpty) return;
-
-    const batchSize = 5;
-    for (var i = 0; i < unmatched.length; i += batchSize) {
-      final batch = unmatched.skip(i).take(batchSize);
-
-      await Future.wait(batch.map((album) async {
-        try {
-          final deezerTracks = await _discovery.getAlbumTracks(album.id);
-          if (deezerTracks.isEmpty) return;
-
-          for (final entry in localAlbumSignatures.entries) {
-            final localTitles = entry.value;
-            if (localTitles.isEmpty) continue;
-
-            int matches = 0;
-            for (final dt in deezerTracks) {
-              if (localTitles
-                  .any((lt) => MatchingService.titlesMatch(lt, dt.title))) {
-                matches++;
-              }
-            }
-
-            final ratio = matches / deezerTracks.length;
-            final threshold = deezerTracks.length <= 5 ? 0.20 : 0.10;
-
-            if (ratio >= threshold) {
-              album.isInLibrary = true;
-              break;
-            }
-          }
-        } catch (e) {
-          debugPrint('Deep match error for album ${album.title}: $e');
-        }
-      }));
-
-      if (mounted) setState(() {});
-    }
+    await deepMatchArtistAlbums(
+      discovery: _discovery,
+      discoveredAlbums: _discoveredAlbums,
+      allLocalTracks: state.allTracks,
+      artistName: widget.artistName,
+    );
 
     if (mounted) {
       final key = MatchingService.normalize(widget.artistName);
@@ -287,14 +236,6 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
     return null;
   }
 
-  DateTime? _parseReleaseDate(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw) ??
-        DateTime.tryParse(RegExp(r'^\d{4}').stringMatch(raw) != null
-            ? '${RegExp(r'^\d{4}').stringMatch(raw)}-01-01'
-            : '');
-  }
-
   void _recordRecent(AppState state, {String? coverPath}) {
     state.recordRecentPlay(RecentPlay(
       type: RecentPlayType.artist,
@@ -310,20 +251,9 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   Widget build(BuildContext context) {
     return Selector<AppState, (List<Track>, List<Album>)>(
       selector: (_, state) {
-        bool artistMatch(String? artistField) =>
-            MatchingService.artistFieldContains(artistField, widget.artistName);
-
-        final allTracks = state.allTracks;
-        final tracks = allTracks.where((t) => artistMatch(t.artist)).toList();
-        final tracksById = {for (final t in allTracks) t.id: t};
-        final albums = state.albums.where((a) {
-          if (artistMatch(a.artist)) return true;
-          return a.trackIds.any((id) {
-            final track = tracksById[id];
-            return track != null && artistMatch(track.artist);
-          });
-        }).toList();
-
+        final tracks = tracksForArtist(state.allTracks, widget.artistName);
+        final albums =
+            albumsForArtist(state.albums, state.allTracks, widget.artistName);
         return (tracks, albums);
       },
       builder: (context, data, child) {
@@ -336,42 +266,11 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
           popularTracks.add(_PopularTrack(discovered: dt, local: local));
         }
 
-        final discoveredOnly =
-            _discoveredAlbums.where((d) => !d.isInLibrary).toList();
-
-        // Album Deezer par titre normalise (pour retrouver, pour un album
-        // local partiellement possede, son nombre de titres reel).
-        final deezerByTitle = {
-          for (final d in _discoveredAlbums)
-            MatchingService.normalize(d.title): d
-        };
-
-        final sortedAlbumEntries = <_ArtistAlbumEntry>[
-          for (final a in localAlbums)
-            _ArtistAlbumEntry.local(
-              a,
-              a.year != null ? DateTime(a.year!) : null,
-              knownTotalTrackCount: () {
-                final match = deezerByTitle[MatchingService.normalize(a.title)];
-                if (match == null) return null;
-                return _trueTrackCounts[match.id] ?? match.nbTracks;
-              }(),
-            ),
-          for (final a in discoveredOnly)
-            _ArtistAlbumEntry.discovered(a, _parseReleaseDate(a.releaseDate)),
-        ]..sort((a, b) {
-            final da = a.sortDate;
-            final db = b.sortDate;
-            if (da == null && db == null) return 0;
-            if (da == null) return 1;
-            if (db == null) return -1;
-            return db.compareTo(da);
-          });
-
-        final fullAlbumEntries =
-            sortedAlbumEntries.where((e) => e.trackCount > 1).toList();
-        final singleEntries =
-            sortedAlbumEntries.where((e) => e.trackCount <= 1).toList();
+        final albumEntries = buildArtistAlbumEntries(
+          localAlbums: localAlbums,
+          discoveredAlbums: _discoveredAlbums,
+          trueTrackCounts: _trueTrackCounts,
+        );
 
         final artistImage = _discoveredArtist?.pictureBigUrl ??
             (localAlbums.isNotEmpty ? localAlbums.first.coverPath : null);
@@ -382,13 +281,6 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  GlassIconButton(
-                      icon: Icons.arrow_back_rounded, onPressed: widget.onBack),
-                ],
-              ),
-              const SizedBox(height: 12),
               Expanded(
                 child: CustomScrollView(
                   controller: _scrollController,
@@ -415,6 +307,24 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                                 state.playTrack(shuffled.first,
                                     trackList: shuffled);
                               },
+                        moreActions: [
+                          DesktopHeroMenuAction(
+                            label: state.isPinned(PinnedItemType.artist,
+                                    widget.artistName)
+                                ? "Désépingler de l'accueil"
+                                : "Épingler à l'accueil",
+                            icon: state.isPinned(PinnedItemType.artist,
+                                    widget.artistName)
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined,
+                            onTap: () => state.togglePin(PinnedItem(
+                              type: PinnedItemType.artist,
+                              id: widget.artistName,
+                              title: widget.artistName,
+                              subtitle: 'Artiste',
+                            )),
+                          ),
+                        ],
                       ),
                     ),
                     if (_loadingTopTracks) ...[
@@ -454,39 +364,59 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                         ),
                       ),
                     ],
-                    if (fullAlbumEntries.isNotEmpty) ...[
-                      const _SectionTitle('Albums'),
+                    if (albumEntries.isNotEmpty) ...[
+                      _AlbumsSectionHeader(
+                        onOpenDiscography: () =>
+                            widget.onOpenDiscography(widget.artistName),
+                      ),
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
-                        sliver: SliverGrid(
-                          gridDelegate:
-                              const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 170,
-                            childAspectRatio: 0.72,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 18,
-                          ),
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final entry = fullAlbumEntries[index];
-                              if (entry.local != null) {
-                                return _LocalAlbumCard(
-                                  album: entry.local!,
-                                  artistName: widget.artistName,
-                                  totalTrackCount: entry.knownTotalTrackCount,
-                                  onTap: () => widget.onOpenAlbum(entry.local!,
-                                      filterArtist: widget.artistName),
-                                );
-                              }
-                              return _DiscoveredAlbumCard(
-                                album: entry.discovered!,
-                                onTap: () => widget.onOpenDiscoveredAlbum(
-                                  album: entry.discovered!,
-                                  filterArtist: widget.artistName,
+                        sliver: SliverToBoxAdapter(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              const maxExtent = 170.0;
+                              const spacing = 14.0;
+                              final columns = ((constraints.maxWidth +
+                                          spacing) /
+                                      (maxExtent + spacing))
+                                  .floor()
+                                  .clamp(1, albumEntries.length);
+                              final shown =
+                                  albumEntries.take(columns).toList();
+                              return GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: maxExtent,
+                                  childAspectRatio: 0.72,
+                                  crossAxisSpacing: spacing,
+                                  mainAxisSpacing: 18,
                                 ),
+                                itemCount: shown.length,
+                                itemBuilder: (context, index) {
+                                  final entry = shown[index];
+                                  if (entry.local != null) {
+                                    return _LocalAlbumCard(
+                                      album: entry.local!,
+                                      artistName: widget.artistName,
+                                      totalTrackCount:
+                                          entry.knownTotalTrackCount,
+                                      onTap: () => widget.onOpenAlbum(
+                                          entry.local!,
+                                          filterArtist: widget.artistName),
+                                    );
+                                  }
+                                  return _DiscoveredAlbumCard(
+                                    album: entry.discovered!,
+                                    onTap: () => widget.onOpenDiscoveredAlbum(
+                                      album: entry.discovered!,
+                                      filterArtist: widget.artistName,
+                                    ),
+                                  );
+                                },
                               );
                             },
-                            childCount: fullAlbumEntries.length,
                           ),
                         ),
                       ),
@@ -498,41 +428,6 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                             child: CircularProgressIndicator(
                                 color: DesktopGlass.accent),
                           ),
-                        ),
-                      ),
-                    ],
-                    if (singleEntries.isNotEmpty) ...[
-                      const _SectionTitle('Singles'),
-                      SliverToBoxAdapter(
-                        child: DesktopHorizontalShelf(
-                          height: 178,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          itemCount: singleEntries.length,
-                          itemBuilder: (context, index) {
-                            final entry = singleEntries[index];
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 14),
-                              child: entry.local != null
-                                  ? _LocalAlbumCard(
-                                      album: entry.local!,
-                                      artistName: widget.artistName,
-                                      totalTrackCount:
-                                          entry.knownTotalTrackCount,
-                                      compact: true,
-                                      onTap: () => widget.onOpenAlbum(
-                                          entry.local!,
-                                          filterArtist: widget.artistName),
-                                    )
-                                  : _DiscoveredAlbumCard(
-                                      album: entry.discovered!,
-                                      compact: true,
-                                      onTap: () => widget.onOpenDiscoveredAlbum(
-                                        album: entry.discovered!,
-                                        filterArtist: widget.artistName,
-                                      ),
-                                    ),
-                            );
-                          },
                         ),
                       ),
                     ],
@@ -579,29 +474,39 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   }
 }
 
-class _ArtistAlbumEntry {
-  final Album? local;
-  final DiscoveredAlbum? discovered;
-  final DateTime? sortDate;
-  // Nombre de titres reel de l'album (cote Deezer) quand connu, pour un
-  // album local qui n'est possede que partiellement -- sans ca la vignette
-  // affichait le nombre de titres deja telecharges comme s'il s'agissait du
-  // total de l'album.
-  final int? knownTotalTrackCount;
+/// En-tete de la section "Albums" : titre + bouton "Discographie" pour voir
+/// la liste complete -- la grille elle-meme n'affiche qu'une seule rangee
+/// (voir LayoutBuilder ci-dessus), le reste de la discographie de l'artiste
+/// n'est visible qu'via cette page dediee (retour utilisateur : la page
+/// artiste devenait trop chargee a afficher tous les albums d'un coup).
+class _AlbumsSectionHeader extends StatelessWidget {
+  final VoidCallback onOpenDiscography;
+  const _AlbumsSectionHeader({required this.onOpenDiscography});
 
-  _ArtistAlbumEntry.local(Album album, this.sortDate,
-      {this.knownTotalTrackCount})
-      : local = album,
-        discovered = null;
-
-  _ArtistAlbumEntry.discovered(DiscoveredAlbum album, this.sortDate)
-      : local = null,
-        discovered = album,
-        knownTotalTrackCount = null;
-
-  int get trackCount => local != null
-      ? (knownTotalTrackCount ?? local!.trackIds.length)
-      : (discovered!.nbTracks ?? 2);
+  @override
+  Widget build(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 24, 4, 12),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text('Albums',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600)),
+            ),
+            TextButton(
+              onPressed: onOpenDiscography,
+              child: const Text('Discographie',
+                  style: TextStyle(color: Colors.white54, fontSize: 13)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PopularTrack {
@@ -636,6 +541,7 @@ class _Header extends StatelessWidget {
   final int deezerAlbumCount;
   final VoidCallback? onPlay;
   final VoidCallback? onShuffle;
+  final List<DesktopHeroMenuAction> moreActions;
 
   const _Header({
     required this.artistName,
@@ -644,6 +550,7 @@ class _Header extends StatelessWidget {
     required this.deezerAlbumCount,
     required this.onPlay,
     required this.onShuffle,
+    this.moreActions = const [],
   });
 
   @override
@@ -705,6 +612,10 @@ class _Header extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     GlassIconButton(icon: Icons.shuffle, onPressed: onShuffle),
+                    if (moreActions.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      DesktopMoreMenuButton(actions: moreActions),
+                    ],
                   ],
                 ),
               ],
@@ -800,10 +711,31 @@ class _PopularTrackRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (isAvailable)
-              const Icon(Icons.play_circle_outline,
-                  color: DesktopGlass.accent, size: 22)
-            else
+            if (isAvailable) ...[
+              // Like puis "..." (lire ensuite, file d'attente, partager,
+              // envoyer a un ami) -- l'icone de lecture separee etait
+              // redondante avec le tap sur toute la ligne (onPlay
+              // ci-dessus), remplacee par le like comme sur les autres
+              // listes de titres (retour utilisateur). Seulement quand le
+              // titre est deja sur le NAS (track.local) : rien a liker/mettre
+              // en file d'attente pour un titre pas encore telecharge.
+              GlassIconButton(
+                icon: track.local!.isLiked
+                    ? Icons.favorite
+                    : Icons.favorite_border,
+                color: track.local!.isLiked
+                    ? DesktopGlass.accent
+                    : Colors.white54,
+                size: 18,
+                onPressed: () =>
+                    context.read<AppState>().toggleLike(track.local!.id),
+              ),
+              const SizedBox(width: 4),
+              DesktopMoreMenuButton(
+                actions: trackMoreMenuActions(
+                    context, context.read<AppState>(), track.local!),
+              ),
+            ] else
               DownloadStateIcon(
                 state: downloadState,
                 showDownloadButton: showDownloadButton,

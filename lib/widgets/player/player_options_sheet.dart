@@ -2,181 +2,120 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_state.dart';
 import '../../models/track.dart';
-import '../../models/album.dart';
-import '../../screens/artist_screen.dart';
 import '../../screens/album_screen.dart';
 import '../../services/deep_link_service.dart';
-import '../cover_image.dart';
+import '../album_options_sheet.dart';
+import '../artist_options_sheet.dart';
+import '../bottom_sheet_common.dart';
 import 'jam_controls.dart';
+
+/// Popup ouverte en tapant le nom de l'artiste sur le big-player : deux
+/// raccourcis rapides (artiste ou album du titre en cours) plutot que de
+/// forcer un choix entre les deux destinations possibles (retour
+/// utilisateur).
+void showArtistAlbumPicker(BuildContext context, Track track) {
+  final state = context.read<AppState>();
+  showOptionsSheet(context, builder: (ctx) => [
+    SheetTile(
+      icon: Icons.person_outline,
+      label: 'Artiste',
+      onTap: () {
+        Navigator.pop(ctx);
+        showArtistPicker(context, track.artist);
+      },
+    ),
+    SheetTile(
+      icon: Icons.album_outlined,
+      label: 'Album',
+      onTap: () {
+        Navigator.pop(ctx);
+        state.pushOverlay(AlbumScreen(album: resolveTrackAlbum(state, track)));
+      },
+    ),
+    const SizedBox(height: 8),
+  ]);
+}
 
 void showPlayerOptions(BuildContext context, Track track) {
   final state = context.read<AppState>();
-  final coverExists = state.coverExists(track.coverPath);
 
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: const Color(0xFF1E1E1E),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+  showOptionsSheet(context, builder: (ctx) => [
+    BottomSheetHeader(
+      coverPath: track.coverPath,
+      title: track.title,
+      subtitle: track.artist,
     ),
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _SheetHeader(track: track, coverExists: coverExists),
-          const Divider(color: Color(0xFF2A2A2A), height: 1),
-          _SheetTile(
-            icon: Icons.add_circle_outline,
-            label: 'Ajouter a la playlist',
-            onTap: () {
-              Navigator.pop(ctx);
-              _showAddToPlaylistDialog(context, track);
-            },
-          ),
-          _SheetTile(
-            icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
-            label: track.isLiked
-                ? 'Retirer des titres likes'
-                : 'Ajouter aux titres likes',
-            iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
-            onTap: () {
-              Navigator.pop(ctx);
-              state.toggleLike(track.id);
-            },
-          ),
-          _SheetTile(
-            icon: Icons.album_outlined,
-            label: "Acceder a l'album",
-            onTap: () {
-              Navigator.pop(ctx);
-              // Match par albumId Navidrome (identifiant reel, unique) quand
-              // il existe, plutot que par titre seul : deux albums
-              // differents peuvent partager le meme titre (reedition,
-              // compilation...), et matcher par titre pouvait ouvrir le
-              // mauvais album ou lui attribuer des titres d'un autre artiste
-              // (retour utilisateur).
-              final expectedId =
-                  track.albumId != null ? 'navidrome_${track.albumId}' : null;
-              final album = state.albums.firstWhere(
-                (a) => expectedId != null
-                    ? a.id == expectedId
-                    : a.title == track.album,
-                orElse: () => Album(
-                  id: expectedId ?? track.album.hashCode.toString(),
-                  title: track.album,
-                  artist: track.albumArtist ?? track.artist,
-                  trackIds: state.allTracks
-                      .where((t) => expectedId != null
-                          ? t.albumId == track.albumId
-                          : t.album == track.album)
-                      .map((t) => t.id)
-                      .toList(),
-                  coverPath: track.coverPath,
-                ),
-              );
-              state.pushOverlay(AlbumScreen(album: album));
-            },
-          ),
-          _SheetTile(
-            icon: Icons.person_outline,
-            label: "Acceder a l'artiste",
-            onTap: () {
-              Navigator.pop(ctx);
-              _showArtistPicker(context, track.artist);
-            },
-          ),
-          _SheetTile(
-            icon: Icons.ios_share,
-            label: 'Partager',
-            onTap: () {
-              Navigator.pop(ctx);
-              shareTrack(track);
-            },
-          ),
-          if (state.shareInboxConfigured)
-            _SheetTile(
-              icon: Icons.send_outlined,
-              label: 'Envoyer a un ami',
-              onTap: () {
-                Navigator.pop(ctx);
-                showSendToFriendDialog(context,
-                    type: 'track',
-                    itemId: track.id,
-                    title: track.title,
-                    subtitle: track.artist);
-              },
-            ),
-          _SheetTile(
-            icon: state.isJamActive ? Icons.close : Icons.groups,
-            label: state.isJamActive
-                ? (state.isJamHost
-                    ? 'Session Jam (${state.jamParticipantCount} a l\'ecoute)'
-                    : 'Session Jam en cours')
-                : 'Ecouter ensemble (Jam)',
-            onTap: () {
-              Navigator.pop(ctx);
-              showJamMenu(context);
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
+    const Divider(color: Color(0xFF2A2A2A), height: 1),
+    SheetTile(
+      icon: Icons.add_circle_outline,
+      label: 'Ajouter a la playlist',
+      onTap: () {
+        Navigator.pop(ctx);
+        _showAddToPlaylistDialog(context, track);
+      },
+    ),
+    SheetTile(
+      icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
+      label: track.isLiked
+          ? 'Retirer des titres likes'
+          : 'Ajouter aux titres likes',
+      iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
+      onTap: () {
+        Navigator.pop(ctx);
+        state.toggleLike(track.id);
+      },
+    ),
+    SheetTile(
+      icon: Icons.album_outlined,
+      label: "Acceder a l'album",
+      onTap: () {
+        Navigator.pop(ctx);
+        state.pushOverlay(AlbumScreen(album: resolveTrackAlbum(state, track)));
+      },
+    ),
+    SheetTile(
+      icon: Icons.person_outline,
+      label: "Acceder a l'artiste",
+      onTap: () {
+        Navigator.pop(ctx);
+        showArtistPicker(context, track.artist);
+      },
+    ),
+    SheetTile(
+      icon: Icons.ios_share,
+      label: 'Partager',
+      onTap: () {
+        Navigator.pop(ctx);
+        shareTrack(track);
+      },
+    ),
+    if (state.shareInboxConfigured)
+      SheetTile(
+        icon: Icons.send_outlined,
+        label: 'Envoyer a un ami',
+        onTap: () {
+          Navigator.pop(ctx);
+          showSendToFriendDialog(context,
+              type: 'track',
+              itemId: track.id,
+              title: track.title,
+              subtitle: track.artist);
+        },
       ),
+    SheetTile(
+      icon: state.isJamActive ? Icons.close : Icons.groups,
+      label: state.isJamActive
+          ? (state.isJamHost
+              ? 'Session Jam (${state.jamParticipantCount} a l\'ecoute)'
+              : 'Session Jam en cours')
+          : 'Ecouter ensemble (Jam)',
+      onTap: () {
+        Navigator.pop(ctx);
+        showJamMenu(context);
+      },
     ),
-  );
-}
-
-void _showArtistPicker(BuildContext context, String artistsField) {
-  final artists = artistsField
-      .split(RegExp(r'[/&,]'))
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
-
-  if (artists.length <= 1) {
-    context
-        .read<AppState>()
-        .pushOverlay(ArtistScreen(artistName: artistsField));
-    return;
-  }
-
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: const Color(0xFF1E1E1E),
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Selectionner un artiste',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const Divider(color: Color(0xFF2A2A2A), height: 1),
-          ...artists.map((artist) => ListTile(
-                leading: const Icon(Icons.person, color: Colors.white),
-                title:
-                    Text(artist, style: const TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  context
-                      .read<AppState>()
-                      .pushOverlay(ArtistScreen(artistName: artist));
-                },
-              )),
-          const SizedBox(height: 8),
-        ],
-      ),
-    ),
-  );
+    const SizedBox(height: 8),
+  ]);
 }
 
 void _showAddToPlaylistDialog(BuildContext context, Track track) {
@@ -228,97 +167,4 @@ void _showAddToPlaylistDialog(BuildContext context, Track track) {
       ],
     ),
   );
-}
-
-class _SheetHeader extends StatelessWidget {
-  final Track track;
-  final bool coverExists;
-  const _SheetHeader({required this.track, required this.coverExists});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: const Color(0xFF2A2A2A),
-              image: coverExists && track.coverPath != null
-                  ? DecorationImage(
-                      image: coverImageProvider(context,
-                          path: track.coverPath!, width: 48, height: 48),
-                      fit: BoxFit.cover,
-                      onError: (_, __) {},
-                    )
-                  : null,
-            ),
-            child: !coverExists || track.coverPath == null
-                ? const Icon(Icons.album, color: Colors.white54, size: 24)
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  track.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  track.artist,
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SheetTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? iconColor;
-
-  const _SheetTile({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.iconColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon, color: iconColor ?? Colors.white, size: 26),
-      title: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      onTap: onTap,
-      minLeadingWidth: 24,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-    );
-  }
 }

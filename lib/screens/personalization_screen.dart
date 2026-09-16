@@ -8,6 +8,7 @@ import '../providers/app_state.dart';
 import '../services/avatar_service.dart';
 import '../theme/mobile_theme_settings.dart';
 import '../widgets/app_background.dart';
+import '../widgets/app_bar_safe_area.dart';
 import '../widgets/user_avatar.dart';
 
 /// Photo de profil + theme du fond de l'app (couleur unie / cover floutee /
@@ -49,6 +50,9 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // extendBodyBehindAppBar : voir le commentaire equivalent dans
+      // settings_screen.dart (fond identique sur toute la page).
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -59,7 +63,8 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
         child: Consumer<AppState>(
           builder: (context, state, child) {
             return ListView(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: EdgeInsets.fromLTRB(
+                  0, appBarSafeTopPadding(context) + 16, 0, 16),
               children: [
                 Center(
                   child: Column(

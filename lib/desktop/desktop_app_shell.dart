@@ -1,14 +1,21 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/playlist.dart';
+import '../models/pinned_item.dart';
+import '../models/recent_play.dart';
+import '../models/track.dart';
 import '../services/deep_link_service.dart';
 import 'desktop_album_view.dart';
+import 'desktop_artist_discography_view.dart';
 import 'desktop_artist_view.dart';
 import 'desktop_background.dart';
 import 'desktop_discovered_album_view.dart';
+import 'desktop_hero_card.dart' show DesktopHeroMenuAction;
 import 'desktop_sidebar.dart';
 import 'desktop_player_bar.dart';
 import 'desktop_home_view.dart';
@@ -18,6 +25,7 @@ import 'desktop_collection_view.dart';
 import 'desktop_friends_view.dart';
 import 'desktop_import_view.dart';
 import 'desktop_friend_profile_view.dart';
+import 'desktop_see_all_view.dart';
 import 'desktop_title_bar.dart';
 import 'glass.dart';
 import '../models/friend_profile.dart';
@@ -35,6 +43,11 @@ class DesktopAppShell extends StatefulWidget {
 class _DesktopAppShellState extends State<DesktopAppShell> {
   DesktopNavTab _tab = DesktopNavTab.home;
   final List<Widget> _stack = [];
+  // Vues "reculees" par _goBack, rejouables par _goForward -- comme
+  // l'historique avant/arriere d'un navigateur. Vide a chaque nouvelle
+  // navigation (_push) ou changement d'onglet, comme dans un vrai navigateur
+  // (avancer une fois "hors piste" n'a plus de sens).
+  final List<Widget> _forwardStack = [];
 
   @override
   void initState() {
@@ -52,84 +65,227 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
     super.dispose();
   }
 
-  void _push(Widget Function(VoidCallback onBack) builder) {
-    late final Widget w;
-    w = builder(() => setState(() => _stack.remove(w)));
-    setState(() => _stack.add(w));
+  void _push(Widget widget) {
+    setState(() {
+      _stack.add(widget);
+      _forwardStack.clear();
+    });
   }
 
-  void _clearStack() => setState(() => _stack.clear());
+  void _goBack() {
+    if (_stack.isEmpty) return;
+    setState(() => _forwardStack.add(_stack.removeLast()));
+  }
+
+  void _goForward() {
+    if (_forwardStack.isEmpty) return;
+    setState(() => _stack.add(_forwardStack.removeLast()));
+  }
+
+  void _clearStack() => setState(() {
+        _stack.clear();
+        _forwardStack.clear();
+      });
 
   void _openAlbum(Album album, {String? filterArtist}) {
-    _push((onBack) => DesktopAlbumView(
-          key: ValueKey('album-${album.id}-${filterArtist ?? ''}'),
-          album: album,
-          filterArtist: filterArtist,
-          onBack: onBack,
-          onOpenArtist: _openArtist,
-        ));
+    _push(DesktopAlbumView(
+      key: ValueKey('album-${album.id}-${filterArtist ?? ''}'),
+      album: album,
+      filterArtist: filterArtist,
+      onOpenArtist: _openArtist,
+    ));
   }
 
   void _openDiscoveredAlbum(
       {DiscoveredAlbum? album, int? albumId, String? filterArtist}) {
-    _push((onBack) => DesktopDiscoveredAlbumView(
-          key: ValueKey(
-              'discovered-album-${album?.id ?? albumId}-${filterArtist ?? ''}'),
-          album: album,
-          albumId: albumId,
-          filterArtist: filterArtist,
-          onBack: onBack,
-          onOpenArtist: _openArtist,
-        ));
+    _push(DesktopDiscoveredAlbumView(
+      key: ValueKey(
+          'discovered-album-${album?.id ?? albumId}-${filterArtist ?? ''}'),
+      album: album,
+      albumId: albumId,
+      filterArtist: filterArtist,
+      onOpenArtist: _openArtist,
+    ));
   }
 
   void _openPlaylist(Playlist playlist) {
     final state = context.read<AppState>();
+    // byId + trackIds.map (pas allTracks.where(...)) : ce dernier renvoie
+    // les titres dans l'ordre de allTracks (globalement stable), pas celui
+    // de la playlist -- ".first" tombait donc souvent sur le meme titre
+    // (peu importe la playlist), montrant toujours la meme cover en-tete
+    // (retour utilisateur). Meme correction deja appliquee a la grille de
+    // la bibliotheque (voir DesktopLibraryView).
+    final byId = {for (final t in state.allTracks) t.id: t};
     final tracks =
-        state.allTracks.where((t) => playlist.trackIds.contains(t.id)).toList();
-    _push((onBack) => DesktopCollectionView(
+        playlist.trackIds.map((id) => byId[id]).whereType<Track>().toList();
+    final trackCountLabel =
+        '${playlist.trackIds.length} titre${playlist.trackIds.length > 1 ? 's' : ''}';
+    // Cover aleatoire parmi les titres qui en ont vraiment une (pas juste
+    // "le premier titre") -- meme apres avoir corrige l'ordre ci-dessus, le
+    // premier titre restait souvent visuellement le meme d'une playlist a
+    // l'autre (retour utilisateur), et un choix aleatoire est ce que
+    // l'utilisateur a lui-meme suggere en remplacement.
+    final coverCandidates = tracks
+        .where((t) => t.coverPath != null && state.coverExists(t.coverPath))
+        .toList();
+    final coverPath = coverCandidates.isNotEmpty
+        ? coverCandidates[Random().nextInt(coverCandidates.length)].coverPath
+        : (tracks.isNotEmpty ? tracks.first.coverPath : null);
+    _push(DesktopCollectionView(
           key: ValueKey('playlist-${playlist.id}'),
           title: playlist.name,
-          subtitle: '${playlist.trackIds.length} titre(s)',
-          coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
+          subtitle: trackCountLabel,
+          coverPath: coverPath,
           tracks: tracks,
-          onBack: onBack,
           onOpenAlbum: _openAlbum,
           onOpenArtist: _openArtist,
+          onRecordRecent: () => state.recordRecentPlay(RecentPlay(
+                type: RecentPlayType.playlist,
+                id: playlist.id,
+                title: playlist.name,
+                subtitle: trackCountLabel,
+                coverPath: coverPath,
+                playedAt: DateTime.now(),
+              )),
           onShare: () => sharePlaylist(context, playlist),
           onSendToFriend: context.read<AppState>().shareInboxConfigured
               ? () => showSendToFriendDialog(context,
                   type: 'playlist',
                   title: playlist.name,
-                  subtitle: '${playlist.trackIds.length} titre(s)',
+                  subtitle: trackCountLabel,
                   playlistForPrivacyCheck: playlist)
               : null,
+          moreActions: [
+            DesktopHeroMenuAction(
+              label: state.isPinned(PinnedItemType.playlist, playlist.id)
+                  ? "Désépingler de l'accueil"
+                  : "Épingler à l'accueil",
+              icon: state.isPinned(PinnedItemType.playlist, playlist.id)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              onTap: () => state.togglePin(PinnedItem(
+                type: PinnedItemType.playlist,
+                id: playlist.id,
+                title: playlist.name,
+                subtitle: trackCountLabel,
+              )),
+            ),
+            DesktopHeroMenuAction(
+              label: "Ajouter à la file d'attente",
+              icon: Icons.playlist_add,
+              onTap: () {
+                for (final t in tracks) {
+                  state.addToQueue(t);
+                }
+              },
+            ),
+            DesktopHeroMenuAction(
+              label: 'Télécharger',
+              icon: Icons.download_outlined,
+              onTap: () => state.downloadTracksOffline(tracks),
+            ),
+            DesktopHeroMenuAction(
+              label: playlist.isPublic ? 'Rendre privée' : 'Rendre publique',
+              icon: playlist.isPublic ? Icons.lock_outline : Icons.public,
+              onTap: () =>
+                  state.setPlaylistPublic(playlist.id, !playlist.isPublic),
+            ),
+            DesktopHeroMenuAction(
+              label: 'Supprimer',
+              icon: Icons.delete_outline,
+              destructive: true,
+              onTap: () => _confirmDeletePlaylist(playlist),
+            ),
+          ],
         ));
+  }
+
+  Future<void> _confirmDeletePlaylist(Playlist playlist) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Supprimer la playlist ?',
+            style: TextStyle(color: Colors.white)),
+        content: Text('"${playlist.name}" sera supprimée définitivement.',
+            style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Supprimer',
+                style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await context.read<AppState>().deletePlaylist(playlist.id);
+      if (mounted) _goBack();
+    }
   }
 
   void _openLikedSongs() {
     final state = context.read<AppState>();
     final tracks = state.likedTracksWithMissing;
-    _push((onBack) => DesktopCollectionView(
+    final trackCountLabel = '${tracks.length} titre${tracks.length > 1 ? 's' : ''}';
+    _push(DesktopCollectionView(
           key: const ValueKey('liked-songs'),
           title: 'Titres likes',
           subtitle: 'Vos titres favoris',
           coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
           tracks: tracks,
-          onBack: onBack,
           onOpenAlbum: _openAlbum,
           onOpenArtist: _openArtist,
+          onRecordRecent: () => state.recordRecentPlay(RecentPlay(
+                type: RecentPlayType.playlist,
+                id: kLikedSongsRecentId,
+                title: 'Titres likés',
+                subtitle: trackCountLabel,
+                playedAt: DateTime.now(),
+              )),
+          moreActions: [
+            DesktopHeroMenuAction(
+              label: state.isPinned(
+                      PinnedItemType.playlist, kLikedSongsRecentId)
+                  ? "Désépingler de l'accueil"
+                  : "Épingler à l'accueil",
+              icon: state.isPinned(
+                      PinnedItemType.playlist, kLikedSongsRecentId)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              onTap: () => state.togglePin(const PinnedItem(
+                type: PinnedItemType.playlist,
+                id: kLikedSongsRecentId,
+                title: 'Titres likes',
+                subtitle: 'Playlist',
+              )),
+            ),
+          ],
         ));
   }
 
   void _openArtist(String artistName) {
-    _push((onBack) => DesktopArtistView(
-          key: ValueKey('artist-$artistName'),
-          artistName: artistName,
-          onBack: onBack,
-          onOpenAlbum: _openAlbum,
-          onOpenDiscoveredAlbum: _openDiscoveredAlbum,
-        ));
+    _push(DesktopArtistView(
+      key: ValueKey('artist-$artistName'),
+      artistName: artistName,
+      onOpenAlbum: _openAlbum,
+      onOpenDiscoveredAlbum: _openDiscoveredAlbum,
+      onOpenDiscography: _openDiscography,
+    ));
+  }
+
+  void _openDiscography(String artistName) {
+    _push(DesktopArtistDiscographyView(
+      key: ValueKey('discography-$artistName'),
+      artistName: artistName,
+      onOpenAlbum: _openAlbum,
+      onOpenDiscoveredAlbum: _openDiscoveredAlbum,
+    ));
   }
 
   void _openSearch() => setState(() {
@@ -138,7 +294,16 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
       });
 
   void _openFriendProfile(FriendProfile friend) {
-    _push((onBack) => DesktopFriendProfileView(friend: friend, onBack: onBack));
+    _push(DesktopFriendProfileView(friend: friend));
+  }
+
+  Future<void> _openFriendProfileByUsername(String username) async {
+    final friend = await context.read<AppState>().resolveFriend(username);
+    if (friend != null) _openFriendProfile(friend);
+  }
+
+  void _openSeeAll(String title, List<DesktopSeeAllItem> items) {
+    _push(DesktopSeeAllView(title: title, items: items));
   }
 
   Widget get _baseContent {
@@ -150,6 +315,8 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
           onOpenArtist: _openArtist,
           onOpenLikedSongs: _openLikedSongs,
           onOpenPlaylist: _openPlaylist,
+          onOpenFriendProfile: _openFriendProfileByUsername,
+          onSeeAll: _openSeeAll,
         );
       case DesktopNavTab.search:
         return DesktopSearchView(
@@ -237,7 +404,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
                         children: [
                           Positioned.fill(child: _contentStack),
                           Positioned(
-                            top: DesktopGlass.titleBarHeight + 4,
+                            top: DesktopGlass.titleBarHeight,
                             left: 0,
                             right: 0,
                             child: _TopBar(
@@ -261,8 +428,17 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
             // elle n'a jamais besoin de rien cacher, c'est le contenu qui
             // doit se rendre invisible via DesktopGlass.topInset en dessous
             // d'elle).
-            const Positioned(
-                top: 0, left: 0, right: 0, child: DesktopTitleBar()),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: DesktopTitleBar(
+                canGoBack: _stack.isNotEmpty,
+                canGoForward: _forwardStack.isNotEmpty,
+                onGoBack: _goBack,
+                onGoForward: _goForward,
+              ),
+            ),
             // Flottante par-dessus sidebar + contenu au bas de la fenetre --
             // son propre GlassPanel (flou + teinte) cache deja proprement
             // ce qui defile dessous, pas besoin d'un fondu separe comme

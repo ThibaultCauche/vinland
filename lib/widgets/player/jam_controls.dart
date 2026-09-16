@@ -9,6 +9,7 @@ import '../../providers/app_state.dart';
 /// lib/services/jam_service.dart).
 void showJamMenu(BuildContext context) {
   final state = context.read<AppState>();
+  final transferTargets = state.jamTransferTargets;
   showModalBottomSheet(
     context: context,
     backgroundColor: const Color(0xFF1E1E1E),
@@ -19,6 +20,20 @@ void showJamMenu(BuildContext context) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (state.isJamHost && transferTargets.isNotEmpty)
+            for (final username in transferTargets)
+              ListTile(
+                leading: const Icon(Icons.swap_horiz,
+                    color: Colors.white, size: 26),
+                title: Text('Ceder l\'hebergement a $username',
+                    style: const TextStyle(color: Colors.white, fontSize: 16)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.transferJamHost(username);
+                },
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              ),
           if (state.isFriendJamActive)
             ListTile(
               leading: const Icon(Icons.close, color: Colors.white, size: 26),
@@ -60,6 +75,60 @@ void showJamMenu(BuildContext context) {
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             ),
           ],
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Menu "Peripheriques" (Spotify Connect-like), partage mobile/desktop :
+/// affiche l'autre appareil du meme compte en train d'ecouter (voir
+/// AppState.isPersonalSyncParticipant) et propose d'y reprendre la lecture
+/// ici (voir AppState.takeOverPersonalSync). Pas de liste d'appareils
+/// inactifs -- il n'existe aucune notion de presence hors lecture active
+/// (voir jam_relay/, sessions ephemeres), seul l'appareil hote actuel est
+/// connu.
+void showDeviceMenu(BuildContext context) {
+  final state = context.read<AppState>();
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF1E1E1E),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (state.isPersonalSyncParticipant && state.remoteTrack != null)
+            ListTile(
+              leading: const Icon(Icons.devices, color: Colors.white, size: 26),
+              title: Text(
+                'Reprendre ici (${state.remoteDeviceName ?? 'autre appareil'})',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              subtitle: Text(
+                '${state.remoteTrack!.title} - ${state.remoteTrack!.artist}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                state.takeOverPersonalSync();
+              },
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            )
+          else
+            const ListTile(
+              leading: Icon(Icons.devices_other, color: Colors.white38, size: 26),
+              title: Text('Aucun autre appareil connecte',
+                  style: TextStyle(color: Colors.white38, fontSize: 16)),
+              minLeadingWidth: 24,
+              contentPadding: EdgeInsets.symmetric(horizontal: 20),
+            ),
           const SizedBox(height: 8),
         ],
       ),

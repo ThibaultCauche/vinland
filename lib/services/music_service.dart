@@ -11,6 +11,7 @@ import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
 import '../models/friend_profile.dart';
+import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
 import 'navidrome_service.dart';
@@ -156,6 +157,15 @@ class MusicService {
   /// juste pour ce petit bout d'info supplementaire.
   static const String _nowPlayingMirrorTag = 'vinland:now-playing';
 
+  /// Au-dela de cet age, le mirroir "now playing" d'un ami est ignore (ami
+  /// affiche hors-ligne) plutot que pris pour argent comptant -- voir
+  /// fetchFriends. Filet de securite pour les cas ou updateNowPlaying(null)
+  /// n'a pas pu s'executer (app tuee, crash, reseau coupe) : AppState
+  /// republie ce mirroir toutes les 60s tant qu'un titre joue (voir
+  /// _touchNowPlaying), donc un ami reellement actif ne depasse jamais ce
+  /// seuil.
+  static const Duration _nowPlayingStaleAfter = Duration(minutes: 2);
+
   bool _shareLikesWithFriends = true;
   bool get shareLikesWithFriends => _shareLikesWithFriends;
   bool _shareRecentPlaysWithFriends = true;
@@ -205,6 +215,106 @@ class MusicService {
     _debouncedSave();
   }
 
+  static const String _pinnedMirrorTagPrefix = 'vinland:pinned-tiles:';
+  Timer? _pinnedMirrorDebounce;
+  String? _pinnedMirrorServerId;
+
+  List<PinnedItem> _pinnedItems = [];
+  List<PinnedItem> get pinnedItems => List.unmodifiable(_pinnedItems);
+
+  bool isPinned(PinnedItemType type, String id) =>
+      _pinnedItems.any((p) => p.sameTarget(type, id));
+
+  /// Epingle/desepingle une tuile de l'accueil (album/playlist/artiste) pour
+  /// qu'elle reste toujours visible, meme sans ecoute recente. Synchronisee
+  /// via le profil Navidrome (voir _syncPinnedMirror) pour retrouver les
+  /// memes epingles sur un autre appareil ou sur l'app Windows (retour
+  /// utilisateur).
+  void togglePin(PinnedItem item) {
+    final existing =
+        _pinnedItems.indexWhere((p) => p.sameTarget(item.type, item.id));
+    if (existing != -1) {
+      _pinnedItems.removeAt(existing);
+    } else {
+      _pinnedItems.add(item);
+    }
+    _debouncedSave();
+    _syncPinnedMirror();
+  }
+
+  /// Republie (avec un leger debounce) la liste complete des tuiles
+  /// epinglees dans le champ "comment" d'une playlist miroir cachee -- meme
+  /// mecanisme que les autres miroirs (likes, ecoutes recentes...), mais le
+  /// contenu utile ici est le JSON du commentaire lui-meme (la playlist reste
+  /// vide de titres) : une tuile epinglee peut etre un album/une playlist/un
+  /// artiste, pas seulement des titres, donc rien a mettre dans le contenu
+  /// normal d'une playlist Navidrome.
+  void _syncPinnedMirror() {
+    if (!_navidrome.isConnected) return;
+    _pinnedMirrorDebounce?.cancel();
+    _pinnedMirrorDebounce = Timer(const Duration(seconds: 2), () async {
+      final comment = _pinnedMirrorTagPrefix +
+          jsonEncode(_pinnedItems.map((p) => p.toJson()).toList());
+      var mirrorId = _pinnedMirrorServerId;
+      if (mirrorId == null) {
+        final existing = await _navidrome.fetchPlaylists();
+        final match = existing.firstWhere(
+          (pl) =>
+              pl['owner'] == _navidrome.username &&
+              (pl['comment'] as String? ?? '')
+                  .startsWith(_pinnedMirrorTagPrefix),
+          orElse: () => <String, dynamic>{},
+        );
+        mirrorId = match['id'] as String?;
+        if (mirrorId != null) {
+          _pinnedMirrorServerId = mirrorId;
+          _debouncedSave();
+          await _navidrome.setPlaylistMeta(mirrorId, comment: comment);
+          return;
+        }
+        mirrorId = await _navidrome.createServerPlaylist('Vinland: epingles',
+            comment: comment, public: false);
+        if (mirrorId == null) return;
+        _pinnedMirrorServerId = mirrorId;
+        _debouncedSave();
+        return;
+      }
+      await _navidrome.setPlaylistMeta(mirrorId, comment: comment);
+    });
+  }
+
+  /// Retrouve la playlist miroir des tuiles epinglees parmi une liste de
+  /// playlists deja recuperee (fetchPlaylists()) et adopte son contenu -- le
+  /// JSON encode dans son "comment" fait foi, ecrase l'etat local. Appelee
+  /// par la synchro complete ET la synchro legere (contrairement aux autres
+  /// miroirs, purement "push") : sans ca, un pin fait sur un autre appareil
+  /// ne remonterait qu'a la prochaine synchro complete, possible seulement
+  /// toutes les 6h (voir AppState._performSync).
+  void _applyPinnedMirrorFrom(List<Map<String, dynamic>> ownedPlaylists) {
+    final match = ownedPlaylists.firstWhere(
+      (pl) => (pl['comment'] as String? ?? '')
+          .startsWith(_pinnedMirrorTagPrefix),
+      orElse: () => <String, dynamic>{},
+    );
+    final id = match['id'] as String?;
+    if (id == null) {
+      _pinnedMirrorServerId = null;
+      if (_pinnedItems.isNotEmpty) _syncPinnedMirror();
+      return;
+    }
+    _pinnedMirrorServerId = id;
+    try {
+      final decoded = jsonDecode((match['comment'] as String)
+          .substring(_pinnedMirrorTagPrefix.length)) as List;
+      _pinnedItems = decoded
+          .map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
+          .toList();
+      _debouncedSave();
+    } catch (e) {
+      debugPrint('Pinned mirror decode error: $e');
+    }
+  }
+
   String? _currentUserId;
 
   void setCurrentUser(String? userId) {
@@ -243,6 +353,8 @@ class MusicService {
     _recentPlaysMirrorDebounce = null;
     _nowPlayingMirrorDebounce?.cancel();
     _nowPlayingMirrorDebounce = null;
+    _pinnedMirrorDebounce?.cancel();
+    _pinnedMirrorDebounce = null;
     for (final timer in _playlistSyncDebounce.values) {
       timer.cancel();
     }
@@ -258,6 +370,7 @@ class MusicService {
     _missingTracks = [];
     _missingTracksView = null;
     _recentPlays = [];
+    _pinnedItems = [];
     _existingCovers.clear();
     _tracksNeedingOrderRecovery.clear();
 
@@ -267,6 +380,7 @@ class MusicService {
     _recentPlaysMirrorServerId = null;
     _shareNowPlayingWithFriends = true;
     _nowPlayingMirrorServerId = null;
+    _pinnedMirrorServerId = null;
   }
 
   String get _cacheFileName {
@@ -1044,6 +1158,8 @@ class MusicService {
       'recentPlaysMirrorServerId': _recentPlaysMirrorServerId,
       'shareNowPlayingWithFriends': _shareNowPlayingWithFriends,
       'nowPlayingMirrorServerId': _nowPlayingMirrorServerId,
+      'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
+      'pinnedMirrorServerId': _pinnedMirrorServerId,
     };
     await file.writeAsString(jsonEncode(data));
   }
@@ -1095,6 +1211,11 @@ class MusicService {
                 ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
                 .toList() ??
             [];
+        _pinnedItems = (data['pinnedItems'] as List?)
+                ?.map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
+                .toList() ??
+            [];
+        _pinnedMirrorServerId = data['pinnedMirrorServerId'];
         _albums = (data['albums'] as List?)
                 ?.map((json) => Album.fromJson(json))
                 .toList() ??
@@ -1330,6 +1451,18 @@ class MusicService {
     final starredMap = await _navidrome.fetchStarredTrackIds();
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
+    // Contrairement aux likes/albums ci-dessous, les tuiles epinglees sont
+    // adoptees ici aussi (pas seulement dans la synchro complete) : sinon un
+    // pin fait sur un autre appareil/l'app Windows ne remonterait qu'a la
+    // prochaine synchro complete, possible seulement toutes les 6h.
+    final username = _navidrome.username;
+    if (username != null) {
+      final ownedPlaylists = (await _navidrome.fetchPlaylists())
+          .where((pl) => pl['owner'] == username)
+          .toList();
+      _applyPinnedMirrorFrom(ownedPlaylists);
+    }
+
     var changed = false;
     for (final t in _allTracks) {
       if (!t.isLiked && starredMap.containsKey(t.id)) {
@@ -1401,6 +1534,9 @@ class MusicService {
     if (_recentPlaysMirrorServerId == null) {
       _syncRecentPlaysMirror();
     }
+
+    // Retrouve/adopte la playlist miroir des tuiles epinglees.
+    _applyPinnedMirrorFrom(mine);
 
     // Retrouve la playlist miroir "en ecoute" si elle existe deja -- pas de
     // creation eager ici (contrairement aux deux precedentes) : rien a y
@@ -1504,11 +1640,17 @@ class MusicService {
         final isNowPlayingMirror = pl['comment'] == _nowPlayingMirrorTag;
 
         if (isNowPlayingMirror) {
-          final trackIds =
-              await _navidrome.fetchPlaylistSongIds(pl['id'] as String);
-          nowPlayingTrackId = trackIds.isNotEmpty ? trackIds.first : null;
-          final name = pl['name'] as String? ?? '';
-          jamSessionId = name.startsWith('Jam:') ? name.substring(4) : null;
+          final changedAt = DateTime.tryParse(pl['changed'] as String? ?? '');
+          final isStale = changedAt == null ||
+              DateTime.now().toUtc().difference(changedAt.toUtc()) >
+                  _nowPlayingStaleAfter;
+          if (!isStale) {
+            final trackIds =
+                await _navidrome.fetchPlaylistSongIds(pl['id'] as String);
+            nowPlayingTrackId = trackIds.isNotEmpty ? trackIds.first : null;
+            final name = pl['name'] as String? ?? '';
+            jamSessionId = name.startsWith('Jam:') ? name.substring(4) : null;
+          }
           continue;
         }
 
