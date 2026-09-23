@@ -11,9 +11,9 @@
 5. Le workflow `.github/workflows/release.yml` se declenche automatiquement sur
    ce tag : il build Windows + Android et publie une Release GitHub avec
    `vinland-windows-vX.Y.Z.zip` et `vinland-android-vX.Y.Z.apk` en ~5-8 min.
-6. Verifier : `gh run list -R Tibobg/vinland -L 1` puis
-   `gh run watch <run-id> -R Tibobg/vinland --exit-status`, et enfin
-   `gh release view vX.Y.Z -R Tibobg/vinland` pour confirmer les deux assets.
+6. Verifier : `gh run list -R ThibaultCauche/vinland -L 1` puis
+   `gh run watch <run-id> -R ThibaultCauche/vinland --exit-status`, et enfin
+   `gh release view vX.Y.Z -R ThibaultCauche/vinland` pour confirmer les deux assets.
 
 Une fois publiee, l'app la propose toute seule aux utilisateurs (verif au
 lancement + au retour au premier plan) : auto-update complet sur Windows

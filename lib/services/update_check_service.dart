@@ -32,7 +32,7 @@ class UpdateInfo {
 /// manuel de la nouvelle version.
 class UpdateCheckService {
   static const _apiUrl =
-      'https://api.github.com/repos/Tibobg/vinland/releases/latest';
+      'https://api.github.com/repos/ThibaultCauche/vinland/releases/latest';
 
   Future<UpdateInfo?> checkForUpdate() async {
     try {
