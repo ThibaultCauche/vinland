@@ -61,7 +61,6 @@ class JustAudioPlayerEngine implements PlayerEngine {
     required int initialIndex,
   }) async {
     final sources = items.map((item) {
-      if (item.isAsset) return ja.AudioSource.asset(item.path.replaceFirst('assets/', ''));
       if (item.isRemote) return ja.AudioSource.uri(Uri.parse(item.path));
       return ja.AudioSource.file(item.path);
     }).toList();

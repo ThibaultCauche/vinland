@@ -943,11 +943,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> scanMusic(String path) async {
-    if (path.contains('assets')) {
-      await _music.scanAssetsMusic();
-    } else {
-      await _music.scanDirectory(path);
-    }
+    await _music.scanDirectory(path);
     _notify();
   }
 
@@ -1045,7 +1041,6 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> _playSingle(Track track) async {
     currentTrack = track;
     final path = _music.getOfflinePath(track.id) ?? track.filePath!;
-    final isAsset = path.startsWith('assets/');
     final isRemote = path.startsWith('http');
 
     Uri? artUri;
@@ -1062,7 +1057,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       album: track.album,
       duration: track.duration,
       artUri: artUri,
-      extras: {'isAsset': isAsset, 'isRemote': isRemote},
+      extras: {'isRemote': isRemote},
     );
 
     _updateDominantColor(track.coverPath);

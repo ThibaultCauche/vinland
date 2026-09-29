@@ -98,11 +98,10 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     }
 
     final sources = items.map((item) {
-      final isAsset = item.extras?['isAsset'] == true;
       final isRemote = item.id.startsWith('http');
       debugPrint(
-          '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isAsset=$isAsset isRemote=$isRemote');
-      return PlayerQueueItem(path: item.id, isAsset: isAsset, isRemote: isRemote);
+          '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isRemote=$isRemote');
+      return PlayerQueueItem(path: item.id, isRemote: isRemote);
     }).toList();
 
     // Un blip reseau mobile (Tailscale en exterieur) faisait echouer le
