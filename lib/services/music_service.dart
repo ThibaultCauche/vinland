@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:metadata_god/metadata_god.dart';
@@ -445,72 +444,6 @@ class MusicService {
     return 'jpg';
   }
 
-  Future<void> scanAssetsMusic() async {
-    debugPrint('SCAN DES ASSETS...');
-    final manifestContent = await rootBundle.loadString('AssetManifest.json');
-    final Map<String, dynamic> manifest = jsonDecode(manifestContent);
-
-    final List<Track> loaded = [];
-
-    for (final String assetPath in manifest.keys) {
-      if (!assetPath.startsWith('assets/music/')) continue;
-
-      final ext = p.extension(assetPath).toLowerCase();
-      if (!['.mp3', '.flac', '.m4a', '.ogg', '.wav'].contains(ext)) continue;
-
-      try {
-        final byteData = await rootBundle.load(assetPath);
-        final fileName = p.basenameWithoutExtension(assetPath);
-        String title = fileName;
-        final numberMatch = RegExp(r'^\d+\.\s*').firstMatch(fileName);
-        if (numberMatch != null) {
-          title = fileName.substring(numberMatch.end).trim();
-        }
-
-        final album = p.basename(p.dirname(assetPath));
-        final artist = _extractArtistFromAlbum(album);
-
-        String? coverPath;
-        try {
-          final tempDir = await getTemporaryDirectory();
-          final tempFile = File(p.join(tempDir.path, p.basename(assetPath)));
-          await tempFile.writeAsBytes(byteData.buffer.asUint8List());
-
-          final metadata = await MetadataGod.readMetadata(file: tempFile.path);
-          if (metadata.picture != null) {
-            coverPath = await _saveCover(metadata.picture!.data, assetPath);
-          }
-          await tempFile.delete();
-        } catch (e) {
-          debugPrint('ERREUR COVER ASSET: $assetPath - $e');
-        }
-
-        loaded.add(Track(
-          id: assetPath,
-          title: title,
-          artist: artist,
-          album: album,
-          duration: const Duration(minutes: 3),
-          filePath: assetPath,
-          coverPath: coverPath,
-        ));
-      } catch (e) {
-        debugPrint('ERREUR FICHIER: $assetPath - $e');
-      }
-    }
-
-    if (loaded.isNotEmpty) {
-      final localTracks = _allTracks
-          .where(
-              (t) => t.filePath != null && !t.filePath!.startsWith('assets/'))
-          .toList();
-
-      _allTracks = [...localTracks, ...loaded];
-      rebuildAlbums();
-      _debouncedSave();
-    }
-  }
-
   Future<void> scanDirectory(String dirPath) async {
     final normalizedPath = dirPath.replaceAll(r'\\', r'\');
     final dir = Directory(normalizedPath);
@@ -532,11 +465,7 @@ class MusicService {
     }
 
     if (scanned.isNotEmpty) {
-      final assetTracks = _allTracks
-          .where((t) => t.filePath != null && t.filePath!.startsWith('assets/'))
-          .toList();
-
-      _allTracks = [...assetTracks, ...scanned];
+      _allTracks = scanned;
       rebuildAlbums();
       _debouncedSave();
     }
@@ -680,22 +609,6 @@ class MusicService {
       title = fileName.substring(numberMatch.end).trim();
     }
     return title;
-  }
-
-  String _extractArtistFromAlbum(String albumName) {
-    if (albumName.contains(':')) {
-      final parts = albumName.split(':');
-      final first = parts[0].trim();
-      if (RegExp(r'^Vol\.?\s*\d+', caseSensitive: false).hasMatch(first)) {
-        return parts.sublist(1).join(':').trim();
-      }
-      return first;
-    }
-    final parenIdx = albumName.indexOf('(');
-    if (parenIdx > 0) {
-      return albumName.substring(0, parenIdx).trim();
-    }
-    return albumName;
   }
 
   List<Track> searchTracks(String query) {
@@ -1265,9 +1178,7 @@ class MusicService {
   }
 
   Future<void> rescanCoversForExistingTracks() async {
-    final localTracks = _allTracks
-        .where((t) => t.filePath != null && !t.filePath!.startsWith('assets/'))
-        .toList();
+    final localTracks = _allTracks.where((t) => t.filePath != null).toList();
 
     int updated = 0;
     for (final track in localTracks) {

@@ -7,12 +7,10 @@ export 'package:just_audio/just_audio.dart' show LoopMode;
 /// (just_audio ou media_kit interpretent chacun ce chemin/URL a leur facon).
 class PlayerQueueItem {
   final String path;
-  final bool isAsset;
   final bool isRemote;
 
   const PlayerQueueItem({
     required this.path,
-    required this.isAsset,
     required this.isRemote,
   });
 }
