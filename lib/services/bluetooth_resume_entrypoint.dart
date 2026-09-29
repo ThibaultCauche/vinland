@@ -102,7 +102,6 @@ Future<void> _run() async {
         duration: t.duration,
         artUri: artUri,
         extras: {
-          'isAsset': path.startsWith('assets/'),
           'isRemote': path.startsWith('http'),
         },
       );

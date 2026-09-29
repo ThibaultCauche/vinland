@@ -86,11 +86,7 @@ class MediaKitPlayerEngine implements PlayerEngine {
     List<PlayerQueueItem> items, {
     required int initialIndex,
   }) async {
-    // Les pistes bundlees en assets Flutter (demo embarquee) ne sont pas
-    // lisibles directement par libmpv (pas d'acces au bundle Flutter) --
-    // limitation connue, non bloquante : usage reel = streaming Navidrome +
-    // fichiers hors-ligne, jamais les assets de demo.
-    final playable = items.where((i) => !i.isAsset).toList();
+    final playable = items;
     if (playable.isEmpty) return;
     final adjustedIndex = initialIndex.clamp(0, playable.length - 1);
     final targetUri = mk.Media(playable[adjustedIndex].path).uri;

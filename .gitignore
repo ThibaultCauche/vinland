@@ -53,3 +53,13 @@ lib/config/share_inbox_config.dart
 # Cle de signature de release Android -- jamais dans git (voir
 # vinland-release-keystore/ hors du repo pour le vrai .jks).
 android/key.properties
+
+# Pas de musique dans le depot : la BO d'Arcane embarquee a une epoque a ete
+# purgee de l'historique (1,1 Go, droits d'auteur). La musique vient de
+# Navidrome sur le NAS, jamais des assets.
+assets/music/
+assets/**/*.ogg
+assets/**/*.mp3
+assets/**/*.flac
+assets/**/*.m4a
+assets/**/*.wav
