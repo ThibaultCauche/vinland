@@ -5,13 +5,17 @@ import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_artist.dart';
+import '../models/discovered_track.dart';
 import '../models/search_history_item.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
+import '../services/download_worker_service.dart';
+import '../services/matching_service.dart';
 import '../services/search_history_service.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import 'desktop_horizontal_shelf.dart';
-import 'desktop_track_row.dart';
 import 'glass.dart';
 import '../widgets/smooth_scroll.dart';
 
@@ -42,16 +46,18 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
   final _controller = TextEditingController();
   final _discovery = DiscoveryService();
   final _historyService = SearchHistoryService();
+  final _downloadWorker = DownloadWorkerService();
   final _scrollController = SmoothScrollController();
 
   Timer? _debounce;
   bool _isLoading = false;
   String _query = '';
 
-  List<Track> _localTracks = [];
+  List<_SearchTrack> _tracks = [];
   List<DiscoveredArtist> _artists = [];
   List<DiscoveredAlbum> _albums = [];
   List<SearchHistoryItem> _history = [];
+  final Map<int, DownloadUiState> _downloadStates = {};
 
   @override
   void initState() {
@@ -79,13 +85,23 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
     if (value.trim().isEmpty) {
       setState(() {
         _query = '';
-        _localTracks = [];
+        _tracks = [];
         _artists = [];
         _albums = [];
       });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 400), () => _search(value));
+  }
+
+  Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
+    for (final t in candidates) {
+      if (MatchingService.artistsMatch(t.artist, dt.artistName) &&
+          MatchingService.titlesMatch(t.title, dt.title)) {
+        return t;
+      }
+    }
+    return null;
   }
 
   Future<void> _search(String query) async {
@@ -96,27 +112,34 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
     });
 
     final state = context.read<AppState>();
-    final local = state.musicService.searchTracks(query);
     final results = await Future.wait([
       _discovery.searchArtists(query, limit: 10),
+      // Pas de tri par popularite d'artiste ici (contrairement a une
+      // premiere version) : ca faisait sortir en premier les albums de
+      // l'artiste Deezer le plus connu parmi les resultats plutot que les
+      // albums les plus pertinents pour la recherche tapee -- l'app mobile
+      // (SearchScreen) garde l'ordre de pertinence renvoye par Deezer et
+      // fonctionne bien (retour utilisateur), on fait pareil ici.
       _discovery.searchAlbums(query, limit: 12),
+      _discovery.searchTracks(query, limit: 15),
     ]);
 
     if (!mounted) return;
     final artists = results[0] as List<DiscoveredArtist>;
     final albums = results[1] as List<DiscoveredAlbum>;
-    // L'endpoint /search/album de Deezer, contrairement a /search/artist,
-    // ne renvoie aucun score de popularite -- on approxime "le plus connu"
-    // par le nombre de fans de son artiste (deja recupere par la recherche
-    // artistes ci-dessus, nb_fan) plutot que d'ajouter un appel reseau par
-    // album juste pour ca (retour utilisateur : les albums les plus connus
-    // doivent sortir en premier).
-    final fansByArtistId = {for (final a in artists) a.id: a.nbFans ?? 0};
-    albums.sort((a, b) => (fansByArtistId[b.artistId] ?? 0)
-        .compareTo(fansByArtistId[a.artistId] ?? 0));
+    final discoveredTracks = results[2] as List<DiscoveredTrack>;
+    // Titres trouves via l'API Deezer (pas uniquement ceux deja sur le NAS,
+    // retour utilisateur) : chaque resultat garde un lien vers son titre
+    // local s'il existe deja (pour la lecture directe), sinon reste
+    // telechargeable comme les autres listes de titres decouverts de l'app.
+    final localTracks = state.allTracks;
+    final tracks = [
+      for (final dt in discoveredTracks)
+        _SearchTrack(discovered: dt, local: _findLocalTrack(dt, localTracks)),
+    ];
 
     setState(() {
-      _localTracks = local;
+      _tracks = tracks;
       _artists = artists;
       _albums = albums;
       _isLoading = false;
@@ -158,7 +181,56 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
           track.coverPath?.startsWith('http') == true ? track.coverPath : null,
     );
     if (!mounted) return;
-    context.read<AppState>().playTrack(track, trackList: _localTracks);
+    final playable = [
+      for (final t in _tracks)
+        if (t.local != null) t.local!
+    ];
+    context.read<AppState>().playTrack(track, trackList: playable);
+  }
+
+  /// Demande le telechargement automatique d'un titre trouve via Deezer mais
+  /// pas encore sur le NAS -- meme logique que DesktopArtistView/AlbumScreen
+  /// (DownloadWorkerService), jusqu'ici jamais branchee sur cette page
+  /// puisque la recherche ne montrait que des titres locaux.
+  Future<void> _downloadTrack(DiscoveredTrack track) async {
+    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
+
+    final jobId = await _downloadWorker.requestDownload(
+      artist: track.artistName,
+      title: track.title,
+      album: track.albumName == 'Inconnu' ? null : track.albumName,
+    );
+    if (jobId == null) {
+      if (mounted) {
+        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
+    if (!mounted) return;
+
+    if (status.state == DownloadJobState.done) {
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
+      if (mounted) {
+        setState(() {
+          _downloadStates.remove(track.id);
+          final i = _tracks.indexWhere((t) => t.discovered.id == track.id);
+          if (i != -1) {
+            _tracks[i] = _SearchTrack(
+              discovered: track,
+              local: _findLocalTrack(track, context.read<AppState>().allTracks),
+            );
+          }
+        });
+      }
+    } else {
+      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+    }
   }
 
   void _onHistoryTap(SearchHistoryItem item) {
@@ -194,59 +266,57 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            // right: 24 -- meme raison que les tuiles de l'accueil : sans
-            // ca ce champ de recherche pleine largeur touchait le bord
-            // droit de la fenetre (retour utilisateur).
-            padding: const EdgeInsets.only(right: 24),
-            child: GlassPanel(
-              // Meme habillage (rayon/hauteur/padding/tailles) que le pill
-              // de recherche persistant du shell (_TopBar dans
-              // desktop_app_shell.dart) -- avant, cette page avait son
-              // propre style plus grand/plus arrondi, incoherent avec le
-              // reste de l'appli (retour utilisateur).
-              borderRadius: BorderRadius.circular(20),
-              blurSigma: 0,
-              tint: Colors.white.withOpacity(0.06),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: SizedBox(
-                height: 36,
-                child: Row(
-                  children: [
-                    const Icon(Icons.search, color: Colors.white54, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        autofocus: true,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 13),
-                        decoration: const InputDecoration(
-                          hintText: 'Titres, artistes, albums...',
-                          // fontSize explicite : sans lui le hint retombe
-                          // sur la taille par defaut du theme (plus grande
-                          // que le texte tape a cote, `style` ci-dessus),
-                          // retour utilisateur.
-                          hintStyle:
-                              TextStyle(color: Colors.white38, fontSize: 13),
-                          border: InputBorder.none,
-                          isDense: true,
+          // Copie structurelle exacte du pill de recherche de la home
+          // (_TopBar dans desktop_app_shell.dart) -- Align+ConstrainedBox(420)
+          // +GlassPanel+SizedBox(36)+Row[Icon, SizedBox(8), texte], dans le
+          // meme ordre, avec les memes valeurs -- seul le texte statique y
+          // est remplace par un TextField fonctionnel (retour utilisateur :
+          // "meme en copiant le style ca ne devrait plus changer si c'est
+          // vraiment le meme rendu").
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: GlassPanel(
+                borderRadius: BorderRadius.circular(20),
+                blurSigma: 0,
+                tint: Colors.white.withOpacity(0.06),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: SizedBox(
+                  height: 36,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search, color: Colors.white54, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          autofocus: true,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
+                          decoration: const InputDecoration(
+                            hintText: 'Titres, artistes, albums...',
+                            hintStyle:
+                                TextStyle(color: Colors.white38, fontSize: 13),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: _onChanged,
+                          onSubmitted: _search,
                         ),
-                        onChanged: _onChanged,
-                        onSubmitted: _search,
                       ),
-                    ),
-                    if (_controller.text.isNotEmpty)
-                      GlassIconButton(
-                        icon: Icons.clear,
-                        size: 16,
-                        onPressed: () {
-                          _controller.clear();
-                          _onChanged('');
-                          setState(() {});
-                        },
-                      ),
-                  ],
+                      if (_controller.text.isNotEmpty)
+                        GlassIconButton(
+                          icon: Icons.clear,
+                          size: 16,
+                          onPressed: () {
+                            _controller.clear();
+                            _onChanged('');
+                            setState(() {});
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -311,7 +381,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
 
   Widget _buildResults() {
     final hasAnything =
-        _artists.isNotEmpty || _albums.isNotEmpty || _localTracks.isNotEmpty;
+        _artists.isNotEmpty || _albums.isNotEmpty || _tracks.isNotEmpty;
     if (!hasAnything && !_isLoading) {
       return const Center(
         child: Text('Aucun résultat', style: TextStyle(color: Colors.white38)),
@@ -393,21 +463,28 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
             },
           ),
         ],
-        if (_localTracks.isNotEmpty) ...[
-          _sectionTitle('Titres (${_localTracks.length})'),
+        if (_tracks.isNotEmpty) ...[
+          _sectionTitle('Titres (${_tracks.length})'),
           Selector<AppState, Track?>(
-            selector: (_, s) => s.currentTrack,
+            selector: (_, s) => s.displayTrack,
             builder: (context, currentTrack, __) {
               return Column(
                 children: [
-                  for (final track in _localTracks)
-                    DesktopTrackRow(
-                      track: track,
-                      isPlaying: currentTrack?.id == track.id,
-                      onTap: () => _playLocalTrack(track),
-                      onLike: () =>
-                          context.read<AppState>().toggleLike(track.id),
-                      onMore: () {},
+                  for (final t in _tracks)
+                    _SearchTrackRow(
+                      track: t,
+                      isPlaying:
+                          t.local != null && currentTrack?.id == t.local!.id,
+                      onTap: t.local != null
+                          ? () => _playLocalTrack(t.local!)
+                          : null,
+                      onLike: t.local != null
+                          ? () =>
+                              context.read<AppState>().toggleLike(t.local!.id)
+                          : null,
+                      downloadState: _downloadStates[t.discovered.id],
+                      showDownloadButton: _downloadWorker.isConfigured,
+                      onDownloadTap: () => _downloadTrack(t.discovered),
                     ),
                 ],
               );
@@ -497,6 +574,126 @@ class _AlbumResultCard extends StatelessWidget {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Un resultat de la section "Titres" : toujours issu de la recherche
+/// Deezer (retour utilisateur -- avant, cette section ne montrait que les
+/// titres deja sur le NAS), avec un lien vers le titre local correspondant
+/// quand il existe deja, pour la lecture directe.
+class _SearchTrack {
+  final DiscoveredTrack discovered;
+  final Track? local;
+  const _SearchTrack({required this.discovered, this.local});
+}
+
+/// Ligne d'un resultat de la section "Titres" -- meme habillage que
+/// _PopularTrackRow (DesktopArtistView) : cover, titre/artiste, puis
+/// like+menu si le titre est deja sur le NAS, sinon un bouton de
+/// telechargement (voir DownloadStateIcon) plutot qu'une ligne inerte, comme
+/// partout ailleurs ou l'app montre un titre pas encore possede.
+class _SearchTrackRow extends StatelessWidget {
+  final _SearchTrack track;
+  final bool isPlaying;
+  final VoidCallback? onTap;
+  final VoidCallback? onLike;
+  final DownloadUiState? downloadState;
+  final bool showDownloadButton;
+  final VoidCallback onDownloadTap;
+
+  const _SearchTrackRow({
+    required this.track,
+    required this.isPlaying,
+    required this.onTap,
+    required this.onLike,
+    required this.downloadState,
+    required this.showDownloadButton,
+    required this.onDownloadTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final discovered = track.discovered;
+    final isAvailable = track.local != null;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A2A),
+                borderRadius: BorderRadius.circular(6),
+                image: discovered.coverUrl != null
+                    ? DecorationImage(
+                        image: coverImageProvider(context,
+                            path: discovered.coverUrl!, width: 44, height: 44),
+                        fit: BoxFit.cover,
+                        onError: (_, __) {})
+                    : null,
+              ),
+              child: discovered.coverUrl == null
+                  ? const Icon(Icons.music_note,
+                      color: Colors.white54, size: 18)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    discovered.title,
+                    style: TextStyle(
+                      color: isPlaying
+                          ? DesktopGlass.accent
+                          : isAvailable
+                              ? Colors.white
+                              : Colors.white38,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    discovered.artistName,
+                    style: TextStyle(
+                      color: isAvailable ? Colors.white54 : Colors.white24,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (isAvailable && onLike != null)
+              GlassIconButton(
+                icon: track.local!.isLiked
+                    ? Icons.favorite
+                    : Icons.favorite_border,
+                color:
+                    track.local!.isLiked ? DesktopGlass.accent : Colors.white54,
+                size: 18,
+                onPressed: onLike!,
+              )
+            else
+              DownloadStateIcon(
+                state: downloadState,
+                showDownloadButton: showDownloadButton,
+                onDownloadTap: onDownloadTap,
+              ),
+          ],
         ),
       ),
     );

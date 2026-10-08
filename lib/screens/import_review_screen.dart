@@ -72,6 +72,7 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title:
             const Text('Vérification', style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),

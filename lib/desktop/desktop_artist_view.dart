@@ -14,6 +14,7 @@ import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import 'desktop_hero_card.dart'
     show DesktopHeroMenuAction, DesktopMoreMenuButton, trackMoreMenuActions;
 import 'desktop_track_row.dart';
@@ -177,8 +178,8 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   /// jusqu'ici jamais branchee sur cette page (retour utilisateur). Pas
   /// besoin de recharger _topTracks apres coup : `popularTracks` (dans
   /// build()) recroise deja _topTracks avec state.allTracks a chaque
-  /// reconstruction, donc syncRecentlyAdded() suffit a faire apparaitre le
-  /// titre comme disponible.
+  /// reconstruction, donc handleTrackDownloaded() suffit a faire apparaitre
+  /// le titre comme disponible.
   Future<void> _downloadTrack(DiscoveredTrack track) async {
     setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
 
@@ -194,11 +195,15 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
       setState(() => _downloadStates[track.id] = DownloadUiState.failed);
@@ -440,7 +445,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                             (context, index) {
                               final track = allArtistTracks[index];
                               return Selector<AppState, Track?>(
-                                selector: (_, s) => s.currentTrack,
+                                selector: (_, s) => s.displayTrack,
                                 builder: (context, currentTrack, __) =>
                                     DesktopTrackRow(
                                   track: track,
@@ -826,22 +831,32 @@ class _LocalAlbumCard extends StatelessWidget {
 
     final card = DesktopHoverable(
       onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-        children: [
-          cover,
-          const SizedBox(height: 8),
-          Text(album.title,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis),
-          Text(compact ? 'Single' : '$trackCount titres',
-              style: const TextStyle(color: Colors.white54, fontSize: 12)),
-        ],
+      // Padding(8) autour du contenu -- meme espace que les tuiles de la
+      // home/recherche (voir DesktopHoverable dans desktop_home_view.dart
+      // _albumShelf/_trackShelf, et _AlbumResultCard dans
+      // desktop_search_view.dart) : sans lui, le survol collait pile aux
+      // bords de la cover/texte au lieu de deborder legerement autour,
+      // rendant le hover visuellement different de ces deux autres pages
+      // (retour utilisateur).
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            cover,
+            const SizedBox(height: 8),
+            Text(album.title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            Text(compact ? 'Single' : '$trackCount titres',
+                style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ],
+        ),
       ),
     );
 
@@ -886,35 +901,39 @@ class _DiscoveredAlbumCard extends StatelessWidget {
 
     final card = DesktopHoverable(
       onTap: onTap,
-      child: Opacity(
-        opacity: 0.45,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
-          children: [
-            cover,
-            const SizedBox(height: 8),
-            Text(album.title,
-                style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
-            Text(compact ? 'Single' : (album.releaseDate ?? ''),
-                style: const TextStyle(color: Colors.white38, fontSize: 11)),
-            const Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Row(
-                children: [
-                  Icon(Icons.cloud_off, color: Colors.white24, size: 10),
-                  SizedBox(width: 4),
-                  Text('Non disponible',
-                      style: TextStyle(color: Colors.white24, fontSize: 9)),
-                ],
+      // Padding(8) -- meme raison que _LocalAlbumCard juste au-dessus.
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Opacity(
+          opacity: 0.45,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              cover,
+              const SizedBox(height: 8),
+              Text(album.title,
+                  style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              Text(compact ? 'Single' : (album.releaseDate ?? ''),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11)),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off, color: Colors.white24, size: 10),
+                    SizedBox(width: 4),
+                    Text('Non disponible',
+                        style: TextStyle(color: Colors.white24, fontSize: 9)),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

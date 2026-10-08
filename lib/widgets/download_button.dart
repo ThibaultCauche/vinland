@@ -87,7 +87,7 @@ class _DownloadButtonState extends State<DownloadButton> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('Supprimer le telechargement',
+          title: const Text('Supprimer le téléchargement',
               style: TextStyle(color: Colors.white)),
           content: Text(widget.confirmDeleteMessage,
               style: const TextStyle(color: Colors.white70)),

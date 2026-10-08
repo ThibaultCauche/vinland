@@ -10,6 +10,7 @@ import '../services/download_worker_service.dart';
 import '../services/local_track_matcher.dart';
 import '../widgets/artist_avatar.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/player/player_options_sheet.dart';
 import 'artist_screen.dart';
 import '../widgets/bottom_bar_reserve.dart';
@@ -77,7 +78,13 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
     _wasSyncing = syncing;
   }
 
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
+  /// [showProgressPopup] : false pour le bouton "Telecharger (N titres)" qui
+  /// lance plusieurs _downloadTrack en parallele -- un popup par titre s'y
+  /// empilerait sur le meme Navigator (seul le dernier resterait pilotable).
+  /// L'icone de ligne (_downloadStates) reste le seul retour visuel dans ce
+  /// cas ; le popup de progression est reserve au tap sur une ligne seule.
+  Future<void> _downloadTrack(DiscoveredTrack track,
+      {bool showProgressPopup = true}) async {
     setState(() => _downloadStates[track.id] = _DownloadUiState.downloading);
 
     final jobId = await _downloadWorker.requestDownload(
@@ -95,16 +102,22 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = showProgressPopup
+        ? await showDownloadProgressDialog(context,
+            worker: _downloadWorker, jobId: jobId)
+        : await _downloadWorker.waitForCompletion(jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      // syncRecentlyAdded() ne recupere que les derniers albums (un aller-
-      // retour rapide) et fusionne dans la bibliotheque locale, contrairement
-      // a syncNavidrome() qui reconstruit tout depuis zero lot par lot et
-      // rend temporairement injouable le reste de la bibliotheque le temps
-      // d'une synchro complete (des minutes sur une grosse bibliotheque).
-      await context.read<AppState>().syncRecentlyAdded();
+      // handleTrackDownloaded (pas juste syncRecentlyAdded, un aller-retour
+      // rapide) : voir son commentaire, contrairement a syncNavidrome() qui
+      // reconstruit tout depuis zero lot par lot et rend temporairement
+      // injouable le reste de la bibliotheque le temps d'une synchro
+      // complete (des minutes sur une grosse bibliotheque).
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) await _load();
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
@@ -134,16 +147,6 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
     }
   }
 
-  /// Vérifie si l'artiste recherché est présent dans le champ artiste
-  bool _artistContains(String? artistField, String search) {
-    if (artistField == null) return false;
-    final s = search.toLowerCase();
-    final f = artistField.toLowerCase();
-    if (f == s) return true;
-    if (f.contains(s)) return true;
-    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
-  }
-
   /// Trouve la track locale correspondante à une track Deezer -- voir
   /// findLocalTrackMatch (partagee avec DesktopDiscoveredAlbumView cote
   /// desktop) pour la logique de matching.
@@ -164,12 +167,12 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
       );
     }
 
-    // Filtre les tracks si filterArtist est fourni
-    final displayTracks = widget.filterArtist != null
-        ? _tracks
-            .where((t) => _artistContains(t.artistName, widget.filterArtist!))
-            .toList()
-        : _tracks;
+    // filterArtist n'est plus applique ici -- meme raison que
+    // DesktopDiscoveredAlbumView : une fois l'album ouvert, on montre TOUS
+    // ses titres plutot que de risquer de tout masquer parce que l'artiste
+    // par lequel on est arrive n'apparait qu'en featuring sur chaque titre
+    // Deezer (retour utilisateur).
+    final displayTracks = _tracks;
 
     // album.artistName vient du champ "artist" de l'ALBUM cote Deezer, qui
     // est "Inconnu" pour certaines sorties (compilations, singles mal
@@ -292,12 +295,12 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
                     OutlinedButton.icon(
                       onPressed: () {
                         for (final dt in missingTracks) {
-                          _downloadTrack(dt);
+                          _downloadTrack(dt, showProgressPopup: false);
                         }
                       },
                       icon: const Icon(Icons.download_rounded, size: 18),
                       label: Text(
-                          'Telecharger (${missingTracks.length} titre${missingTracks.length > 1 ? 's' : ''})'),
+                          'Télécharger (${missingTracks.length} titre${missingTracks.length > 1 ? 's' : ''})'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: const BorderSide(color: Colors.white38),

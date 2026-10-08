@@ -25,7 +25,7 @@ void showJamMenu(BuildContext context) {
               ListTile(
                 leading: const Icon(Icons.swap_horiz,
                     color: Colors.white, size: 26),
-                title: Text('Ceder l\'hebergement a $username',
+                title: Text('Céder l\'hébergement à $username',
                     style: const TextStyle(color: Colors.white, fontSize: 16)),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -39,7 +39,7 @@ void showJamMenu(BuildContext context) {
               leading: const Icon(Icons.close, color: Colors.white, size: 26),
               title: Text(
                 state.isJamHost
-                    ? 'Quitter la session Jam (${state.jamParticipantCount} a l\'ecoute)'
+                    ? 'Quitter la session Jam (${state.jamParticipantCount} à l\'écoute)'
                     : 'Quitter la session Jam',
                 style: const TextStyle(color: Colors.white, fontSize: 16),
               ),
@@ -53,7 +53,7 @@ void showJamMenu(BuildContext context) {
           else ...[
             ListTile(
               leading: const Icon(Icons.groups, color: Colors.white, size: 26),
-              title: const Text('Demarrer une session Jam',
+              title: const Text('Démarrer une session Jam',
                   style: TextStyle(color: Colors.white, fontSize: 16)),
               onTap: () {
                 Navigator.pop(ctx);
@@ -85,10 +85,11 @@ void showJamMenu(BuildContext context) {
 /// Menu "Peripheriques" (Spotify Connect-like), partage mobile/desktop :
 /// affiche l'autre appareil du meme compte en train d'ecouter (voir
 /// AppState.isPersonalSyncParticipant) et propose d'y reprendre la lecture
-/// ici (voir AppState.takeOverPersonalSync). Pas de liste d'appareils
-/// inactifs -- il n'existe aucune notion de presence hors lecture active
-/// (voir jam_relay/, sessions ephemeres), seul l'appareil hote actuel est
-/// connu.
+/// ici (voir AppState.takeOverPersonalSync) -- ou, si CET appareil est
+/// l'hote actuel (voir AppState.isPersonalSyncHost), confirme quel autre
+/// appareil le pilote deja (voir connectedParticipantDeviceName) : sans ca,
+/// l'hote n'avait aucun moyen de voir qu'un autre appareil avait bien
+/// detecte sa lecture et la controlait deja (retour utilisateur).
 void showDeviceMenu(BuildContext context) {
   final state = context.read<AppState>();
   showModalBottomSheet(
@@ -121,10 +122,26 @@ void showDeviceMenu(BuildContext context) {
               minLeadingWidth: 24,
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             )
+          else if (state.isPersonalSyncHost &&
+              state.connectedParticipantDeviceName != null)
+            ListTile(
+              leading:
+                  const Icon(Icons.devices, color: Colors.white, size: 26),
+              title: Text(
+                'Connecté : ${state.connectedParticipantDeviceName}',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+              subtitle: const Text(
+                'Peut déjà piloter la lecture ici',
+                style: TextStyle(color: Colors.white54, fontSize: 13),
+              ),
+              minLeadingWidth: 24,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+            )
           else
             const ListTile(
               leading: Icon(Icons.devices_other, color: Colors.white38, size: 26),
-              title: Text('Aucun autre appareil connecte',
+              title: Text('Aucun autre appareil connecté',
                   style: TextStyle(color: Colors.white38, fontSize: 16)),
               minLeadingWidth: 24,
               contentPadding: EdgeInsets.symmetric(horizontal: 20),
@@ -154,14 +171,14 @@ Future<void> _startJam(BuildContext context) async {
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
-      title: const Text('Session Jam demarree !',
+      title: const Text('Session Jam démarrée !',
           style: TextStyle(color: Colors.white)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Partage ce code a tes amis pour qu\'ils rejoignent ton ecoute :',
+            'Partage ce code à tes amis pour qu\'ils rejoignent ton écoute :',
             style: TextStyle(color: Colors.white70),
           ),
           const SizedBox(height: 12),
@@ -202,7 +219,7 @@ void _showJoinJamDialog(BuildContext context) {
         autofocus: true,
         style: const TextStyle(color: Colors.white),
         decoration: const InputDecoration(
-          hintText: 'Code partage par ton ami',
+          hintText: 'Code partagé par ton ami',
           hintStyle: TextStyle(color: Colors.white38),
           border: UnderlineInputBorder(
             borderSide: BorderSide(color: Color(0xFF2A2A2A)),

@@ -8,6 +8,7 @@ import '../models/track.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/local_track_matcher.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/cover_image.dart';
 import 'desktop_hero_card.dart'
@@ -79,7 +80,13 @@ class _DesktopDiscoveredAlbumViewState
     _wasSyncing = syncing;
   }
 
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
+  /// [showProgressPopup] : false pour le bouton "Telecharger (N titres)" qui
+  /// lance plusieurs _downloadTrack en parallele -- un popup par titre s'y
+  /// empilerait sur le meme Navigator (seul le dernier resterait pilotable).
+  /// L'icone de ligne (_downloadStates) reste le seul retour visuel dans ce
+  /// cas ; le popup de progression est reserve au tap sur une ligne seule.
+  Future<void> _downloadTrack(DiscoveredTrack track,
+      {bool showProgressPopup = true}) async {
     setState(() => _downloadStates[track.id] = _DownloadUiState.downloading);
 
     final jobId = await _downloadWorker.requestDownload(
@@ -94,15 +101,22 @@ class _DesktopDiscoveredAlbumViewState
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = showProgressPopup
+        ? await showDownloadProgressDialog(context,
+            worker: _downloadWorker, jobId: jobId)
+        : await _downloadWorker.waitForCompletion(jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      // Voir discovered_album_screen.dart : syncRecentlyAdded() est un
-      // aller-retour rapide (juste les derniers albums), contrairement a
-      // syncNavidrome() qui reconstruit toute la bibliotheque lot par lot et
-      // la rend temporairement injouable le temps d'une synchro complete.
-      await context.read<AppState>().syncRecentlyAdded();
+      // Voir discovered_album_screen.dart et AppState.handleTrackDownloaded :
+      // plus rapide qu'un syncNavidrome() complet (qui reconstruit toute la
+      // bibliotheque lot par lot et la rend temporairement injouable), tout
+      // en retrouvant fiablement ce titre precis malgre la fenetre limitee
+      // de syncRecentlyAdded().
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) await _load();
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
@@ -135,15 +149,6 @@ class _DesktopDiscoveredAlbumViewState
     if (mounted) setState(() => _isLoading = false);
   }
 
-  bool _artistContains(String? artistField, String search) {
-    if (artistField == null) return false;
-    final s = search.toLowerCase();
-    final f = artistField.toLowerCase();
-    if (f == s) return true;
-    if (f.contains(s)) return true;
-    return f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s);
-  }
-
   Track? _findLocalTrack(DiscoveredTrack dt) =>
       findLocalTrackMatch(dt, context.read<AppState>().allTracks);
 
@@ -172,11 +177,12 @@ class _DesktopDiscoveredAlbumViewState
 
   Widget _buildContent(
       BuildContext context, AppState state, DiscoveredAlbum album) {
-    final displayTracks = widget.filterArtist != null
-        ? _tracks
-            .where((t) => _artistContains(t.artistName, widget.filterArtist!))
-            .toList()
-        : _tracks;
+    // filterArtist n'est plus applique ici -- meme raison que
+    // DesktopAlbumView : une fois l'album ouvert, on montre TOUS ses titres
+    // plutot que de risquer de tout masquer parce que l'artiste par lequel
+    // on est arrive n'apparait qu'en featuring sur chaque titre Deezer
+    // (retour utilisateur).
+    final displayTracks = _tracks;
 
     // Titres deja sur le NAS (jouables/telechargeables/ajoutables a une
     // playlist) vs. encore a telecharger -- cette vue s'ouvre justement
@@ -207,7 +213,7 @@ class _DesktopDiscoveredAlbumViewState
           icon: Icons.download_outlined,
           onTap: () {
             for (final dt in missingTracks) {
-              _downloadTrack(dt);
+              _downloadTrack(dt, showProgressPopup: false);
             }
           },
         ),
@@ -317,7 +323,7 @@ class _DesktopDiscoveredAlbumViewState
                         const Icon(Icons.cloud_off,
                             color: Colors.white24, size: 12),
                         const SizedBox(width: 4),
-                        const Text('Non disponible en integralite sur le NAS',
+                        const Text('Non disponible en intégralité sur le NAS',
                             style:
                                 TextStyle(color: Colors.white24, fontSize: 11)),
                       ],

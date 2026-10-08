@@ -114,8 +114,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  "Pas encore de compte ? Demande a l'administrateur du "
-                  "serveur de t'en creer un depuis Navidrome.",
+                  "Pas encore de compte ? Demande à l'administrateur du "
+                  "serveur de t'en créer un depuis Navidrome.",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white38, fontSize: 12),
                 ),
@@ -178,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = false);
       if (!success) {
         setState(() => _error =
-            "Connexion impossible : verifiez l'URL et les identifiants");
+            "Connexion impossible : vérifiez l'URL et les identifiants");
       }
     }
   }

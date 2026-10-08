@@ -71,7 +71,7 @@ class DesktopSidebar extends StatelessWidget {
             GlassIconButton(
               icon: Icons.headphones_rounded,
               active: activeTab == DesktopNavTab.library,
-              tooltip: 'Bibliotheque',
+              tooltip: 'Bibliothèque',
               onPressed: () => onTabSelected(DesktopNavTab.library),
             ),
             const SizedBox(height: 6),
@@ -180,7 +180,7 @@ class _ProfileAvatarButton extends StatelessWidget {
       items: [
         PopupMenuItem(
           child:
-              const Text('Parametres', style: TextStyle(color: Colors.white)),
+              const Text('Paramètres', style: TextStyle(color: Colors.white)),
           onTap: () {
             Future.microtask(() => navigator.push(
                   MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -188,7 +188,7 @@ class _ProfileAvatarButton extends StatelessWidget {
           },
         ),
         PopupMenuItem(
-          child: const Text('Se deconnecter',
+          child: const Text('Se déconnecter',
               style: TextStyle(color: Colors.white)),
           onTap: () => state.logout(),
         ),
@@ -234,18 +234,25 @@ class _LikedSongsShortcut extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(2),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF7B5CFA), Color(0xFF3E2CA8)],
+          // AspectRatio (pas juste width/height: 44 fixes) : la largeur
+          // reellement disponible ici depend du padding horizontal du
+          // ListView parent, pas garantie a 44 pile (retour utilisateur :
+          // "les blocs de playlist et de titre like ne sont pas carres") --
+          // caler la hauteur sur la largeur QUELLE QU'ELLE SOIT garantit un
+          // carre au lieu de deux nombres qui doivent coincider par hasard.
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF7B5CFA), Color(0xFF3E2CA8)],
+                ),
               ),
+              child: const Icon(Icons.favorite, color: Colors.white, size: 20),
             ),
-            child: const Icon(Icons.favorite, color: Colors.white, size: 20),
           ),
         ),
       ),
@@ -275,24 +282,28 @@ class _PlaylistShortcut extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(2),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF3E3E3E),
-              borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
-              image: exists && firstTrackCover != null
-                  ? DecorationImage(
-                      image: coverImageProvider(context,
-                          path: firstTrackCover, width: 44, height: 44),
-                      fit: BoxFit.cover,
-                      onError: (_, __) {},
-                    )
+          // AspectRatio : voir le commentaire equivalent dans
+          // _LikedSongsShortcut (retour utilisateur : blocs pas carres).
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF3E3E3E),
+                borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
+                image: exists && firstTrackCover != null
+                    ? DecorationImage(
+                        image: coverImageProvider(context,
+                            path: firstTrackCover, width: 44, height: 44),
+                        fit: BoxFit.cover,
+                        onError: (_, __) {},
+                      )
+                    : null,
+              ),
+              child: !exists
+                  ? const Icon(Icons.queue_music,
+                      color: Colors.white54, size: 18)
                   : null,
             ),
-            child: !exists
-                ? const Icon(Icons.queue_music, color: Colors.white54, size: 18)
-                : null,
           ),
         ),
       ),

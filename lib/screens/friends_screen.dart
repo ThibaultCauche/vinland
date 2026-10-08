@@ -57,7 +57,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                           if (state.pendingShares.isNotEmpty) ...[
                             const Padding(
                               padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                              child: Text('Partages recus',
+                              child: Text('Partages reçus',
                                   style: TextStyle(
                                       color: Colors.white54,
                                       fontSize: 13,
@@ -110,15 +110,15 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Tout autre compte cree sur ce serveur apparait ici automatiquement, '
-              "des qu'il partage au moins une playlist ou ses titres likes.",
+              'Tout autre compte créé sur ce serveur apparaît ici automatiquement, '
+              "dès qu'il partage au moins une playlist ou ses titres likes.",
               style: TextStyle(color: Colors.white54, fontSize: 13),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: onRetry,
-              child: const Text('Reessayer',
+              child: const Text('Réessayer',
                   style: TextStyle(color: Color(0xFF1DB954))),
             ),
           ],
@@ -152,7 +152,7 @@ class _ReceivedShareTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis),
       subtitle: Text(
         share.subtitle.isEmpty
-            ? 'Envoye par ${share.from}'
+            ? 'Envoyé par ${share.from}'
             : '${share.from} • ${share.subtitle}',
         style: const TextStyle(color: Colors.white54, fontSize: 13),
         maxLines: 1,
@@ -221,7 +221,7 @@ class _FriendTile extends StatelessWidget {
                 )
               : Text(
                   parts.isEmpty
-                      ? 'Rien de partage pour le moment'
+                      ? 'Rien de partagé pour le moment'
                       : parts.join(' · '),
                   style: const TextStyle(color: Colors.white54, fontSize: 13),
                 ),

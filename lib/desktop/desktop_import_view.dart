@@ -38,8 +38,8 @@ class DesktopImportView extends StatelessWidget {
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const Text(
-            'Ajoute des mp3/flac/m4a locaux a ta bibliotheque NAS, puis a une '
-            'playlist ou a tes titres likes.',
+            'Ajoute des mp3/flac/m4a locaux à ta bibliothèque NAS, puis à une '
+            'playlist ou à tes titres likes.',
             style: TextStyle(color: Colors.white54, fontSize: 13),
           ),
           Expanded(

@@ -58,7 +58,7 @@ class _CoverBlurBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Selector<AppState, (String?, double, String?)>(
       selector: (_, state) => (
-        state.currentTrack?.coverPath,
+        state.displayTrack?.coverPath,
         state.desktopCoverBlurSigma,
         state.desktopPinnedCoverPath,
       ),

@@ -58,7 +58,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
           SizedBox(width: 20),
           Expanded(
             child: Text(
-              "Envoi vers le NAS et scan Navidrome...\nCa peut prendre plusieurs minutes pour un gros lot.",
+              "Envoi vers le NAS et scan Navidrome...\nÇa peut prendre plusieurs minutes pour un gros lot.",
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -81,7 +81,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
     messenger.showSnackBar(
       const SnackBar(
         content: Text(
-            "Echec de l'import (NAS/service de telechargement injoignable)"),
+            "Échec de l'import (NAS/service de téléchargement injoignable)"),
         backgroundColor: Colors.red,
       ),
     );
@@ -89,13 +89,13 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
   }
 
   final destination = target.liked ? 'aux titres likes' : 'a la playlist';
-  final parts = <String>['${result.matchedCount} titre(s) ajoute(s) $destination'];
+  final parts = <String>['${result.matchedCount} titre(s) ajouté(s) $destination'];
   if (result.duplicateSkippedCount > 0) {
     parts.add(
-        '${result.duplicateSkippedCount} deja dans ta bibliotheque (pas re-uploade)');
+        '${result.duplicateSkippedCount} déjà dans ta bibliothèque (pas re-uploadé)');
   }
   if (result.unmatchedFilenames.isNotEmpty) {
-    parts.add('${result.unmatchedFilenames.length} introuvable(s) apres scan '
+    parts.add('${result.unmatchedFilenames.length} introuvable(s) après scan '
         '(${result.unmatchedFilenames.take(3).join(", ")}${result.unmatchedFilenames.length > 3 ? "..." : ""})');
   }
   messenger.showSnackBar(
@@ -123,7 +123,7 @@ Future<LocalImportTarget?> _pickPlaylistTarget(
         children: [
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Ou ajouter ces titres ?',
+            child: Text('Où ajouter ces titres ?',
                 style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -167,7 +167,7 @@ Future<LocalImportTarget?> _pickPlaylistTarget(
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(dCtx, controller.text),
-                      child: const Text('Creer',
+                      child: const Text('Créer',
                           style: TextStyle(color: Color(0xFF1DB954))),
                     ),
                   ],

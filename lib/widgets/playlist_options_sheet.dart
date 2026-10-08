@@ -28,8 +28,8 @@ void showPlaylistOptions(BuildContext context, Playlist playlist,
           ? Icons.push_pin
           : Icons.push_pin_outlined,
       label: state.isPinned(PinnedItemType.playlist, playlist.id)
-          ? "Desepingler de l'accueil"
-          : "Epingler a l'accueil",
+          ? "Désépingler de l'accueil"
+          : "Épingler à l'accueil",
       onTap: () {
         Navigator.pop(ctx);
         state.togglePin(PinnedItem(
@@ -43,7 +43,7 @@ void showPlaylistOptions(BuildContext context, Playlist playlist,
     SheetTile(
       icon: playlist.isPublic ? Icons.public : Icons.public_off,
       label: playlist.isPublic
-          ? 'Rendre privee'
+          ? 'Rendre privée'
           : 'Rendre publique (visible par les amis)',
       onTap: () {
         Navigator.pop(ctx);
@@ -70,7 +70,7 @@ void showPlaylistOptions(BuildContext context, Playlist playlist,
     if (state.shareInboxConfigured)
       SheetTile(
         icon: Icons.send_outlined,
-        label: 'Envoyer a un ami',
+        label: 'Envoyer à un ami',
         onTap: () {
           Navigator.pop(ctx);
           showSendToFriendDialog(context,

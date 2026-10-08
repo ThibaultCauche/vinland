@@ -75,7 +75,7 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
             children: [
               Icon(Icons.queue_music, color: Colors.white70, size: 18),
               SizedBox(width: 10),
-              Text('Ajouter a la file d\'attente',
+              Text('Ajouter à la file d\'attente',
                   style: TextStyle(color: Colors.white)),
             ],
           ),
@@ -97,7 +97,7 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
               children: [
                 Icon(Icons.send_outlined, color: Colors.white70, size: 18),
                 SizedBox(width: 10),
-                Text('Envoyer a un ami', style: TextStyle(color: Colors.white)),
+                Text('Envoyer à un ami', style: TextStyle(color: Colors.white)),
               ],
             ),
             onTap: () => showSendToFriendDialog(context,

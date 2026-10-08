@@ -13,6 +13,7 @@ import '../services/matching_service.dart';
 import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import 'desktop_hero_card.dart'
     show DesktopHeroMenuAction, DesktopMoreMenuButton, pickPlaylistAndAddTracks;
@@ -136,11 +137,15 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) await _loadDeezerTracks();
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
@@ -223,14 +228,13 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
         .where((t) => MatchingService.albumsMatch(t.album, widget.album.title))
         .toList();
 
-    if (widget.filterArtist != null) {
-      bool artistMatch(String? field) =>
-          MatchingService.artistFieldContains(field, widget.filterArtist!);
-      albumTracks = albumTracks
-          .where((t) => artistMatch(t.artist) || artistMatch(t.albumArtist))
-          .toList();
-    }
-
+    // filterArtist n'est plus applique ici : une fois l'album ouvert, on
+    // montre TOUS ses titres, meme ceux ou l'artiste par lequel on est
+    // arrive (page artiste) n'apparait qu'en featuring ou pas du tout dans
+    // le champ artiste/album-artiste brut -- avant, un titre comme un
+    // single "Artiste X feat. Y" ouvert depuis la page de Y pouvait
+    // afficher "0 titres" alors que l'album existe bien (retour
+    // utilisateur).
     albumTracks = _dedupByTitle(albumTracks)
       ..sort((a, b) => a.title.compareTo(b.title));
     final items = _buildTrackList(albumTracks);
@@ -332,7 +336,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                         if (item.localTrack != null) {
                           final track = item.localTrack!;
                           return Selector<AppState, Track?>(
-                            selector: (_, s) => s.currentTrack,
+                            selector: (_, s) => s.displayTrack,
                             builder: (context, currentTrack, __) =>
                                 DesktopTrackRow(
                               track: track,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../services/download_worker_service.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/bottom_bar_reserve.dart';
 
@@ -35,7 +36,7 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E1E),
       builder: (_) => _TrackPickerSheet(
-        title: 'Associer "$initialQuery" a...',
+        title: 'Associer "$initialQuery" à...',
         initialQuery: initialQuery,
         search: (query) => query.trim().isEmpty
             ? const []
@@ -44,7 +45,7 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
     );
     if (picked == null) return;
     await state.resolveMissingTrack(entry, picked.id);
-    _showMessage('"${picked.title}" associe.');
+    _showMessage('"${picked.title}" associé.');
   }
 
   /// Relance le telechargement automatique existant (spotdl, recherche par
@@ -55,7 +56,7 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
     final state = context.read<AppState>();
     final worker = DownloadWorkerService();
     if (!worker.isConfigured) {
-      _showMessage('Service de telechargement non configure.');
+      _showMessage('Service de téléchargement non configuré.');
       return;
     }
 
@@ -69,27 +70,34 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
         album: album.isEmpty ? null : album,
       );
       if (jobId == null) {
-        _showMessage('Impossible de lancer le telechargement.');
+        _showMessage('Impossible de lancer le téléchargement.');
         return;
       }
 
-      final status = await worker.waitForCompletion(jobId);
+      if (!mounted) return;
+      final status = await showDownloadProgressDialog(context,
+          worker: worker, jobId: jobId);
+      if (!mounted) return;
       if (status.state != DownloadJobState.done) {
-        _showMessage(status.error ?? 'Echec du telechargement.');
+        _showMessage(status.error ?? 'Échec du téléchargement.');
         return;
       }
 
       // Diff avant/apres plutot qu'un re-matching flou sur le titre : le
       // fichier vient tout juste d'etre ecrit sur le NAS, donc tout titre
-      // qu'on n'avait pas avant syncRecentlyAdded() est quasi-certainement
-      // celui-la.
-      await state.syncRecentlyAdded();
+      // qu'on n'avait pas avant handleTrackDownloaded() est quasi-certainement
+      // celui-la. handleTrackDownloaded (pas juste syncRecentlyAdded) : voir
+      // son commentaire, necessaire pour un titre sans album connu.
+      await state.handleTrackDownloaded(
+        (entry['artist'] ?? '').toString(),
+        (entry['title'] ?? '').toString(),
+      );
       final candidates = state.musicService.allTracks
           .where((t) => !beforeIds.contains(t.id))
           .toList();
       if (candidates.isEmpty) {
         _showMessage(
-            'Telecharge, mais pas encore visible dans la bibliotheque -- reessaie dans un instant.');
+            'Téléchargé, mais pas encore visible dans la bibliothèque -- réessaie dans un instant.');
         return;
       }
       if (!mounted) return;
@@ -107,12 +115,12 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
             );
       if (picked == null) {
         _showMessage(
-            'Telecharge mais pas associe -- retrouvable via l\'association manuelle.');
+            'Téléchargé mais pas associé -- retrouvable via l\'association manuelle.');
         return;
       }
       if (!mounted) return;
       await context.read<AppState>().resolveMissingTrack(entry, picked.id);
-      _showMessage('"${picked.title}" associe.');
+      _showMessage('"${picked.title}" associé.');
     } finally {
       if (mounted) setState(() => _downloading.remove(entry));
     }
@@ -257,7 +265,7 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
                             IconButton(
                               icon: const Icon(Icons.cloud_download,
                                   color: Colors.white54, size: 20),
-                              tooltip: 'Telecharger automatiquement',
+                              tooltip: 'Télécharger automatiquement',
                               onPressed: () => _autoDownload(track),
                             ),
                           ],
@@ -347,7 +355,7 @@ class _TrackPickerSheetState extends State<_TrackPickerSheet> {
               Expanded(
                 child: _results.isEmpty
                     ? const Center(
-                        child: Text('Aucun resultat',
+                        child: Text('Aucun résultat',
                             style: TextStyle(color: Colors.white38)),
                       )
                     : ListView.builder(

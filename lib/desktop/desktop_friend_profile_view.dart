@@ -186,7 +186,7 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                         child: Padding(
                           padding: EdgeInsets.all(32),
                           child: Center(
-                            child: Text('Rien de partage pour le moment',
+                            child: Text('Rien de partagé pour le moment',
                                 style: TextStyle(color: Colors.white38)),
                           ),
                         ),
@@ -215,7 +215,7 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
           (context, index) {
             final track = tracks[index];
             return Selector<AppState, Track?>(
-              selector: (_, s) => s.currentTrack,
+              selector: (_, s) => s.displayTrack,
               builder: (context, currentTrack, __) => DesktopTrackRow(
                 track: track,
                 isPlaying: currentTrack?.id == track.id,

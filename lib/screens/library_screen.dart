@@ -86,7 +86,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 child: Row(
                   children: [
                     const Text(
-                      'Bibliotheque',
+                      'Bibliothèque',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -231,7 +231,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   Widget _buildLikedTracksList(
       AppState state, List<Track> likedTracks, List<Track> filtered) {
     if (filtered.isEmpty) {
-      return _buildEmpty('Aucun resultat');
+      return _buildEmpty('Aucun résultat');
     }
     final playableCount = likedTracks.where((t) => !t.isPlaceholder).length;
     // File de lecture reservee aux vrais titres (voir isPlaceholder plus
@@ -256,7 +256,7 @@ class _LibraryScreenState extends State<LibraryScreen>
           itemBuilder: (context, i) {
             final track = filtered[i];
             return Selector<AppState, Track?>(
-              selector: (_, s) => s.currentTrack,
+              selector: (_, s) => s.displayTrack,
               builder: (context, currentTrack, __) => TrackTile(
                 track: track,
                 isPlaying: currentTrack?.id == track.id,
@@ -292,7 +292,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             .toList();
 
     if (filtered.isEmpty) {
-      return _buildEmpty(query.isEmpty ? 'Aucun album like' : 'Aucun resultat');
+      return _buildEmpty(query.isEmpty ? 'Aucun album like' : 'Aucun résultat');
     }
 
     return NotificationListener<ScrollNotification>(
@@ -383,7 +383,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         : playlists.where((p) => p.name.toLowerCase().contains(query)).toList();
 
     if (filtered.isEmpty) {
-      return _buildEmpty(query.isEmpty ? 'Aucune playlist' : 'Aucun resultat');
+      return _buildEmpty(query.isEmpty ? 'Aucune playlist' : 'Aucun résultat');
     }
 
     return NotificationListener<ScrollNotification>(
@@ -456,7 +456,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               const Divider(color: Color(0xFF2A2A2A), height: 1),
               SheetTile(
                 icon: Icons.add_circle_outline,
-                label: 'Ajouter a la playlist',
+                label: 'Ajouter à la playlist',
                 onTap: () {
                   Navigator.pop(ctx);
                   _showAddToPlaylistDialog(context, track);
@@ -470,7 +470,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                   state.playNext(track);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('"${track.title}" sera joue ensuite'),
+                      content: Text('"${track.title}" sera joué ensuite'),
                       backgroundColor: const Color(0xFF1DB954),
                     ),
                   );
@@ -478,13 +478,13 @@ class _LibraryScreenState extends State<LibraryScreen>
               ),
               SheetTile(
                 icon: Icons.queue_music,
-                label: "Ajouter a la file d'attente",
+                label: "Ajouter à la file d'attente",
                 onTap: () {
                   Navigator.pop(ctx);
                   state.addToQueue(track);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('"${track.title}" ajoute a la file'),
+                      content: Text('"${track.title}" ajouté à la file'),
                       backgroundColor: const Color(0xFF1DB954),
                     ),
                   );
@@ -504,7 +504,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               ),
               SheetTile(
                 icon: Icons.album_outlined,
-                label: "Acceder a l'album",
+                label: "Accéder à l'album",
                 onTap: () {
                   Navigator.pop(ctx);
                   // Cherche dans TOUS les albums, pas seulement les likés.
@@ -538,7 +538,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               ),
               SheetTile(
                 icon: Icons.person_outline,
-                label: "Aller a l'artiste",
+                label: "Aller à l'artiste",
                 onTap: () {
                   Navigator.pop(ctx);
                   showArtistPicker(context, track.artist);
@@ -555,7 +555,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (playlists.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Aucune playlist. Creez-en une d'abord."),
+          content: Text("Aucune playlist. Créez-en une d'abord."),
           backgroundColor: Color(0xFF2A2A2A),
         ),
       );
@@ -566,7 +566,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Ajouter a une playlist',
+        title: const Text('Ajouter à une playlist',
             style: TextStyle(color: Colors.white)),
         content: SizedBox(
           width: double.maxFinite,
@@ -581,7 +581,7 @@ class _LibraryScreenState extends State<LibraryScreen>
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Ajoute a ${playlists[i].name}'),
+                    content: Text('Ajouté à ${playlists[i].name}'),
                     backgroundColor: const Color(0xFF2A2A2A),
                   ),
                 );
@@ -712,7 +712,7 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (!status.isGranted) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Permission de stockage refusee'),
+          content: Text('Permission de stockage refusée'),
           backgroundColor: Colors.red,
         ),
       );
@@ -747,7 +747,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       } else {
         messenger.showSnackBar(
           const SnackBar(
-            content: Text('Aucun fichier musical trouve dans ce dossier'),
+            content: Text('Aucun fichier musical trouvé dans ce dossier'),
             backgroundColor: Colors.red,
           ),
         );
@@ -790,7 +790,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               leading: const Icon(Icons.group_add, color: Colors.white),
               title: const Text('Rejoindre une playlist collaborative',
                   style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Avec un code partage par un ami',
+              subtitle: const Text('Avec un code partagé par un ami',
                   style: TextStyle(color: Colors.white54)),
               onTap: () {
                 Navigator.pop(ctx);
@@ -842,7 +842,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               if (groupId == null) {
                 messenger.showSnackBar(
                   const SnackBar(
-                    content: Text('Echec de la creation (connexion NAS ?)'),
+                    content: Text('Échec de la création (connexion NAS ?)'),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -864,14 +864,14 @@ class _LibraryScreenState extends State<LibraryScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Playlist creee !',
+        title: const Text('Playlist créée !',
             style: TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Partage ce code a tes amis pour qu\'ils la rejoignent :',
+              'Partage ce code à tes amis pour qu\'ils la rejoignent :',
               style: TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 12),
@@ -916,7 +916,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               autofocus: true,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
-                hintText: 'Code partage par ton ami',
+                hintText: 'Code partagé par ton ami',
                 hintStyle: TextStyle(color: Colors.white38),
                 border: UnderlineInputBorder(
                   borderSide: BorderSide(color: Color(0xFF2A2A2A)),

@@ -48,7 +48,7 @@ void showPlayerOptions(BuildContext context, Track track) {
     const Divider(color: Color(0xFF2A2A2A), height: 1),
     SheetTile(
       icon: Icons.add_circle_outline,
-      label: 'Ajouter a la playlist',
+      label: 'Ajouter à la playlist',
       onTap: () {
         Navigator.pop(ctx);
         _showAddToPlaylistDialog(context, track);
@@ -67,7 +67,7 @@ void showPlayerOptions(BuildContext context, Track track) {
     ),
     SheetTile(
       icon: Icons.album_outlined,
-      label: "Acceder a l'album",
+      label: "Accéder à l'album",
       onTap: () {
         Navigator.pop(ctx);
         state.pushOverlay(AlbumScreen(album: resolveTrackAlbum(state, track)));
@@ -75,7 +75,7 @@ void showPlayerOptions(BuildContext context, Track track) {
     ),
     SheetTile(
       icon: Icons.person_outline,
-      label: "Acceder a l'artiste",
+      label: "Accéder à l'artiste",
       onTap: () {
         Navigator.pop(ctx);
         showArtistPicker(context, track.artist);
@@ -92,7 +92,7 @@ void showPlayerOptions(BuildContext context, Track track) {
     if (state.shareInboxConfigured)
       SheetTile(
         icon: Icons.send_outlined,
-        label: 'Envoyer a un ami',
+        label: 'Envoyer à un ami',
         onTap: () {
           Navigator.pop(ctx);
           showSendToFriendDialog(context,
@@ -106,9 +106,9 @@ void showPlayerOptions(BuildContext context, Track track) {
       icon: state.isJamActive ? Icons.close : Icons.groups,
       label: state.isJamActive
           ? (state.isJamHost
-              ? 'Session Jam (${state.jamParticipantCount} a l\'ecoute)'
+              ? 'Session Jam (${state.jamParticipantCount} à l\'écoute)'
               : 'Session Jam en cours')
-          : 'Ecouter ensemble (Jam)',
+          : 'Écouter ensemble (Jam)',
       onTap: () {
         Navigator.pop(ctx);
         showJamMenu(context);
@@ -125,7 +125,7 @@ void _showAddToPlaylistDialog(BuildContext context, Track track) {
   if (playlists.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Aucune playlist. Creez-en une d'abord."),
+        content: Text("Aucune playlist. Créez-en une d'abord."),
         backgroundColor: Color(0xFF2A2A2A),
       ),
     );
@@ -136,7 +136,7 @@ void _showAddToPlaylistDialog(BuildContext context, Track track) {
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
-      title: const Text('Ajouter a une playlist',
+      title: const Text('Ajouter à une playlist',
           style: TextStyle(color: Colors.white)),
       content: SizedBox(
         width: double.maxFinite,
@@ -151,7 +151,7 @@ void _showAddToPlaylistDialog(BuildContext context, Track track) {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Ajoute a ${playlists[i].name}'),
+                  content: Text('Ajouté à ${playlists[i].name}'),
                   backgroundColor: const Color(0xFF2A2A2A),
                 ),
               );

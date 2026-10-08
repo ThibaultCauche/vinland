@@ -198,7 +198,9 @@ class _AlbumScreenState extends State<AlbumScreen> {
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) await _loadDeezerTracks();
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
@@ -293,16 +295,13 @@ class _AlbumScreenState extends State<AlbumScreen> {
         .toList()
       ..sort((a, b) => a.title.compareTo(b.title));
 
-    if (widget.filterArtist != null) {
-      bool artistMatch(String? artistField) =>
-          MatchingService.artistFieldContains(
-              artistField, widget.filterArtist!);
-
-      albumTracks = albumTracks
-          .where((t) => artistMatch(t.artist) || artistMatch(t.albumArtist))
-          .toList();
-    }
-
+    // filterArtist n'est plus applique ici : une fois l'album ouvert, on
+    // montre TOUS ses titres, meme ceux ou l'artiste par lequel on est
+    // arrive (page artiste) n'apparait qu'en featuring ou pas du tout dans
+    // le champ artiste/album-artiste brut -- avant, un titre comme un
+    // single "Artiste X feat. Y" ouvert depuis la page de Y pouvait
+    // afficher "0 titres" alors que l'album existe bien (retour
+    // utilisateur, meme fix que sur desktop).
     albumTracks = _dedupByTitle(albumTracks);
     final items = _buildTrackList(albumTracks);
 
@@ -405,7 +404,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                           key: isScrollTarget ? _scrollTargetKey : null,
                           index: index,
                           track: track,
-                          isPlaying: appState.currentTrack?.id == track.id,
+                          isPlaying: appState.displayTrack?.id == track.id,
                           onTap: () {
                             _recordRecent(appState);
                             appState.playTrack(track, trackList: albumTracks);
@@ -579,7 +578,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     final playlists = state.playlists;
 
     if (playlists.isEmpty) {
-      _showSnack("Aucune playlist. Creez-en une d'abord.");
+      _showSnack("Aucune playlist. Créez-en une d'abord.");
       return;
     }
 
@@ -587,7 +586,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Ajouter a une playlist',
+        title: const Text('Ajouter à une playlist',
             style: TextStyle(color: Colors.white)),
         content: SizedBox(
           width: double.maxFinite,
@@ -600,7 +599,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
               onTap: () {
                 state.addToPlaylist(playlists[i].id, track.id);
                 Navigator.pop(ctx);
-                _showSnack('Ajoute a ${playlists[i].name}');
+                _showSnack('Ajouté à ${playlists[i].name}');
               },
             ),
           ),
@@ -628,7 +627,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
               const Divider(color: Color(0xFF2A2A2A), height: 1),
               SheetTile(
                 icon: Icons.add_circle_outline,
-                label: 'Ajouter a la playlist',
+                label: 'Ajouter à la playlist',
                 onTap: () {
                   Navigator.pop(ctx);
                   _showAddToPlaylistDialog(context, track);
@@ -640,26 +639,26 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 onTap: () {
                   Navigator.pop(ctx);
                   state.playNext(track);
-                  _showSnack('"${track.title}" sera joue ensuite');
+                  _showSnack('"${track.title}" sera joué ensuite');
                 },
               ),
               SheetTile(
                 icon: Icons.playlist_add,
-                label: "Ajouter a la file d'attente",
+                label: "Ajouter à la file d'attente",
                 onTap: () {
                   Navigator.pop(ctx);
                   state.addToQueue(track);
-                  _showSnack('"${track.title}" ajoute a la file');
+                  _showSnack('"${track.title}" ajouté à la file');
                 },
               ),
               SheetTile(
                 icon: Icons.album_outlined,
-                label: "Acceder a l'album",
+                label: "Accéder à l'album",
                 onTap: () => Navigator.pop(ctx),
               ),
               SheetTile(
                 icon: Icons.person_outline,
-                label: "Acceder a l'artiste",
+                label: "Accéder à l'artiste",
                 onTap: () {
                   Navigator.pop(ctx);
                   showArtistPicker(context, track.artist);
@@ -688,7 +687,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
               if (state.shareInboxConfigured)
                 SheetTile(
                   icon: Icons.send_outlined,
-                  label: 'Envoyer a un ami',
+                  label: 'Envoyer à un ami',
                   onTap: () {
                     Navigator.pop(ctx);
                     showSendToFriendDialog(context,
@@ -782,9 +781,9 @@ class _PlayPauseButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Selector<AppState, (bool, bool)>(
       selector: (_, state) {
-        final isThisAlbum = state.currentTrack != null &&
-            albumTracks.any((t) => t.id == state.currentTrack!.id);
-        return (isThisAlbum, state.isPlaying);
+        final isThisAlbum = state.displayTrack != null &&
+            albumTracks.any((t) => t.id == state.displayTrack!.id);
+        return (isThisAlbum, state.displayIsPlaying);
       },
       builder: (context, data, _) {
         final (isThisAlbum, isPlaying) = data;

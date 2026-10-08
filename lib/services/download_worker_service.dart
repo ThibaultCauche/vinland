@@ -19,10 +19,25 @@ class DownloadJobStatus {
   final List<String> files;
   final String? error;
 
+  /// Etape en cours cote worker (ex: 'lidarr_searching_album',
+  /// 'spotdl_downloading', 'scanning_library', 'tagging'...) -- voir
+  /// server.py::_set_stage, lidarr.py et beets_tagger.py. Null tant que le
+  /// worker n'a pas encore commence le job. Utilise par
+  /// download_progress_dialog.dart pour afficher un libelle precis au lieu
+  /// d'un simple spinner.
+  final String? stage;
+
+  /// Resume texte renvoye a la fin d'un scan de tags (voir
+  /// GET /maintenance/tag-scan/<job_id>) -- vide pour un job de
+  /// telechargement classique, qui utilise plutot `files`.
+  final String? summary;
+
   const DownloadJobStatus({
     required this.state,
     this.files = const [],
     this.error,
+    this.stage,
+    this.summary,
   });
 
   factory DownloadJobStatus.fromJson(Map<String, dynamic> json) {
@@ -39,7 +54,37 @@ class DownloadJobStatus {
       files: (json['files'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
       error: json['error']?.toString(),
+      stage: json['stage']?.toString(),
+      summary: json['summary']?.toString(),
     );
+  }
+}
+
+/// Libelle affiche par download_progress_dialog.dart pour chaque valeur de
+/// "stage" renvoyee par le worker (voir server.py::_set_stage, lidarr.py et
+/// beets_tagger.py pour la liste faisant foi des stages possibles).
+String downloadStageLabel(String? stage) {
+  switch (stage) {
+    case 'lidarr_searching_artist':
+    case 'lidarr_searching_album':
+      return 'Recherche sur Lidarr (torrent)...';
+    case 'lidarr_downloading':
+      return 'Téléchargement via Lidarr...';
+    case 'lidarr_unavailable':
+      return 'Lidarr indisponible, tentative via YouTube...';
+    case 'spotdl_downloading':
+      return 'Téléchargement (YouTube)...';
+    case 'tagging':
+      return 'Harmonisation des tags (beets)...';
+    case 'scanning_library':
+      return 'Mise à jour de la bibliothèque...';
+    case 'done':
+      return 'Terminé';
+    case 'queued':
+    case null:
+      return 'En attente...';
+    default:
+      return 'Téléchargement en cours...';
   }
 }
 
@@ -178,6 +223,51 @@ class DownloadWorkerService {
     }
   }
 
+  /// Lance un passage beets (harmonisation des tags via MusicBrainz) sur
+  /// TOUTE la bibliotheque -- voir POST /maintenance/run-tag-scan. Pour le
+  /// bouton "Harmoniser la bibliothèque" des parametres : rattrape tout ce
+  /// qui a ete importe avant la mise en place de beets (le retag
+  /// automatique apres chaque telechargement ne couvre que les nouveaux
+  /// morceaux, voir requestDownload).
+  Future<String?> requestTagScan() async {
+    if (!isConfigured) return null;
+    final uri =
+        Uri.parse('$kDownloadWorkerServiceBaseUrl/maintenance/run-tag-scan');
+    try {
+      final response = await http
+          .post(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
+          .timeout(const Duration(seconds: 15));
+      debugPrint(
+          '[DownloadWorker] POST $uri -> ${response.statusCode} ${response.body}');
+      if (response.statusCode != 202) return null;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return body['job_id'] as String?;
+    } catch (e) {
+      debugPrint('[DownloadWorker] tag-scan POST exception: $e');
+      return null;
+    }
+  }
+
+  /// Meme forme JSON que GET /downloads/<job_id> (status/stage/error), plus
+  /// "summary" une fois termine -- voir GET /maintenance/tag-scan/<job_id>.
+  Future<DownloadJobStatus?> getTagScanStatus(String jobId) async {
+    if (!isConfigured) return null;
+    final uri = Uri.parse(
+        '$kDownloadWorkerServiceBaseUrl/maintenance/tag-scan/$jobId');
+    try {
+      final response = await http
+          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      return DownloadJobStatus.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    } catch (e) {
+      debugPrint('[DownloadWorker] tag-scan GET exception: $e');
+      return null;
+    }
+  }
+
   /// Interroge le job jusqu'a ce qu'il soit termine (done/failed), ou que
   /// [timeout] soit atteint. Doit rester superieur au DOWNLOAD_TIMEOUT_SECONDS
   /// cote serveur (defaut 300s) : sinon l'app abandonne et affiche un echec
@@ -193,7 +283,7 @@ class DownloadWorkerService {
       if (status == null) {
         return const DownloadJobStatus(
           state: DownloadJobState.failed,
-          error: 'Service de telechargement injoignable',
+          error: 'Service de téléchargement injoignable',
         );
       }
       if (status.state == DownloadJobState.done ||
@@ -204,7 +294,7 @@ class DownloadWorkerService {
     }
     return const DownloadJobStatus(
       state: DownloadJobState.failed,
-      error: 'Delai d\'attente depasse',
+      error: 'Délai d\'attente dépassé',
     );
   }
 

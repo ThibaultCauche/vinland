@@ -8,7 +8,7 @@ class PlayPauseButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Selector<AppState, bool>(
-      selector: (_, state) => state.isPlaying,
+      selector: (_, state) => state.displayIsPlaying,
       builder: (context, isPlaying, _) => Container(
         width: 64,
         height: 64,

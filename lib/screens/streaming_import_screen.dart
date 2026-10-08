@@ -27,6 +27,7 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title: const Text('Importer depuis un service',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -36,7 +37,7 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
           padding: EdgeInsets.fromLTRB(
               16, appBarSafeTopPadding(context) + 16, 16, 16),
           children: [
-            _buildSectionTitle('1. Plateformes supportees'),
+            _buildSectionTitle('1. Plateformes supportées'),
             const SizedBox(height: 8),
             _buildPlatformCard(
               icon: Icons.music_note,
@@ -63,7 +64,7 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
               color: Colors.blue,
             ),
             const SizedBox(height: 32),
-            _buildSectionTitle('2. Selectionner votre fichier'),
+            _buildSectionTitle('2. Sélectionner votre fichier'),
             const SizedBox(height: 8),
             _buildPlatformCard(
               icon: Icons.cloud_upload,
@@ -113,7 +114,7 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
                       child: ElevatedButton.icon(
                         onPressed: _downloadTemplate,
                         icon: const Icon(Icons.download, size: 18),
-                        label: const Text('Telecharger le template'),
+                        label: const Text('Télécharger le template'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1DB954),
                           foregroundColor: Colors.white,
@@ -129,7 +130,7 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            _buildSectionTitle('4. Formats acceptes'),
+            _buildSectionTitle('4. Formats acceptés'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -267,13 +268,13 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Template sauvegarde dans : ${file.path}'),
+            content: Text('Template sauvegardé dans : ${file.path}'),
             backgroundColor: const Color(0xFF1DB954),
           ),
         );
       }
     } catch (e) {
-      _showError('Erreur lors du telechargement : $e');
+      _showError('Erreur lors du téléchargement : $e');
     }
   }
 
@@ -347,7 +348,7 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
             ),
           );
         } else if (mounted) {
-          _error = 'Aucun titre trouve dans le fichier.';
+          _error = 'Aucun titre trouvé dans le fichier.';
         }
       }
     } catch (e) {
@@ -415,7 +416,7 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'titres analyses',
+                  'titres analysés',
                   style: const TextStyle(color: Colors.white54, fontSize: 16),
                 ),
                 if (_isDone) ...[

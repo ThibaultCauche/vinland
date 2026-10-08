@@ -11,15 +11,16 @@ class MiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (Track?, Color?, bool, bool)>(
+    return Selector<AppState, (Track?, Color?, bool, bool, bool)>(
       selector: (_, state) => (
-        state.currentTrack,
+        state.displayTrack,
         state.dominantColor,
-        state.isPlaying,
-        state.isJamActive
+        state.displayIsPlaying,
+        state.isJamActive,
+        state.isPersonalSyncParticipant,
       ),
       builder: (context, data, child) {
-        final (track, dominantColor, isPlaying, isJamActive) = data;
+        final (track, dominantColor, isPlaying, isJamActive, isRemote) = data;
         if (track == null) {
           return const SizedBox(height: 64);
         }
@@ -65,7 +66,7 @@ class MiniPlayer extends StatelessWidget {
                           children: [
                             Row(
                               children: [
-                                if (isJamActive)
+                                if (isJamActive || isRemote)
                                   Container(
                                     margin: const EdgeInsets.only(right: 6),
                                     padding: const EdgeInsets.symmetric(
@@ -74,14 +75,17 @@ class MiniPlayer extends StatelessWidget {
                                       color: const Color(0xFF1DB954),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: const Text(
-                                      'JAM',
-                                      style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    child: isRemote
+                                        ? const Icon(Icons.devices,
+                                            color: Colors.black, size: 11)
+                                        : const Text(
+                                            'JAM',
+                                            style: TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                   ),
                                 Expanded(
                                   child: Text(
@@ -128,7 +132,8 @@ class MiniPlayer extends StatelessWidget {
                     ],
                   ),
                 ),
-                RepaintBoundary(child: _MiniProgressBar(track: track)),
+                RepaintBoundary(
+                    child: _MiniProgressBar(track: track, isRemote: isRemote)),
               ],
             ),
           ),
@@ -165,10 +170,22 @@ class _LikeButton extends StatelessWidget {
 
 class _MiniProgressBar extends StatelessWidget {
   final Track track;
-  const _MiniProgressBar({required this.track});
+  final bool isRemote;
+  const _MiniProgressBar({required this.track, required this.isRemote});
 
   @override
   Widget build(BuildContext context) {
+    // En synchro perso participant, rien ne joue localement (voir
+    // AppState.displayPosition) : pas de position fluide a 5x/seconde a
+    // lire depuis le moteur audio local, juste la derniere valeur reçue de
+    // l'hote (mise a jour au battement ou a un remoteSeek).
+    if (isRemote) {
+      return Selector<AppState, Duration>(
+        selector: (_, state) => state.displayPosition,
+        builder: (context, position, __) =>
+            _buildBar(position, track.duration),
+      );
+    }
     final player = context.read<AppState>().player;
     return StreamBuilder<Duration>(
       // 200ms = 5 mises à jour/seconde max (suffisant visuellement)
@@ -188,30 +205,33 @@ class _MiniProgressBar extends StatelessWidget {
         final duration = track.duration.inMilliseconds > 0
             ? track.duration
             : (player.duration ?? Duration.zero);
-        final double progress = duration.inMilliseconds > 0
-            ? position.inMilliseconds / duration.inMilliseconds
-            : 0.0;
+        return _buildBar(position, duration);
+      },
+    );
+  }
 
-        return Container(
-          height: 2,
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 8),
+  Widget _buildBar(Duration position, Duration duration) {
+    final double progress = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+    return Container(
+      height: 2,
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white12,
+        borderRadius: BorderRadius.circular(1),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: progress.clamp(0.0, 1.0),
+        child: Container(
           decoration: BoxDecoration(
-            color: Colors.white12,
+            color: const Color(0xFF1DB954),
             borderRadius: BorderRadius.circular(1),
           ),
-          child: FractionallySizedBox(
-            alignment: Alignment.centerLeft,
-            widthFactor: progress.clamp(0.0, 1.0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1DB954),
-                borderRadius: BorderRadius.circular(1),
-              ),
-            ),
-          ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

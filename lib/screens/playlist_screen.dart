@@ -166,7 +166,7 @@ class PlaylistScreen extends StatelessWidget {
                             EdgeInsets.only(bottom: bottomBarReserve(context)),
                         itemCount: tracks.length,
                         itemBuilder: (context, i) => Selector<AppState, Track?>(
-                          selector: (_, s) => s.currentTrack,
+                          selector: (_, s) => s.displayTrack,
                           builder: (context, currentTrack, __) => TrackTile(
                             track: tracks[i],
                             isPlaying: currentTrack?.id == tracks[i].id,
@@ -227,7 +227,7 @@ class PlaylistScreen extends StatelessWidget {
               ),
               SheetTile(
                 icon: Icons.queue_music,
-                label: "Ajouter a la file d'attente",
+                label: "Ajouter à la file d'attente",
                 onTap: () {
                   Navigator.pop(ctx);
                   state.addToQueue(track);
@@ -247,7 +247,7 @@ class PlaylistScreen extends StatelessWidget {
               ),
               SheetTile(
                 icon: Icons.album_outlined,
-                label: "Acceder a l'album",
+                label: "Accéder à l'album",
                 onTap: () {
                   Navigator.pop(ctx);
                   // Match par albumId Navidrome quand il existe : deux albums
@@ -272,7 +272,7 @@ class PlaylistScreen extends StatelessWidget {
               ),
               SheetTile(
                 icon: Icons.person_outline,
-                label: "Acceder a l'artiste",
+                label: "Accéder à l'artiste",
                 onTap: () {
                   Navigator.pop(ctx);
                   state.pushOverlay(ArtistScreen(artistName: track.artist));
@@ -289,7 +289,7 @@ class PlaylistScreen extends StatelessWidget {
               if (state.shareInboxConfigured)
                 SheetTile(
                   icon: Icons.send_outlined,
-                  label: 'Envoyer a un ami',
+                  label: 'Envoyer à un ami',
                   onTap: () {
                     Navigator.pop(ctx);
                     showSendToFriendDialog(context,

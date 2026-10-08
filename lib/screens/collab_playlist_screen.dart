@@ -195,7 +195,7 @@ class _CollabPlaylistScreenState extends State<CollabPlaylistScreen> {
                                 final isMine =
                                     addedBy != null && addedBy == myUsername;
                                 return Selector<AppState, Track?>(
-                                  selector: (_, s) => s.currentTrack,
+                                  selector: (_, s) => s.displayTrack,
                                   builder: (context, currentTrack, __) =>
                                       TrackTile(
                                     track: track,
@@ -225,7 +225,7 @@ class _CollabPlaylistScreenState extends State<CollabPlaylistScreen> {
     Clipboard.setData(ClipboardData(text: groupId));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Code copie : $groupId'),
+        content: Text('Code copié : $groupId'),
         backgroundColor: const Color(0xFF2A2A2A),
       ),
     );
@@ -249,7 +249,7 @@ class _CollabPlaylistScreenState extends State<CollabPlaylistScreen> {
                   style: const TextStyle(
                       color: Colors.white, fontWeight: FontWeight.w600)),
               subtitle: Text(
-                addedBy != null ? 'Ajoute par $addedBy' : track.artist,
+                addedBy != null ? 'Ajouté par $addedBy' : track.artist,
                 style: const TextStyle(color: Colors.white54, fontSize: 13),
               ),
             ),

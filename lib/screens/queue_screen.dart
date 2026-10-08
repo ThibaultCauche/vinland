@@ -37,6 +37,7 @@ class QueueScreen extends StatelessWidget {
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
+            flexibleSpace: const AppBarBlurBackground(),
             leading: IconButton(
               icon: const Icon(Icons.expand_more, color: Colors.white),
               onPressed: () => state.popOverlay(),

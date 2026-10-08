@@ -6,9 +6,11 @@ import '../providers/app_state.dart';
 import 'streaming_import_screen.dart';
 import 'bluetooth_trusted_devices_screen.dart';
 import 'feedback_screen.dart';
+import '../services/download_worker_service.dart';
 import '../widgets/app_background.dart';
 import '../widgets/app_bar_safe_area.dart';
 import '../widgets/bottom_bar_reserve.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/update_prompt.dart';
 import 'personalization_screen.dart';
 
@@ -28,6 +30,7 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           // Sur mobile cet ecran est pousse comme overlay AppState (pas de
@@ -43,12 +46,13 @@ class SettingsScreen extends StatelessWidget {
             }
           },
         ),
-        title: const Text('Parametres',
+        title: const Text('Paramètres',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: PlatformBackground(
         child: Consumer<AppState>(
           builder: (context, state, child) {
+            final downloadWorker = DownloadWorkerService();
             return ListView(
               padding: EdgeInsets.only(
                   top: appBarSafeTopPadding(context),
@@ -65,7 +69,7 @@ class SettingsScreen extends StatelessWidget {
                         builder: (_) => const PersonalizationScreen()),
                   ),
                 ),
-                _buildSection('Bibliotheque'),
+                _buildSection('Bibliothèque'),
                 _buildTile(
                   icon: Icons.upload_file,
                   title: 'Importer likes (CSV / JSON)',
@@ -78,7 +82,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _buildTile(
                   icon: Icons.delete_sweep,
-                  title: 'Reinitialiser les titres likes',
+                  title: 'Réinitialiser les titres likes',
                   subtitle: 'Vide la liste des likes locale',
                   onTap: () => _confirmClearLikes(context),
                 ),
@@ -86,21 +90,21 @@ class SettingsScreen extends StatelessWidget {
                 _buildTile(
                   icon: Icons.cloud,
                   title: 'Configurer Navidrome',
-                  subtitle: state.isLoggedIn ? 'Connecte' : 'Non configure',
+                  subtitle: state.isLoggedIn ? 'Connecté' : 'Non configuré',
                   onTap: () => _showNavidromeDialog(context),
                 ),
                 if (state.isLoggedIn) ...[
                   _buildTile(
                     icon: Icons.sync,
-                    title: 'Synchroniser la bibliotheque',
-                    subtitle: 'Mettre a jour depuis le serveur',
+                    title: 'Synchroniser la bibliothèque',
+                    subtitle: 'Mettre à jour depuis le serveur',
                     onTap: () async {
                       final messenger = ScaffoldMessenger.of(context);
                       await state.syncNavidrome();
                       messenger.showSnackBar(
                         SnackBar(
                           content: Text(
-                            'Synchronisation terminee : '
+                            'Synchronisation terminée : '
                             '${state.allTracks.length} titres, '
                             '${state.albums.length} albums',
                           ),
@@ -118,10 +122,19 @@ class SettingsScreen extends StatelessWidget {
                     await state.rescanCoversForExistingTracks();
                     messenger.showSnackBar(
                       const SnackBar(
-                          content: Text('Rescan des covers termine')),
+                          content: Text('Rescan des covers terminé')),
                     );
                   },
                 ),
+                if (downloadWorker.isConfigured)
+                  _buildTile(
+                    icon: Icons.auto_fix_high,
+                    title: 'Harmoniser la bibliothèque',
+                    subtitle:
+                        'Corrige les tags (artiste/album/titre) via MusicBrainz '
+                        'sur tous les fichiers déjà présents',
+                    onTap: () => _runLibraryTagScan(context, downloadWorker),
+                  ),
                 _buildSection('Amis'),
                 _buildSwitchTile(
                   icon: Icons.people_outline,
@@ -133,15 +146,15 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _buildSwitchTile(
                   icon: Icons.history,
-                  title: 'Partager mon historique d\'ecoute',
+                  title: 'Partager mon historique d\'écoute',
                   subtitle:
-                      'Derniers titres ecoutes visibles par les autres comptes de ce serveur',
+                      'Derniers titres écoutés visibles par les autres comptes de ce serveur',
                   value: state.shareRecentPlaysWithFriends,
                   onChanged: (v) => state.setShareRecentPlaysWithFriends(v),
                 ),
                 _buildSwitchTile(
                   icon: Icons.headphones,
-                  title: 'Partager ce que j\'ecoute en ce moment',
+                  title: 'Partager ce que j\'écoute en ce moment',
                   subtitle:
                       'Visible dans l\'onglet Amis des autres comptes de ce serveur',
                   value: state.shareNowPlayingWithFriends,
@@ -153,7 +166,7 @@ class SettingsScreen extends StatelessWidget {
                     icon: Icons.bluetooth,
                     title: 'Reprise automatique',
                     subtitle:
-                        "Relance la derniere lecture quand un casque de confiance se connecte",
+                        "Relance la dernière lecture quand un casque de confiance se connecte",
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -162,10 +175,10 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   ),
                 ],
-                _buildSection('Telechargements'),
+                _buildSection('Téléchargements'),
                 _buildSwitchTile(
                   icon: Icons.download_for_offline,
-                  title: 'Telecharger automatiquement les likes',
+                  title: 'Télécharger automatiquement les likes',
                   subtitle:
                       'Titres, albums et playlists likes disponibles hors connexion',
                   value: state.autoDownloadLikes,
@@ -181,7 +194,7 @@ class SettingsScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const FeedbackScreen()),
                   ),
                 ),
-                _buildSection('A propos'),
+                _buildSection('À propos'),
                 FutureBuilder<PackageInfo>(
                   future: PackageInfo.fromPlatform(),
                   builder: (context, snapshot) {
@@ -192,7 +205,7 @@ class SettingsScreen extends StatelessWidget {
                       title: 'Vinland v$version',
                       subtitle: update != null
                           ? 'Vinland ${update.latestVersion} disponible -- toucher pour installer'
-                          : 'A jour -- toucher pour verifier',
+                          : 'À jour, toucher pour vérifier',
                       onTap: () async {
                         if (update != null) {
                           triggerUpdate(context, update);
@@ -204,7 +217,7 @@ class SettingsScreen extends StatelessWidget {
                           messenger.showSnackBar(
                             const SnackBar(
                                 content:
-                                    Text('Tu as deja la derniere version')),
+                                    Text('Tu as déjà la dernière version')),
                           );
                         }
                       },
@@ -224,7 +237,7 @@ class SettingsScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(24),
                       ),
                     ),
-                    child: const Text('Se deconnecter',
+                    child: const Text('Se déconnecter',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -284,6 +297,37 @@ class SettingsScreen extends StatelessWidget {
       value: value,
       onChanged: onChanged,
       activeColor: const Color(0xFF1DB954),
+    );
+  }
+
+  /// Lance un scan beets sur toute la bibliotheque (voir
+  /// DownloadWorkerService.requestTagScan) -- pour rattraper tout ce qui a
+  /// ete importe avant la mise en place du retag automatique apres chaque
+  /// telechargement. Reutilise le meme popup de progression que les
+  /// telechargements (voir showDownloadProgressDialog), juste branche sur
+  /// GET /maintenance/tag-scan/<job_id> au lieu de /downloads/<job_id>.
+  Future<void> _runLibraryTagScan(
+      BuildContext context, DownloadWorkerService worker) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final jobId = await worker.requestTagScan();
+    if (jobId == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Impossible de lancer le scan.')),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    final status = await showDownloadProgressDialog(
+      context,
+      fetchStatus: () => worker.getTagScanStatus(jobId),
+      title: 'Harmonisation de la bibliothèque',
+    );
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(status.state == DownloadJobState.done
+            ? (status.summary ?? 'Scan terminé.')
+            : (status.error ?? 'Échec du scan.')),
+      ),
     );
   }
 
@@ -349,7 +393,7 @@ class SettingsScreen extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content:
-                      Text(ok ? 'Connecte a Navidrome' : 'Echec de connexion'),
+                      Text(ok ? 'Connecté à Navidrome' : 'Échec de connexion'),
                 ),
               );
             },
@@ -366,10 +410,10 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Reinitialiser les likes',
+        title: const Text('Réinitialiser les likes',
             style: TextStyle(color: Colors.white)),
         content: const Text(
-          'Tous vos titres likes seront retires localement. Une synchro Navidrome les remettra si ils sont likes sur le serveur.',
+          'Tous vos titres likes seront retirés localement. Une synchro Navidrome les remettra si ils sont likes sur le serveur.',
           style: TextStyle(color: Colors.white70),
         ),
         actions: [
@@ -384,11 +428,11 @@ class SettingsScreen extends StatelessWidget {
               await context.read<AppState>().clearAllLikes();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Titres likes reinitialises')),
+                  const SnackBar(content: Text('Titres likes réinitialisés')),
                 );
               }
             },
-            child: const Text('Reinitialiser',
+            child: const Text('Réinitialiser',
                 style: TextStyle(color: Colors.red)),
           ),
         ],

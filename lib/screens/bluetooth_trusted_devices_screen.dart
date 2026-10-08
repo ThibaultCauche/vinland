@@ -71,6 +71,7 @@ class _BluetoothTrustedDevicesScreenState
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title: const Text('Reprise automatique',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
@@ -86,10 +87,10 @@ class _BluetoothTrustedDevicesScreenState
                       padding: const EdgeInsets.all(16),
                       children: [
                       const Text(
-                        "Coche un ou plusieurs appareils appaires (casque, enceinte...) : "
+                        "Coche un ou plusieurs appareils appairés (casque, enceinte...) : "
                         "quand l'un d'eux se connecte, Vinland reprend automatiquement "
-                        "la derniere lecture en fond, meme si l'app n'a jamais ete "
-                        'ouverte depuis le dernier redemarrage du telephone.',
+                        "la dernière lecture en fond, même si l'app n'a jamais été "
+                        'ouverte depuis le dernier redémarrage du téléphone.',
                         style: TextStyle(color: Colors.white54, fontSize: 13),
                       ),
                       const SizedBox(height: 16),
@@ -97,7 +98,7 @@ class _BluetoothTrustedDevicesScreenState
                         const Padding(
                           padding: EdgeInsets.only(top: 32),
                           child: Center(
-                            child: Text('Aucun appareil Bluetooth appaire',
+                            child: Text('Aucun appareil Bluetooth appairé',
                                 style: TextStyle(color: Colors.white38)),
                           ),
                         )
@@ -138,14 +139,14 @@ class _PermissionDenied extends StatelessWidget {
                 color: Colors.white24, size: 48),
             const SizedBox(height: 16),
             const Text(
-              'Permission Bluetooth requise pour lister les appareils appaires.',
+              'Permission Bluetooth requise pour lister les appareils appairés.',
               style: TextStyle(color: Colors.white70),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: onRetry,
-              child: const Text('Reessayer',
+              child: const Text('Réessayer',
                   style: TextStyle(color: Color(0xFF1DB954))),
             ),
           ],

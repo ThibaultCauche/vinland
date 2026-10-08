@@ -64,7 +64,7 @@ void showAlbumOptions(BuildContext context, Album album) {
     ),
     SheetTile(
       icon: Icons.person_outline,
-      label: "Acceder a l'artiste",
+      label: "Accéder à l'artiste",
       onTap: () {
         Navigator.pop(ctx);
         showArtistPicker(context, album.artist);
@@ -75,8 +75,8 @@ void showAlbumOptions(BuildContext context, Album album) {
           ? Icons.push_pin
           : Icons.push_pin_outlined,
       label: state.isPinned(PinnedItemType.album, album.id)
-          ? "Desepingler de l'accueil"
-          : "Epingler a l'accueil",
+          ? "Désépingler de l'accueil"
+          : "Épingler à l'accueil",
       onTap: () {
         Navigator.pop(ctx);
         state.togglePin(PinnedItem(
@@ -99,7 +99,7 @@ void showAlbumOptions(BuildContext context, Album album) {
     ),
     SheetTile(
       icon: Icons.playlist_add,
-      label: "Ajouter a la file d'attente",
+      label: "Ajouter à la file d'attente",
       onTap: () {
         Navigator.pop(ctx);
         for (final t in tracks) {
@@ -118,7 +118,7 @@ void showAlbumOptions(BuildContext context, Album album) {
     if (state.shareInboxConfigured)
       SheetTile(
         icon: Icons.send_outlined,
-        label: 'Envoyer a un ami',
+        label: 'Envoyer à un ami',
         onTap: () {
           Navigator.pop(ctx);
           showSendToFriendDialog(context,

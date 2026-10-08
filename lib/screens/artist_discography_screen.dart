@@ -112,7 +112,9 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(dt.artistName, dt.title);
       if (mounted) setState(() => _downloadStates.remove(dt.id));
     } else {
       setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
@@ -188,7 +190,7 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
                   else
                     for (final rt in _tracksByEntry[i]!)
                       Selector<AppState, Track?>(
-                        selector: (_, s) => s.currentTrack,
+                        selector: (_, s) => s.displayTrack,
                         builder: (context, currentTrack, __) {
                           if (rt.local != null) {
                             return TrackTile(

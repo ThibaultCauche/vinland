@@ -4,11 +4,16 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/discovered_artist.dart';
 import '../models/discovered_album.dart';
+import '../models/discovered_track.dart';
 import '../models/track.dart';
 import '../models/search_history_item.dart';
 import '../services/discovery_service.dart';
+import '../services/download_worker_service.dart';
+import '../services/matching_service.dart';
 import '../services/search_history_service.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import '../screens/discovered_album_screen.dart';
@@ -27,16 +32,18 @@ class _SearchScreenState extends State<SearchScreen>
   final _controller = TextEditingController();
   final _discovery = DiscoveryService();
   final _historyService = SearchHistoryService();
+  final _downloadWorker = DownloadWorkerService();
   late TabController _tabController;
 
   bool _isLoading = false;
   String _query = '';
   Timer? _debounce;
 
-  List<Track> _localTracks = [];
+  List<_SearchTrack> _tracks = [];
   List<DiscoveredArtist> _artists = [];
   List<DiscoveredAlbum> _albums = [];
   List<SearchHistoryItem> _history = [];
+  final Map<int, DownloadUiState> _downloadStates = {};
 
   @override
   void initState() {
@@ -65,7 +72,7 @@ class _SearchScreenState extends State<SearchScreen>
     if (value.trim().isEmpty) {
       setState(() {
         _query = '';
-        _localTracks = [];
+        _tracks = [];
         _artists = [];
         _albums = [];
       });
@@ -76,6 +83,22 @@ class _SearchScreenState extends State<SearchScreen>
     });
   }
 
+  Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
+    for (final t in candidates) {
+      if (MatchingService.artistsMatch(t.artist, dt.artistName) &&
+          MatchingService.titlesMatch(t.title, dt.title)) {
+        return t;
+      }
+    }
+    return null;
+  }
+
+  // Recherche Deezer (pas uniquement les titres deja sur le NAS, voir
+  // DesktopSearchView pour la meme logique cote desktop) : avant, l'onglet
+  // "Titres" ne cherchait QUE dans la bibliotheque locale deja synchronisee,
+  // donc un titre pas encore telecharge n'y apparaissait jamais meme en le
+  // tapant exactement -- il fallait passer par Artiste puis Album pour le
+  // retrouver et le telecharger (retour utilisateur).
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
     setState(() {
@@ -84,19 +107,68 @@ class _SearchScreenState extends State<SearchScreen>
     });
 
     final state = context.read<AppState>();
-    final local = state.musicService.searchTracks(query);
-    final artistsFuture = _discovery.searchArtists(query, limit: 10);
-    final albumsFuture = _discovery.searchAlbums(query, limit: 15);
-
-    final results = await Future.wait([artistsFuture, albumsFuture]);
+    final results = await Future.wait([
+      _discovery.searchArtists(query, limit: 10),
+      _discovery.searchAlbums(query, limit: 15),
+      _discovery.searchTracks(query, limit: 15),
+    ]);
 
     if (mounted) {
+      final localTracks = state.allTracks;
+      final discoveredTracks = results[2] as List<DiscoveredTrack>;
       setState(() {
-        _localTracks = local;
+        _tracks = [
+          for (final dt in discoveredTracks)
+            _SearchTrack(discovered: dt, local: _findLocalTrack(dt, localTracks)),
+        ];
         _artists = results[0] as List<DiscoveredArtist>;
         _albums = results[1] as List<DiscoveredAlbum>;
         _isLoading = false;
       });
+    }
+  }
+
+  /// Meme logique que DesktopSearchView._downloadTrack -- jusqu'ici jamais
+  /// branchee cote mobile, l'onglet "Titres" ne montrant que des titres deja
+  /// locaux.
+  Future<void> _downloadTrack(DiscoveredTrack track) async {
+    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
+
+    final jobId = await _downloadWorker.requestDownload(
+      artist: track.artistName,
+      title: track.title,
+      album: track.albumName == 'Inconnu' ? null : track.albumName,
+    );
+    if (jobId == null) {
+      if (mounted) {
+        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
+    if (!mounted) return;
+
+    if (status.state == DownloadJobState.done) {
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
+      if (mounted) {
+        setState(() {
+          _downloadStates.remove(track.id);
+          final i = _tracks.indexWhere((t) => t.discovered.id == track.id);
+          if (i != -1) {
+            _tracks[i] = _SearchTrack(
+              discovered: track,
+              local: _findLocalTrack(track, context.read<AppState>().allTracks),
+            );
+          }
+        });
+      }
+    } else {
+      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
     }
   }
 
@@ -233,7 +305,7 @@ class _SearchScreenState extends State<SearchScreen>
                 tabs: [
                   Tab(text: 'Artistes (${_artists.length})'),
                   Tab(text: 'Albums (${_albums.length})'),
-                  Tab(text: 'Titres (${_localTracks.length})'),
+                  Tab(text: 'Titres (${_tracks.length})'),
                 ],
               ),
               Expanded(
@@ -242,7 +314,7 @@ class _SearchScreenState extends State<SearchScreen>
                   children: [
                     _buildArtists(),
                     _buildAlbums(),
-                    _buildLocalTracks(),
+                    _buildTracks(),
                   ],
                 ),
               ),
@@ -334,19 +406,21 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  Widget _buildLocalTracks() {
-    if (_localTracks.isEmpty) {
+  Widget _buildTracks() {
+    if (_tracks.isEmpty) {
       return const Center(
-        child:
-            Text('Aucun titre local', style: TextStyle(color: Colors.white38)),
+        child: Text('Aucun titre trouvé', style: TextStyle(color: Colors.white38)),
       );
     }
     final state = context.read<AppState>();
     return ListView.builder(
       padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
-      itemCount: _localTracks.length,
+      itemCount: _tracks.length,
       itemBuilder: (context, i) {
-        final track = _localTracks[i];
+        final t = _tracks[i];
+        final discovered = t.discovered;
+        final localTrack = t.local;
+        final isAvailable = localTrack != null;
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           leading: Container(
@@ -355,45 +429,73 @@ class _SearchScreenState extends State<SearchScreen>
             decoration: BoxDecoration(
               color: const Color(0xFF3E3E3E),
               borderRadius: BorderRadius.circular(4),
-              image:
-                  track.coverPath != null && track.coverPath!.startsWith('http')
-                      ? DecorationImage(
-                          image: coverImageProvider(context,
-                              path: track.coverPath!, width: 48, height: 48),
-                          fit: BoxFit.cover,
-                          onError: (_, __) {},
-                        )
-                      : null,
+              image: discovered.coverUrl != null
+                  ? DecorationImage(
+                      image: coverImageProvider(context,
+                          path: discovered.coverUrl!, width: 48, height: 48),
+                      fit: BoxFit.cover,
+                      onError: (_, __) {},
+                    )
+                  : null,
             ),
-            child:
-                track.coverPath == null || !track.coverPath!.startsWith('http')
-                    ? const Icon(Icons.music_note, color: Colors.white54)
-                    : null,
+            child: discovered.coverUrl == null
+                ? const Icon(Icons.music_note, color: Colors.white54)
+                : null,
           ),
           title: Text(
-            track.title,
-            style: const TextStyle(
-                color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+            discovered.title,
+            style: TextStyle(
+              color: isAvailable ? Colors.white : Colors.white38,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
-            '${track.artist} • ${track.album}',
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            localTrack != null
+                ? '${localTrack.artist} • ${localTrack.album}'
+                : discovered.artistName,
+            style: TextStyle(
+              color: isAvailable ? Colors.white54 : Colors.white24,
+              fontSize: 12,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          onTap: () async {
-            await _historyService.addTrack(
-              track.title,
-              track.id,
-              track.artist,
-              query: _query,
-              imageUrl: track.coverPath?.startsWith('http') == true
-                  ? track.coverPath
-                  : null,
-            );
-            if (!mounted) return;
-            FocusScope.of(context).unfocus();
-            state.popOverlay();
-            state.playTrack(track);
-          },
+          trailing: isAvailable
+              ? IconButton(
+                  icon: Icon(
+                    localTrack.isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: localTrack.isLiked
+                        ? const Color(0xFF1DB954)
+                        : Colors.white54,
+                    size: 18,
+                  ),
+                  onPressed: () => state.toggleLike(localTrack.id),
+                )
+              : DownloadStateIcon(
+                  state: _downloadStates[discovered.id],
+                  showDownloadButton: _downloadWorker.isConfigured,
+                  onDownloadTap: () => _downloadTrack(discovered),
+                ),
+          onTap: !isAvailable
+              ? null
+              : () async {
+                  await _historyService.addTrack(
+                    localTrack.title,
+                    localTrack.id,
+                    localTrack.artist,
+                    query: _query,
+                    imageUrl: localTrack.coverPath?.startsWith('http') == true
+                        ? localTrack.coverPath
+                        : null,
+                  );
+                  if (!mounted) return;
+                  FocusScope.of(context).unfocus();
+                  state.popOverlay();
+                  state.playTrack(localTrack);
+                },
         );
       },
     );
@@ -506,6 +608,15 @@ class _SearchScreenState extends State<SearchScreen>
       },
     );
   }
+}
+
+/// Un resultat de l'onglet "Titres" : toujours issu de la recherche Deezer
+/// (voir _performSearch), avec un lien vers le titre local correspondant
+/// quand il existe deja -- meme structure que DesktopSearchView._SearchTrack.
+class _SearchTrack {
+  final DiscoveredTrack discovered;
+  final Track? local;
+  const _SearchTrack({required this.discovered, this.local});
 }
 
 class _AlbumCard extends StatelessWidget {

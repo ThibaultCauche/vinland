@@ -72,10 +72,28 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> pause() => _engine.pause();
   @override
   Future<void> seek(Duration position) => _engine.seek(position);
+
+  // Ne pilotent PAS _engine.seekToNext()/seekToPrevious() (ancien
+  // comportement) : le moteur ne reçoit jamais qu'UN SEUL titre a la fois
+  // (voir AppState._playSingle), la file d'attente entiere vit cote Dart
+  // dans AppState.queue -- seekToNext/Previous du moteur natif n'avaient
+  // donc litteralement rien a faire dans une file d'un seul element. Ca
+  // rendait les boutons suivant/precedent inertes depuis la notification/
+  // l'ecran verrouille et les gestes du casque Bluetooth (seul play/pause
+  // marchait, lui pilote reellement le meme moteur quelle que soit la
+  // source -- retour utilisateur). Relaie plutot via customActionStream,
+  // deja ecoute par AppState (meme canal que 'add_to_likes'), qui appelle
+  // sa vraie logique nextTrack()/previousTrack() (avance la file Dart,
+  // historique, alea, synchro perso...).
   @override
-  Future<void> skipToNext() => _engine.seekToNext();
+  Future<void> skipToNext() async {
+    _customActionController.add('skip_next');
+  }
+
   @override
-  Future<void> skipToPrevious() => _engine.seekToPrevious();
+  Future<void> skipToPrevious() async {
+    _customActionController.add('skip_previous');
+  }
 
   @override
   Future<void> stop() async {
@@ -117,7 +135,14 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
       try {
         await _engine.setAudioSources(sources, initialIndex: startIndex);
         debugPrint('✅ AudioSource chargé, lecture...');
-        await _engine.play();
+        // Pas de await : just_audio ne resout play() qu'a la FIN du titre
+        // (ou a la pause). L'attendre gardait _playSingle/_advanceQueue/
+        // _continueQueueAutomatically (donc son verrou _autoContinuing)
+        // bloques pendant tout le titre auto-enchaine -- sa fin etait alors
+        // ignoree et le lecteur se figeait apres le 2e titre.
+        unawaited(_engine.play().catchError((Object e) {
+          debugPrint('❌ ERREUR play(): $e');
+        }));
         return true;
       } catch (e) {
         debugPrint('❌ ERREUR LECTURE (tentative $attempt/$maxAttempts): $e');
