@@ -12,6 +12,7 @@ import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/matching_service.dart';
 import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/artist_options_sheet.dart';
@@ -176,8 +177,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
   /// jusqu'ici jamais branchee sur cette page (retour utilisateur). Pas
   /// besoin de recharger _topTracks apres coup : `popularTracks` (dans
   /// build()) recroise deja _topTracks avec state.allTracks a chaque
-  /// reconstruction, donc syncRecentlyAdded() suffit a faire apparaitre le
-  /// titre comme disponible.
+  /// reconstruction, donc handleTrackDownloaded() suffit a faire apparaitre
+  /// le titre comme disponible.
   Future<void> _downloadTrack(DiscoveredTrack track) async {
     setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
 
@@ -193,11 +194,15 @@ class _ArtistScreenState extends State<ArtistScreen> {
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(track.artistName, track.title);
       if (mounted) setState(() => _downloadStates.remove(track.id));
     } else {
       setState(() => _downloadStates[track.id] = DownloadUiState.failed);
@@ -641,7 +646,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       (context, index) => Transform.translate(
                         offset: const Offset(8, 0),
                         child: Selector<AppState, Track?>(
-                          selector: (_, s) => s.currentTrack,
+                          selector: (_, s) => s.displayTrack,
                           builder: (context, currentTrack, __) => TrackTile(
                             track: allArtistTracks[index],
                             isPlaying:

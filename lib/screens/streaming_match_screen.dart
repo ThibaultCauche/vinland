@@ -276,6 +276,7 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title: const Text('Correspondances',
             style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),

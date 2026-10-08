@@ -55,13 +55,13 @@ void _confirmAutoUpdate(
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
       title:
-          const Text('Mettre a jour', style: TextStyle(color: Colors.white)),
+          const Text('Mettre à jour', style: TextStyle(color: Colors.white)),
       content: Text(
         isWindows
-            ? "L'app va se fermer, se mettre a jour, puis redemarrer automatiquement. "
-                "Ca prend quelques secondes."
-            : "L'app va telecharger la mise a jour puis te proposera de "
-                "l'installer -- Android demande de confirmer toi-meme "
+            ? "L'app va se fermer, se mettre à jour, puis redémarrer automatiquement. "
+                "Ça prend quelques secondes."
+            : "L'app va télécharger la mise à jour puis te proposera de "
+                "l'installer -- Android demande de confirmer toi-même "
                 "l'installation.",
         style: const TextStyle(color: Colors.white70),
       ),
@@ -76,7 +76,7 @@ void _confirmAutoUpdate(
             Navigator.pop(ctx);
             _runAutoUpdate(context, downloadUrl, isWindows);
           },
-          child: const Text('Mettre a jour',
+          child: const Text('Mettre à jour',
               style: TextStyle(color: Color(0xFF1DB954))),
         ),
       ],
@@ -95,7 +95,7 @@ void _runAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
           CircularProgressIndicator(color: Color(0xFF1DB954)),
           SizedBox(width: 20),
           Expanded(
-            child: Text('Telechargement de la mise a jour...',
+            child: Text('Téléchargement de la mise à jour...',
                 style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -120,7 +120,7 @@ void _runAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text(
-                  "Echec de la mise a jour automatique -- reessaie plus tard.")),
+                  "Échec de la mise à jour automatique -- réessaie plus tard.")),
         );
       }
     }

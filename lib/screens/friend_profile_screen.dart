@@ -260,7 +260,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => Selector<AppState, Track?>(
-                        selector: (_, s) => s.currentTrack,
+                        selector: (_, s) => s.displayTrack,
                         builder: (context, currentTrack, __) => TrackTile(
                           track: preview[index],
                           isPlaying: currentTrack?.id == preview[index].id,
@@ -308,7 +308,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => Selector<AppState, Track?>(
-                        selector: (_, s) => s.currentTrack,
+                        selector: (_, s) => s.displayTrack,
                         builder: (context, currentTrack, __) => TrackTile(
                           track: recentPreview[index],
                           isPlaying:
@@ -364,7 +364,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                   child: Padding(
                     padding: EdgeInsets.all(32),
                     child: Center(
-                      child: Text('Rien de partage pour le moment',
+                      child: Text('Rien de partagé pour le moment',
                           style: TextStyle(color: Colors.white38)),
                     ),
                   ),

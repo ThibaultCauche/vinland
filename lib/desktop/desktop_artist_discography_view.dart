@@ -10,6 +10,7 @@ import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
+import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import 'desktop_track_row.dart';
 import 'glass.dart';
@@ -132,11 +133,15 @@ class _DesktopArtistDiscographyViewState
       return;
     }
 
-    final status = await _downloadWorker.waitForCompletion(jobId);
+    if (!mounted) return;
+    final status = await showDownloadProgressDialog(context,
+        worker: _downloadWorker, jobId: jobId);
     if (!mounted) return;
 
     if (status.state == DownloadJobState.done) {
-      await context.read<AppState>().syncRecentlyAdded();
+      await context
+          .read<AppState>()
+          .handleTrackDownloaded(dt.artistName, dt.title);
       if (mounted) setState(() => _downloadStates.remove(dt.id));
     } else {
       setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
@@ -238,7 +243,7 @@ class _DesktopArtistDiscographyViewState
                         (context, trackIndex) {
                           final rt = _tracksByEntry[i]![trackIndex];
                           return Selector<AppState, Track?>(
-                            selector: (_, s) => s.currentTrack,
+                            selector: (_, s) => s.displayTrack,
                             builder: (context, currentTrack, __) {
                               if (rt.local != null) {
                                 return DesktopTrackRow(

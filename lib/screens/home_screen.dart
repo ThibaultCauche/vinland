@@ -550,8 +550,8 @@ class HomeScreen extends StatelessWidget {
               SheetTile(
                 icon: pinned ? Icons.push_pin : Icons.push_pin_outlined,
                 label: pinned
-                    ? "Desepingler de l'accueil"
-                    : "Epingler a l'accueil",
+                    ? "Désépingler de l'accueil"
+                    : "Épingler à l'accueil",
                 onTap: () {
                   Navigator.pop(ctx);
                   state.togglePin(const PinnedItem(

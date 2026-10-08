@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import '../models/track.dart';
+import 'matching_service.dart';
 import 'secure_storage.dart';
 import '../config/credentials.dart';
 
@@ -294,6 +295,53 @@ class NavidromeService {
 
     debugPrint('TOTAL ALBUMS: ${albums.length}');
     return albums;
+  }
+
+  /// Cherche un titre precis via search3.view (recherche plein texte
+  /// Subsonic), pour le retrouver juste apres un telechargement automatique
+  /// sans attendre qu'il apparaisse dans fetchRecentAlbums -- un titre
+  /// telecharge sans album connu (voir DownloadWorkerService) atterrit dans
+  /// un dossier partage par artiste (album = artiste), dont la date de
+  /// creation Navidrome ne bouge plus une fois ce "faux album" deja cree :
+  /// un 2e titre du meme artiste sans album ne remonte alors plus jamais
+  /// dans les "derniers ajouts" (retour utilisateur : titre bien telecharge
+  /// cote NAS mais l'app le montre indefiniment comme indisponible).
+  Future<Track?> findTrack(String artist, String title) async {
+    if (!isConnected) return null;
+    try {
+      final response = await http
+          .get(_buildUri('search3.view', extra: {
+            'query': title,
+            'songCount': '20',
+            'artistCount': '0',
+            'albumCount': '0',
+          }))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body);
+      final songs =
+          data['subsonic-response']?['searchResult3']?['song'] as List? ?? [];
+      // Matching flou (MatchingService, meme algo que partout ailleurs dans
+      // l'app) plutot qu'une egalite stricte : un titre telecharge via
+      // YouTube porte souvent des tags legerement differents de la requete
+      // Deezer d'origine (accents, ponctuation, "(Official Audio)", version
+      // remasterisee...) -- l'egalite stricte precedente ratait alors le
+      // titre pourtant bien present sur le NAS juste apres son telechargement
+      // (retour utilisateur : le bouton "telecharger" reapparaissait au lieu
+      // de refleter le titre comme disponible).
+      for (final json in songs) {
+        final songTitle = json['title']?.toString() ?? '';
+        if (!MatchingService.titlesMatch(songTitle, title)) continue;
+        final songArtist = json['artist']?.toString() ?? '';
+        if (artist.trim().isEmpty ||
+            MatchingService.artistsMatch(songArtist, artist)) {
+          return _mapSubsonicTrack(json);
+        }
+      }
+    } catch (e) {
+      debugPrint('findTrack error: $e');
+    }
+    return null;
   }
 
   /// Reessaie sur echec transitoire (ex: "Connection terminated during

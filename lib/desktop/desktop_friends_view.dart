@@ -60,7 +60,7 @@ class _DesktopFriendsViewState extends State<DesktopFriendsView> {
               ),
               const SizedBox(height: 20),
               if (state.pendingShares.isNotEmpty) ...[
-                const Text('Partages recus',
+                const Text('Partages reçus',
                     style: TextStyle(
                         color: Colors.white54,
                         fontSize: 13,
@@ -131,8 +131,8 @@ class _EmptyState extends StatelessWidget {
             ),
             SizedBox(height: 8),
             Text(
-              'Tout autre compte cree sur ce serveur apparait ici '
-              "automatiquement, des qu'il partage au moins une playlist ou "
+              'Tout autre compte créé sur ce serveur apparaît ici '
+              "automatiquement, dès qu'il partage au moins une playlist ou "
               'ses titres likes.',
               style: TextStyle(color: Colors.white54, fontSize: 13),
               textAlign: TextAlign.center,
@@ -188,7 +188,7 @@ class _ReceivedShareCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     share.subtitle.isEmpty
-                        ? 'Envoye par ${share.from}'
+                        ? 'Envoyé par ${share.from}'
                         : '${share.from} • ${share.subtitle}',
                     style: const TextStyle(color: Colors.white54, fontSize: 12),
                     maxLines: 1,
@@ -273,7 +273,7 @@ class _FriendCard extends StatelessWidget {
                             )
                           : Text(
                               parts.isEmpty
-                                  ? 'Rien de partage pour le moment'
+                                  ? 'Rien de partagé pour le moment'
                                   : parts.join(' · '),
                               style: const TextStyle(
                                   color: Colors.white54, fontSize: 12),

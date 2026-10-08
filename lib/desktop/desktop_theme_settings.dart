@@ -44,7 +44,7 @@ class DesktopThemeSettingsSection extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   _ThemeOption(
-                    label: 'Cover floutee',
+                    label: 'Cover floutée',
                     icon: Icons.blur_on,
                     selected: mode == DesktopThemeMode.coverBlur,
                     onTap: () =>
@@ -65,7 +65,7 @@ class DesktopThemeSettingsSection extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Text(
-                  "Experimental : depend du support de l'effet de transparence "
+                  "Expérimental : dépend du support de l'effet de transparence "
                   "sur ta machine, peut rester noir opaque sur certaines versions "
                   'de Windows.',
                   style: TextStyle(color: Colors.white38, fontSize: 12),
@@ -166,7 +166,7 @@ class _SolidColorSection extends StatelessWidget {
           }).toList(),
         ),
         const SizedBox(height: 20),
-        const Text('Couleurs preenregistrees',
+        const Text('Couleurs préenregistrées',
             style: TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 8),
         Wrap(
@@ -197,7 +197,7 @@ class _SolidColorSection extends StatelessWidget {
           }).toList(),
         ),
         const SizedBox(height: 20),
-        const Text('Couleur personnalisee',
+        const Text('Couleur personnalisée',
             style: TextStyle(color: Colors.white54, fontSize: 12)),
         const SizedBox(height: 8),
         ColorPicker(
@@ -223,7 +223,7 @@ class _BlurSigmaSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Intensite du flou',
+        const Text('Intensité du flou',
             style: TextStyle(color: Colors.white54, fontSize: 12)),
         Row(
           children: [

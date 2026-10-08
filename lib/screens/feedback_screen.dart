@@ -57,8 +57,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(ok
-            ? 'Merci, ton retour a bien ete envoye !'
-            : "Echec de l'envoi -- verifie ta connexion et reessaie."),
+            ? 'Merci, ton retour a bien été envoyé !'
+            : "Échec de l'envoi -- vérifie ta connexion et réessaie."),
       ),
     );
     if (ok) Navigator.pop(context);
@@ -74,6 +74,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title: const Text('Un avis, un bug ?',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
@@ -83,15 +84,15 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               16, appBarSafeTopPadding(context) + 16, 16, 16),
           children: [
             const Text(
-              "Envoye directement dans le salon Discord de l'app -- "
-              'je le vois en temps reel.',
+              "Envoyé directement dans le salon Discord de l'app -- "
+              'je le vois en temps réel.',
               style: TextStyle(color: Colors.white54, fontSize: 13),
             ),
             const SizedBox(height: 20),
             SegmentedButton<FeedbackType>(
               segments: const [
                 ButtonSegment(value: FeedbackType.bug, label: Text('Bug')),
-                ButtonSegment(value: FeedbackType.idea, label: Text('Idee')),
+                ButtonSegment(value: FeedbackType.idea, label: Text('Idée')),
                 ButtonSegment(value: FeedbackType.other, label: Text('Autre')),
               ],
               selected: {_type},

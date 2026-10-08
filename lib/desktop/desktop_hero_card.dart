@@ -477,7 +477,7 @@ class _ShufflePill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Lecture aleatoire',
+              Text('Lecture aléatoire',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 13,

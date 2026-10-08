@@ -101,7 +101,7 @@ class _QueuePanelOverlay extends StatelessWidget {
                           child: queue.isEmpty
                               ? const Padding(
                                   padding: EdgeInsets.symmetric(vertical: 24),
-                                  child: Text('Aucun titre a venir',
+                                  child: Text('Aucun titre à venir',
                                       style: TextStyle(color: Colors.white38)),
                                 )
                               : ReorderableListView.builder(

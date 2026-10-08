@@ -316,7 +316,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
   }
 
   Widget _albumShelf(BuildContext context, List<Album> albums) {
-    if (albums.isEmpty) return _emptyShelf('Rien a afficher pour le moment');
+    if (albums.isEmpty) return _emptyShelf('Rien à afficher pour le moment');
     return DesktopHorizontalShelf(
       height: 210,
       itemCount: albums.length,

@@ -40,16 +40,21 @@ class JamStateMessage {
       );
 }
 
-/// Commande de controle a distance (play/pause/suivant/precedent, ou ajout a
-/// la file -- action 'queue_add'/'play_next' + trackId), envoyee par un
+/// Commande de controle a distance (play/pause/suivant/precedent/lecture
+/// d'un titre precis/deplacement dans le titre -- action 'queue_add'/
+/// 'play_next'/'play_track'/'seek' + trackId/positionMs), envoyee par un
 /// participant et recue uniquement par l'hote -- voir sendCommand. Un
-/// participant ne pilote jamais sa propre file d'attente (elle n'est jamais
-/// lue tant qu'on suit un hote, voir AppState.playTrack/_advanceQueue) : ce
-/// canal est le seul moyen pour lui d'influencer ce qui va vraiment jouer.
+/// participant ne pilote jamais sa propre file d'attente ni son propre
+/// moteur audio (rien n'est charge localement tant qu'on suit un hote, voir
+/// AppState.playTrack/_advanceQueue) : ce canal est le seul moyen pour lui
+/// d'influencer ce qui va vraiment jouer.
 class JamCommandMessage {
   final String action;
   final String? trackId;
-  const JamCommandMessage(this.action, {this.trackId});
+  final int? positionMs;
+  final String? deviceName;
+  const JamCommandMessage(this.action,
+      {this.trackId, this.positionMs, this.deviceName});
 }
 
 /// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
@@ -209,6 +214,8 @@ class JamService {
         _commandController.add(JamCommandMessage(
           msg['action'] as String? ?? '',
           trackId: msg['trackId'] as String?,
+          positionMs: msg['positionMs'] as int?,
+          deviceName: msg['deviceName'] as String?,
         ));
         break;
       case 'host_transferred':
@@ -239,12 +246,15 @@ class JamService {
 
   /// Envoie une commande de controle a distance vers l'hote (voir
   /// commandStream cote hote) -- reserve aux participants.
-  void sendCommand(String action, {String? trackId}) {
+  void sendCommand(String action,
+      {String? trackId, int? positionMs, String? deviceName}) {
     if (_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
       'type': 'command',
       'action': action,
       if (trackId != null) 'trackId': trackId,
+      if (positionMs != null) 'positionMs': positionMs,
+      if (deviceName != null) 'deviceName': deviceName,
     }));
   }
 

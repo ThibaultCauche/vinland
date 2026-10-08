@@ -37,8 +37,8 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(ok
-            ? 'Photo de profil mise a jour'
-            : "Echec de l'envoi -- verifie ta connexion et reessaie."),
+            ? 'Photo de profil mise à jour'
+            : "Échec de l'envoi -- vérifie ta connexion et réessaie."),
       ),
     );
   }
@@ -56,6 +56,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: const AppBarBlurBackground(),
         title: const Text('Personnalisation',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
@@ -115,7 +116,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
                         const Padding(
                           padding: EdgeInsets.symmetric(horizontal: 32),
                           child: Text(
-                            "Service de photo de profil pas encore configure -- "
+                            "Service de photo de profil pas encore configuré -- "
                             'contacte l\'administrateur du serveur.',
                             style:
                                 TextStyle(color: Colors.white38, fontSize: 12),

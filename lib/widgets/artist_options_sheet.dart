@@ -26,7 +26,7 @@ void showArtistPicker(BuildContext context, String artistsField) {
     const Padding(
       padding: EdgeInsets.all(16),
       child: Text(
-        'Selectionner un artiste',
+        'Sélectionner un artiste',
         style: TextStyle(
           color: Colors.white,
           fontSize: 16,
@@ -71,8 +71,8 @@ void showArtistOptions(BuildContext context, String artistName,
           ? Icons.push_pin
           : Icons.push_pin_outlined,
       label: state.isPinned(PinnedItemType.artist, artistName)
-          ? "Desepingler de l'accueil"
-          : "Epingler a l'accueil",
+          ? "Désépingler de l'accueil"
+          : "Épingler à l'accueil",
       onTap: () {
         Navigator.pop(ctx);
         state.togglePin(PinnedItem(
@@ -85,7 +85,7 @@ void showArtistOptions(BuildContext context, String artistName,
     ),
     SheetTile(
       icon: Icons.shuffle,
-      label: 'Lecture aleatoire',
+      label: 'Lecture aléatoire',
       onTap: () {
         Navigator.pop(ctx);
         if (tracks.isEmpty) return;
@@ -113,7 +113,7 @@ void showArtistOptions(BuildContext context, String artistName,
     ),
     SheetTile(
       icon: Icons.playlist_add,
-      label: "Ajouter a la file d'attente",
+      label: "Ajouter à la file d'attente",
       onTap: () {
         Navigator.pop(ctx);
         for (final t in tracks) {

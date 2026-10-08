@@ -6,6 +6,7 @@ import '../models/track.dart';
 import '../screens/album_screen.dart';
 import '../screens/queue_screen.dart';
 import 'album_options_sheet.dart';
+import 'player/jam_controls.dart';
 import 'player/like_button.dart';
 import 'player/play_pause_button.dart';
 import 'player/player_slider.dart';
@@ -19,7 +20,7 @@ class PlayerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Selector<AppState, (Track?, Color?, bool, LoopMode)>(
       selector: (_, state) => (
-        state.currentTrack,
+        state.displayTrack,
         state.dominantColor,
         state.isShuffled,
         state.loopMode,
@@ -46,6 +47,22 @@ class PlayerScreen extends StatelessWidget {
                 onPressed: () => context
                     .read<AppState>()
                     .pushOverlay(const QueueScreen()),
+              ),
+              // Bouton reel a cote de la file d'attente (voir showDeviceMenu),
+              // pas cache dans les options -- meme visibilite que cote
+              // desktop (desktop_player_bar.dart), retour utilisateur.
+              Selector<AppState, bool>(
+                selector: (_, state) =>
+                    state.isPersonalSyncParticipant ||
+                    state.connectedParticipantDeviceName != null,
+                builder: (context, isConnected, __) => IconButton(
+                  icon: Icon(Icons.devices,
+                      color: isConnected
+                          ? const Color(0xFF1DB954)
+                          : Colors.white),
+                  tooltip: 'Périphériques',
+                  onPressed: () => showDeviceMenu(context),
+                ),
               ),
               IconButton(
                 icon: const Icon(Icons.more_vert, color: Colors.white),

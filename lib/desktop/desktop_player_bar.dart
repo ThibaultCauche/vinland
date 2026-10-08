@@ -25,43 +25,23 @@ class DesktopPlayerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (Track?, bool, bool, Track?, bool, String?)>(
+    return Selector<AppState, (Track?, bool, String?)>(
       selector: (_, state) => (
-        state.currentTrack,
-        state.isPlaying,
+        state.displayTrack,
         state.isPersonalSyncParticipant,
-        state.remoteTrack,
-        state.remoteIsPlaying,
         state.remoteDeviceName,
       ),
       builder: (context, data, _) {
-        final (track, isPlaying, isRemote, remoteTrack, remoteIsPlaying,
-            remoteDeviceName) = data;
+        final (track, isRemote, remoteDeviceName) = data;
 
-        // Un autre appareil du meme compte est hote (voir
-        // AppState.isPersonalSyncParticipant) : affiche son etat et propose
-        // de le piloter, sans jamais jouer l'audio ici. Ne pas conditionner
-        // sur `track == null` : `currentTrack` reste non-null ici des qu'un
-        // titre a deja ete joue localement par le passe (restaure au
-        // demarrage, voir togglePlayPause), meme si l'audio local est
-        // inactif -- ce qui masquait ce bandeau des le premier lancement
-        // local (retour utilisateur : "je vois juste la musique en cours,
-        // pas de controles").
-        if (isRemote && remoteTrack != null) {
-          return Container(
-            height: 84,
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: GlassPanel(
-              borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
-              child: _RemotePlayingRow(
-                track: remoteTrack,
-                isPlaying: remoteIsPlaying,
-                deviceName: remoteDeviceName ?? 'un autre appareil',
-              ),
-            ),
-          );
-        }
-
+        // Barre normale dans tous les cas (voir AppState.displayTrack/
+        // displayIsPlaying/displayPosition) : avant, un autre appareil du
+        // meme compte hote remplaçait toute la barre par _RemotePlayingRow,
+        // une version tronquee (pas de barre de progression, pas de volume,
+        // pas de titre cliquable...) -- retour utilisateur : "j'aimerais
+        // avoir le lecteur de base". isRemote sert juste a rediriger la
+        // source de la position/du titre affiche, pas a changer la mise en
+        // page.
         return Container(
           height: 84,
           margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -85,7 +65,9 @@ class DesktopPlayerBar extends StatelessWidget {
                         offset: const Offset(0, 6),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 15),
-                          child: RepaintBoundary(child: _SeekBar(track: track)),
+                          child: RepaintBoundary(
+                              child:
+                                  _SeekBar(track: track, isRemote: isRemote)),
                         ),
                       ),
                       Expanded(
@@ -97,6 +79,7 @@ class DesktopPlayerBar extends StatelessWidget {
                                 width: 300,
                                 child: _NowPlayingInfo(
                                   track: track,
+                                  deviceName: isRemote ? remoteDeviceName : null,
                                   onOpenAlbum: onOpenAlbum,
                                   onOpenArtist: onOpenArtist,
                                 ),
@@ -105,7 +88,8 @@ class DesktopPlayerBar extends StatelessWidget {
                               SizedBox(
                                 width: 300,
                                 child: RepaintBoundary(
-                                    child: _PlayerExtras(track: track)),
+                                    child: _PlayerExtras(
+                                        track: track, isRemote: isRemote)),
                               ),
                             ],
                           ),
@@ -122,10 +106,21 @@ class DesktopPlayerBar extends StatelessWidget {
 
 class _SeekBar extends StatelessWidget {
   final Track track;
-  const _SeekBar({required this.track});
+  final bool isRemote;
+  const _SeekBar({required this.track, required this.isRemote});
 
   @override
   Widget build(BuildContext context) {
+    // En synchro perso participant, rien ne joue localement : la position
+    // vient de la derniere valeur reçue de l'hote (voir
+    // AppState.displayPosition), pas du moteur audio local.
+    if (isRemote) {
+      return Selector<AppState, Duration>(
+        selector: (_, state) => state.displayPosition,
+        builder: (context, position, __) => _buildSlider(context, position,
+            track.duration.inMilliseconds > 0 ? track.duration : Duration.zero),
+      );
+    }
     final player = context.read<AppState>().player;
     return StreamBuilder<Duration>(
       stream: Stream.periodic(
@@ -140,41 +135,49 @@ class _SeekBar extends StatelessWidget {
         final duration = track.duration.inMilliseconds > 0
             ? track.duration
             : (player.duration ?? Duration.zero);
-        final progress = duration.inMilliseconds > 0
-            ? position.inMilliseconds / duration.inMilliseconds
-            : 0.0;
-
-        return SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-            activeTrackColor: Colors.white,
-            inactiveTrackColor: Colors.white.withOpacity(0.15),
-            thumbColor: Colors.white,
-          ),
-          child: Slider(
-            value: progress.clamp(0.0, 1.0),
-            onChanged: duration.inMilliseconds > 0
-                ? (v) => context.read<AppState>().seek(
-                      Duration(
-                          milliseconds: (v * duration.inMilliseconds).round()),
-                    )
-                : null,
-          ),
-        );
+        return _buildSlider(context, position, duration);
       },
+    );
+  }
+
+  Widget _buildSlider(BuildContext context, Duration position, Duration duration) {
+    final progress = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 3,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+        activeTrackColor: Colors.white,
+        inactiveTrackColor: Colors.white.withOpacity(0.15),
+        thumbColor: Colors.white,
+      ),
+      child: Slider(
+        value: progress.clamp(0.0, 1.0),
+        onChanged: duration.inMilliseconds > 0
+            ? (v) => context.read<AppState>().seek(
+                  Duration(milliseconds: (v * duration.inMilliseconds).round()),
+                )
+            : null,
+      ),
     );
   }
 }
 
 class _NowPlayingInfo extends StatelessWidget {
   final Track track;
+  // Non-null seulement en synchro perso participant (voir
+  // AppState.isPersonalSyncParticipant) : precise sur quel appareil ca joue
+  // vraiment, la barre normale ne le montrant sinon nulle part.
+  final String? deviceName;
   final void Function(Album album) onOpenAlbum;
   final void Function(String artistName) onOpenArtist;
 
   const _NowPlayingInfo({
     required this.track,
+    this.deviceName,
     required this.onOpenAlbum,
     required this.onOpenArtist,
   });
@@ -222,11 +225,29 @@ class _NowPlayingInfo extends StatelessWidget {
               : null,
         ),
         const SizedBox(width: 12),
-        Expanded(
+        // Flexible (pas Expanded) : le coeur doit rester colle au bloc
+        // titre/artiste au lieu d'etre pousse jusqu'au bord du bloc de 300px
+        // quand titre+artiste sont courts (retour utilisateur). Le bloc
+        // reste quand meme borne a l'espace disponible pour les titres
+        // longs, via shrinkWrap sur le marquee ci-dessous (voir
+        // _ArtistNamesMarquee).
+        Flexible(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (deviceName != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.devices,
+                        color: Colors.white38, size: 11),
+                    const SizedBox(width: 3),
+                    Text('En lecture sur $deviceName',
+                        style: const TextStyle(
+                            color: Colors.white38, fontSize: 10)),
+                  ],
+                ),
               _HoverableText(
                 text: track.title,
                 style: const TextStyle(
@@ -383,7 +404,7 @@ class _TransportControls extends StatelessWidget {
   Widget build(BuildContext context) {
     return Selector<AppState, (bool, LoopMode, bool)>(
       selector: (_, state) =>
-          (state.isShuffled, state.loopMode, state.isPlaying),
+          (state.isShuffled, state.loopMode, state.displayIsPlaying),
       builder: (context, data, __) {
         final (isShuffled, loopMode, isPlaying) = data;
         final state = context.read<AppState>();
@@ -395,13 +416,13 @@ class _TransportControls extends StatelessWidget {
               icon: Icons.shuffle,
               active: isShuffled,
               size: 18,
-              tooltip: 'Aleatoire',
+              tooltip: 'Aléatoire',
               onPressed: state.toggleShuffle,
             ),
             GlassIconButton(
               icon: Icons.skip_previous_rounded,
               size: 24,
-              tooltip: 'Precedent',
+              tooltip: 'Précédent',
               onPressed: state.previousTrack,
             ),
             const SizedBox(width: 4),
@@ -438,7 +459,7 @@ class _TransportControls extends StatelessWidget {
                   : Icons.repeat_rounded,
               active: loopMode != LoopMode.off,
               size: 18,
-              tooltip: 'Repeter',
+              tooltip: 'Répéter',
               onPressed: state.toggleLoopMode,
             ),
           ],
@@ -450,7 +471,8 @@ class _TransportControls extends StatelessWidget {
 
 class _PlayerExtras extends StatefulWidget {
   final Track track;
-  const _PlayerExtras({required this.track});
+  final bool isRemote;
+  const _PlayerExtras({required this.track, required this.isRemote});
 
   @override
   State<_PlayerExtras> createState() => _PlayerExtrasState();
@@ -458,6 +480,45 @@ class _PlayerExtras extends StatefulWidget {
 
 class _PlayerExtrasState extends State<_PlayerExtras> {
   double? _volume;
+
+  Widget _positionText(BuildContext context) {
+    // Volontairement pas remote-aware au-dela de la position affichee : le
+    // volume ci-dessous reste local (voir AppState.remotePlayTrack, pas
+    // encore de commande "volume" dans le protocole -- controler le son de
+    // l'autre appareil depuis ici n'aurait de toute facon aucun effet audible
+    // tant que ce n'est pas lui qui joue).
+    if (widget.isRemote) {
+      return Selector<AppState, Duration>(
+        selector: (_, state) => state.displayPosition,
+        builder: (context, position, __) {
+          final duration = widget.track.duration.inMilliseconds > 0
+              ? widget.track.duration
+              : Duration.zero;
+          return Text(
+            '${formatDuration(position)} / ${formatDuration(duration)}',
+            style: const TextStyle(color: Colors.white54, fontSize: 11),
+          );
+        },
+      );
+    }
+    final player = context.read<AppState>().player;
+    return StreamBuilder<Duration>(
+      stream: Stream.periodic(
+        const Duration(milliseconds: 500),
+        (_) => player.position,
+      ),
+      builder: (context, snap) {
+        final position = snap.data ?? Duration.zero;
+        final duration = widget.track.duration.inMilliseconds > 0
+            ? widget.track.duration
+            : (player.duration ?? Duration.zero);
+        return Text(
+          '${formatDuration(position)} / ${formatDuration(duration)}',
+          style: const TextStyle(color: Colors.white54, fontSize: 11),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -467,22 +528,7 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        StreamBuilder<Duration>(
-          stream: Stream.periodic(
-            const Duration(milliseconds: 500),
-            (_) => player.position,
-          ),
-          builder: (context, snap) {
-            final position = snap.data ?? Duration.zero;
-            final duration = widget.track.duration.inMilliseconds > 0
-                ? widget.track.duration
-                : (player.duration ?? Duration.zero);
-            return Text(
-              '${formatDuration(position)} / ${formatDuration(duration)}',
-              style: const TextStyle(color: Colors.white54, fontSize: 11),
-            );
-          },
-        ),
+        _positionText(context),
         const SizedBox(width: 12),
         Icon(
           _volume! > 0.5
@@ -530,79 +576,18 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
           onPressed: () => showQueuePanel(context),
         ),
         Selector<AppState, bool>(
-          selector: (_, state) => state.isPersonalSyncParticipant,
-          builder: (context, isRemote, __) => GlassIconButton(
+          selector: (_, state) =>
+              state.isPersonalSyncParticipant ||
+              state.connectedParticipantDeviceName != null,
+          builder: (context, isConnected, __) => GlassIconButton(
             icon: Icons.devices,
-            active: isRemote,
+            active: isConnected,
             size: 18,
-            tooltip: 'Peripheriques',
+            tooltip: 'Périphériques',
             onPressed: () => showDeviceMenu(context),
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Rangee "Spotify Connect" : ce qui joue sur un autre appareil du meme
-/// compte (voir AppState.isPersonalSyncParticipant), avec des controles qui
-/// pilotent cet appareil a distance au lieu du moteur audio local.
-class _RemotePlayingRow extends StatelessWidget {
-  final Track track;
-  final bool isPlaying;
-  final String deviceName;
-
-  const _RemotePlayingRow({
-    required this.track,
-    required this.isPlaying,
-    required this.deviceName,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.read<AppState>();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          const Icon(Icons.devices, color: Colors.white54, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('En lecture sur $deviceName',
-                    style:
-                        const TextStyle(color: Colors.white38, fontSize: 11)),
-                const SizedBox(height: 2),
-                Text('${track.title} - ${track.artist}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white, fontSize: 13)),
-              ],
-            ),
-          ),
-          GlassIconButton(
-            icon: Icons.skip_previous_rounded,
-            size: 22,
-            tooltip: 'Precedent',
-            onPressed: state.remotePrevious,
-          ),
-          GlassIconButton(
-            icon: isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            size: 22,
-            tooltip: isPlaying ? 'Pause' : 'Lecture',
-            onPressed: state.remoteToggle,
-          ),
-          GlassIconButton(
-            icon: Icons.skip_next_rounded,
-            size: 22,
-            tooltip: 'Suivant',
-            onPressed: state.remoteNext,
-          ),
-        ],
-      ),
     );
   }
 }

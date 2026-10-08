@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -188,7 +189,7 @@ class _DesktopCollectionViewState extends State<DesktopCollectionView> {
             )
           else
             Selector<AppState, Track?>(
-              selector: (_, s) => s.currentTrack,
+              selector: (_, s) => s.displayTrack,
               builder: (context, currentTrack, __) {
                 return SliverList(
                   delegate: SliverChildBuilderDelegate(
@@ -357,22 +358,64 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
       BuildContext context, double shrinkOffset, bool overlapsContent) {
     final double shrink =
         (shrinkOffset / (_maxExtent - _minExtent)).clamp(0.0, 1.0);
-    return Padding(
-      // right: 24 -- marge du bloc entier par rapport au bord de la
-      // fenetre (retour testeurs), pas seulement de l'image a l'interieur.
-      padding: const EdgeInsets.only(bottom: 4, right: 24),
-      child: DesktopHeroCard(
-        title: title,
-        subtitle: subtitle,
-        metaLabel: metaLabel,
-        coverPath: coverPath,
-        isLiked: isLiked,
-        onToggleLike: onToggleLike,
-        onShuffle: onShuffle,
-        onShare: onShare,
-        onSendToFriend: onSendToFriend,
-        moreActions: moreActions,
-        shrink: shrink,
+    // Flou (comme AppBarBlurBackground, page Parametres) plutot qu'un bloc
+    // de couleur : rend la liste qui defile en dessous illisible partout ou
+    // le bandeau ne la couvre pas deja (marges, coins arrondis) sans peindre
+    // par-dessus un rectangle qui jure avec le fond de la page -- le
+    // bandeau lui-meme n'est pas touche, il reste juste peint par-dessus ce
+    // calque (opaque) comme avant. Coins bas arrondis (comme la carte),
+    // coins hauts carres (inutile de les arrondir, cote fenetre) : sans ca
+    // le calque garde une silhouette rectangulaire nette, visible a l'oeil
+    // quand une cover contrastee defile derriere (retour utilisateur). Sigma
+    // plus bas + leger voile noir : moins de contraste dans le flou, donc
+    // les covers qui passent dessous l'assombrissent moins fort.
+    return ClipRect(
+      child: Stack(
+        children: [
+          Padding(
+            // Meme retrait (bottom: 4, right: 23) et meme rayon que la carte
+            // juste en dessous : ce calque doit epouser EXACTEMENT sa forme
+            // (retour utilisateur) pour rester invisible derriere elle,
+            // plutot que de deborder en un rectangle plus grand qu'elle et
+            // donc detectable a l'oeil (l'ancienne version, en Positioned.fill
+            // sur toute la boite du header).
+            padding: const EdgeInsets.only(bottom: 4, right: 23),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(DesktopGlass.radiusLg),
+                bottomRight: Radius.circular(DesktopGlass.radiusLg),
+              ),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(color: Colors.black.withOpacity(0.12)),
+              ),
+            ),
+          ),
+          RepaintBoundary(
+            child: Padding(
+              // right: 23 (pas 24) -- une des deux boites (carte ou colonne de
+              // titres) deborde de 1px en permanence sur la droite, visible en
+              // haut du bandeau ; reduire la marge d'autant l'absorbe (retour
+              // utilisateur). Le reste de la marge est celle du BLOC entier par
+              // rapport au bord de la fenetre (retour testeurs), pas seulement
+              // de l'image a l'interieur.
+              padding: const EdgeInsets.only(bottom: 4, right: 23),
+              child: DesktopHeroCard(
+                title: title,
+                subtitle: subtitle,
+                metaLabel: metaLabel,
+                coverPath: coverPath,
+                isLiked: isLiked,
+                onToggleLike: onToggleLike,
+                onShuffle: onShuffle,
+                onShare: onShare,
+                onSendToFriend: onSendToFriend,
+                moreActions: moreActions,
+                shrink: shrink,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -43,12 +43,12 @@ Future<void> _shareText(String text) =>
     SharePlus.instance.share(ShareParams(text: text));
 
 Future<void> shareTrack(Track track) => _shareText(
-      'Ecoute "${track.title}" de ${track.artist} sur Vinland\n'
+      'Écoute "${track.title}" de ${track.artist} sur Vinland\n'
       '${trackShareLink(track)}',
     );
 
 Future<void> shareAlbum(Album album) => _shareText(
-      'Ecoute l\'album "${album.title}" de ${album.artist} sur Vinland\n'
+      'Écoute l\'album "${album.title}" de ${album.artist} sur Vinland\n'
       '${albumShareLink(album)}',
     );
 
@@ -68,10 +68,10 @@ Future<bool> _ensurePlaylistShareable(
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
       title:
-          const Text('Playlist privee', style: TextStyle(color: Colors.white)),
+          const Text('Playlist privée', style: TextStyle(color: Colors.white)),
       content: const Text(
-        "Cette playlist est privee : tant qu'elle le reste, le destinataire "
-        "ne pourra pas y acceder.",
+        "Cette playlist est privée : tant qu'elle le reste, le destinataire "
+        "ne pourra pas y accéder.",
         style: TextStyle(color: Colors.white70),
       ),
       actions: [
@@ -82,7 +82,7 @@ Future<bool> _ensurePlaylistShareable(
         TextButton(
           onPressed: () =>
               Navigator.pop(ctx, _PlaylistShareChoice.shareAnyway),
-          child: const Text('Partager quand meme'),
+          child: const Text('Partager quand même'),
         ),
         TextButton(
           onPressed: () =>
@@ -104,8 +104,8 @@ void _showNotYetSyncedError(BuildContext context) {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
       content: Text(
-          "Cette playlist n'est pas encore synchronisee avec le serveur, "
-          "reessaie dans quelques instants."),
+          "Cette playlist n'est pas encore synchronisée avec le serveur, "
+          "réessaie dans quelques instants."),
       backgroundColor: Color(0xFF2A2A2A),
     ),
   );
@@ -117,7 +117,7 @@ Future<void> sharePlaylist(BuildContext context, Playlist playlist) async {
   if (!context.mounted) return;
   final link = playlistShareLink(playlist);
   if (link == null) return _showNotYetSyncedError(context);
-  await _shareText('Ecoute la playlist "${playlist.name}" sur Vinland\n$link');
+  await _shareText('Écoute la playlist "${playlist.name}" sur Vinland\n$link');
 }
 
 /// "Envoyer a un ami" (phase 2 du partage, contrairement au partage externe
@@ -184,7 +184,7 @@ Future<void> showSendToFriendDialog(
           const Padding(
             padding: EdgeInsets.all(16),
             child: Text(
-              'Envoyer a...',
+              'Envoyer à...',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 16,
@@ -217,7 +217,7 @@ Future<void> showSendToFriendDialog(
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content:
-          Text(ok ? 'Envoye a $friendUsername' : "Echec de l'envoi"),
+          Text(ok ? 'Envoyé à $friendUsername' : "Échec de l'envoi"),
       backgroundColor: const Color(0xFF2A2A2A),
     ),
   );
@@ -327,7 +327,7 @@ class DeepLinkService {
     ScaffoldMessenger.of(ctx).showSnackBar(
       const SnackBar(
         content: Text(
-            "Lien invalide, ou l'element est prive/introuvable sur ce serveur."),
+            "Lien invalide, ou l'élément est privé/introuvable sur ce serveur."),
         backgroundColor: Color(0xFF2A2A2A),
       ),
     );

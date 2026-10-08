@@ -73,21 +73,31 @@ class GlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: tint,
+        borderRadius: borderRadius,
+        border: border ??
+            Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+      ),
+      child: child,
+    );
     return ClipRRect(
       borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: tint,
-            borderRadius: borderRadius,
-            border: border ??
-                Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-          ),
-          child: child,
-        ),
-      ),
+      // BackdropFilter avec sigma 0 ne change rien visuellement (flou nul)
+      // mais son calque de rendu laissait echapper un filet de l'image du
+      // contenu juste au-dela des coins arrondis pendant un resize anime
+      // (bandeau hero de playlist en train de se reduire au defilement) --
+      // artefact connu de la combinaison ClipRRect+BackdropFilter (retour
+      // utilisateur : "petits pixels qui depassent en haut a gauche/droite
+      // du bandeau"). Sans flou demande, on evite carrement ce calque.
+      child: blurSigma <= 0
+          ? content
+          : BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+              child: content,
+            ),
     );
   }
 }

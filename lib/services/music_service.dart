@@ -675,8 +675,10 @@ class MusicService {
       // Un titre super-like est toujours aussi like : le retirer des titres
       // likes doit aussi lui retirer son super-like.
       track.superLiked = false;
-    }
-    if (track.isLiked && track.dateAdded == null) {
+    } else {
+      // Toujours (pas seulement si dateAdded etait encore null) : un
+      // relike doit remonter le titre en tete de la liste "Titres likes",
+      // pas le remettre a sa position d'avant l'unlike (retour utilisateur).
       track.dateAdded = DateTime.now();
     }
     if (track.id.startsWith('navidrome_')) {
@@ -701,7 +703,9 @@ class MusicService {
     track.superLiked = !track.superLiked;
     if (track.superLiked && !track.isLiked) {
       track.isLiked = true;
-      track.dateAdded ??= DateTime.now();
+      // Meme raison que toggleLike : un titre qu'on relike doit remonter
+      // en tete de la liste, pas garder son ancienne date.
+      track.dateAdded = DateTime.now();
       if (track.id.startsWith('navidrome_')) {
         await _navidrome.starTrack(track.id);
       }
@@ -796,7 +800,7 @@ class MusicService {
         );
         mirrorId = mine['id'] as String?;
         mirrorId ??= await _navidrome.createServerPlaylist(
-          'Ecoute recemment',
+          'Écouté récemment',
           comment: _recentPlaysMirrorTag,
           public: _shareRecentPlaysWithFriends,
         );
@@ -1345,6 +1349,32 @@ class MusicService {
     return changed;
   }
 
+  /// Filet de securite pour un telechargement dont le resultat peut echapper
+  /// a syncRecentlyAdded (voir NavidromeService.findTrack) -- appele EN PLUS,
+  /// pas a la place : syncRecentlyAdded reste la voie normale et reste
+  /// necessaire pour rafraichir le reste de l'album/artiste autour.
+  Future<bool> findAndAdoptTrack(String artist, String title) async {
+    final track = await _navidrome.findTrack(artist, title);
+    if (track == null) return false;
+    final existingIndex = _navidromeTracks.indexWhere((t) => t.id == track.id);
+    if (existingIndex != -1) {
+      final existing = _navidromeTracks[existingIndex];
+      track.isLiked = existing.isLiked;
+      track.superLiked = existing.superLiked;
+      track.dateAdded = existing.dateAdded;
+      track.playCount = existing.playCount;
+      track.lastPlayed = existing.lastPlayed;
+      _navidromeTracks[existingIndex] = track;
+    } else {
+      _navidromeTracks.add(track);
+    }
+    _navidromeTracksView = null;
+    _allTracks = List.from(_navidromeTracks);
+    rebuildAlbums();
+    _debouncedSave();
+    return true;
+  }
+
   /// Synchro "legere" utilisee a chaque ouverture de l'app quand une synchro
   /// complete (syncWithNavidrome) a deja ete faite recemment (voir
   /// AppState._performSync) : pas de refetch de toute la bibliotheque, juste
@@ -1372,6 +1402,13 @@ class MusicService {
           .where((pl) => pl['owner'] == username)
           .toList();
       _applyPinnedMirrorFrom(ownedPlaylists);
+      // Nettoyage d'une eventuelle decouverte erronee d'avant ce correctif
+      // (voir le meme removeWhere dans _syncPlaylistsFromServer) : fait ici
+      // aussi pour que ça disparaisse des le prochain lancement plutot que
+      // d'attendre la prochaine synchro complete (jusqu'a 6h).
+      if (_pinnedMirrorServerId != null) {
+        _playlists.removeWhere((p) => p.serverId == _pinnedMirrorServerId);
+      }
     }
 
     var changed = false;
@@ -1448,6 +1485,14 @@ class MusicService {
 
     // Retrouve/adopte la playlist miroir des tuiles epinglees.
     _applyPinnedMirrorFrom(mine);
+    // ignoredServerIds ci-dessous (voir planPlaylistSync) ne faisait pas
+    // encore cette exclusion avant ce correctif : une install deja touchee
+    // a donc pu decouvrir cette playlist miroir comme une playlist normale
+    // et vide ("Vinland: epingles", retour utilisateur) -- on la retire ici
+    // si elle trainait deja en local, en plus de ne plus la (re)decouvrir.
+    if (_pinnedMirrorServerId != null) {
+      _playlists.removeWhere((p) => p.serverId == _pinnedMirrorServerId);
+    }
 
     // Retrouve la playlist miroir "en ecoute" si elle existe deja -- pas de
     // creation eager ici (contrairement aux deux precedentes) : rien a y
@@ -1472,6 +1517,7 @@ class MusicService {
         _likesMirrorServerId,
         _recentPlaysMirrorServerId,
         _nowPlayingMirrorServerId,
+        _pinnedMirrorServerId,
       },
       collabTagPrefix: _collabTagPrefix,
     );
