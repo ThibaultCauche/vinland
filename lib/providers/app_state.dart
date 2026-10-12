@@ -23,6 +23,7 @@ import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
+import '../services/personal_sync_secret.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
 import '../services/download_worker_service.dart';
@@ -68,6 +69,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription? _jamRoleChangeSub;
   Timer? _jamHeartbeat;
   Timer? _personalSyncPoll;
+  int _personalSyncFailures = 0;
   Timer? _nowPlayingHeartbeat;
   bool _applyingJamState = false;
 
@@ -760,6 +762,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(checkForUpdate());
       unawaited(loadPendingShares());
+      if (!isJamActive && _navidrome.username != null) {
+        _startPersonalSyncPolling();
+      }
     }
   }
 
@@ -1550,28 +1555,46 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Sondage periodique (voir initialize()) : tant qu'aucune session Jam
-  /// n'est active, tente de rejoindre la synchro perso de ce compte -- si un
-  /// autre appareil est deja hote, on le retrouve automatiquement sans
-  /// action utilisateur, meme si cet appareil-ci n'etait pas ouvert quand
-  /// l'autre a demarre sa lecture.
-  // ponytail: sondage simple (toutes les 20s) plutot qu'un mecanisme de
-  // presence -- suffisant a l'echelle d'un usage personnel multi-appareils,
-  // a revoir si ca devient sensible a la latence/batterie.
+  /// Sondage (voir initialize()) : tant qu'aucune session Jam n'est active,
+  /// tente de rejoindre la synchro perso de ce compte -- si un autre
+  /// appareil est deja hote, on le retrouve automatiquement sans action
+  /// utilisateur, meme si cet appareil-ci n'etait pas ouvert quand l'autre a
+  /// demarre sa lecture. Delai croissant a chaque echec (voir
+  /// personalSyncRetryDelay) au lieu d'une connexion au relais toutes les
+  /// 20s pour toujours, meme quand aucun autre appareil n'est allume ;
+  /// remis a zero au retour au premier plan (didChangeAppLifecycleState) et
+  /// quand la synchro en cours s'arrete, les deux moments ou un autre
+  /// appareil a le plus de chances d'etre actif.
   void _startPersonalSyncPolling() {
+    _personalSyncFailures = 0;
     _personalSyncPoll?.cancel();
-    _personalSyncPoll = Timer.periodic(
-        const Duration(seconds: 20), (_) => _tryJoinPersonalSync());
-    _tryJoinPersonalSync();
+    unawaited(_pollPersonalSync());
   }
 
-  Future<void> _tryJoinPersonalSync() async {
-    if (isJamActive) return;
+  Future<void> _pollPersonalSync() async {
+    final joined = await _tryJoinPersonalSync();
+    _personalSyncFailures = joined ? 0 : _personalSyncFailures + 1;
+    _personalSyncPoll?.cancel();
+    _personalSyncPoll = Timer(personalSyncRetryDelay(_personalSyncFailures),
+        () => unawaited(_pollPersonalSync()));
+  }
+
+  /// Ids de la synchro perso de ce compte (voir PersonalSyncIds), ou null
+  /// si le secret du compte n'est pas encore disponible (hors ligne).
+  Future<PersonalSyncIds?> _personalSyncIds() async {
     final username = _navidrome.username;
-    if (username == null) return;
-    final id = _jam.personalSessionId(username);
-    final ok = await _jam.join(id);
-    if (!ok) return;
+    if (username == null) return null;
+    final secret = await PersonalSyncSecretStore().secretFor(username);
+    return secret == null ? null : PersonalSyncIds.fromAccountSecret(secret);
+  }
+
+  /// Vrai si cet appareil suit (ou heberge deja) une session apres l'appel.
+  Future<bool> _tryJoinPersonalSync() async {
+    if (isJamActive) return true;
+    final ids = await _personalSyncIds();
+    if (ids == null || isJamActive) return isJamActive;
+    final ok = await _jam.join(ids.sessionId);
+    if (!ok) return false;
     _personalSyncMode = true;
     _jamStateSub?.cancel();
     _jamStateSub = _jam.stateStream.listen(_applyPersonalSyncState);
@@ -1579,6 +1602,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _jamHostLeftSub = _jam.hostLeftStream.listen((_) => _leavePersonalSync());
     _announceDeviceToHost();
     _notify();
+    return true;
   }
 
   /// Affiche seulement l'etat recu d'un autre appareil du meme compte --
@@ -1606,6 +1630,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _jamHostLeftSub = null;
     await _jam.leave();
     _notify();
+    // L'hote vient de partir : un autre appareil du compte va sans doute
+    // reprendre la main bientot, on revient a un sondage rapproche.
+    _startPersonalSyncPolling();
   }
 
   /// "Reprendre ici" depuis le menu Peripheriques (voir showDeviceMenu) :
@@ -1630,7 +1657,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// entre amis manuelle. C'est ce qui fait qu'appuyer sur play sur
   /// n'importe quel appareil du compte le rend autoritaire, exactement comme
   /// changer d'appareil actif dans Spotify Connect. Cette session (id prive,
-  /// voir JamService.personalSessionId) est republiee dans le mirroir "now
+  /// voir PersonalSyncIds) est republiee dans le mirroir "now
   /// playing" (voir _syncNowPlayingMirror) des qu'elle est active : c'est ce
   /// qui rend n'importe quelle ecoute en cours rejoignable par un ami depuis
   /// la page Amis (bouton "Rejoindre") sans avoir a demarrer explicitement
@@ -1641,8 +1668,11 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _broadcastJamState();
       return;
     }
-    final username = _navidrome.username;
-    if (username == null) return;
+    final ids = await _personalSyncIds();
+    if (ids == null) return;
+    // Le secret a pu demander un aller-retour serveur : une session Jam
+    // entre amis a pu demarrer entre-temps.
+    if (isJamActive && !_personalSyncMode) return;
     await _jamStateSub?.cancel();
     _jamStateSub = null;
     await _jamHostLeftSub?.cancel();
@@ -1652,8 +1682,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     remoteDeviceName = null;
     _remotePosition = null;
 
-    final id = _jam.personalSessionId(username);
-    final ok = await _jam.host(id);
+    // Le hostSecret derive du secret du compte permet de reprendre la main
+    // sur un autre appareil du compte deja hote ("Reprendre ici") ; un ami
+    // qui a rejoint via le mirroir "now playing" ne connait que sessionId.
+    final ok = await _jam.host(ids.sessionId, hostSecret: ids.hostSecret);
     if (!ok) return;
     _personalSyncMode = true;
     _wireAsJamHost();

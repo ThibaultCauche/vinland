@@ -14,6 +14,7 @@ import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
 import 'navidrome_service.dart';
+import 'personal_sync_secret.dart';
 import 'package:http/http.dart' as http;
 
 /// Fusionne un titre fraichement recu du serveur (Navidrome) avec l'etat
@@ -105,6 +106,9 @@ PlaylistSyncPlan planPlaylistSync(
     // MusicService.fetchCollabPlaylist(), ne doit jamais apparaitre comme
     // une playlist normale a part entiere ici.
     if (comment.startsWith(collabTagPrefix)) continue;
+    // Porteuse du secret de synchro perso (voir personal_sync_secret.dart) :
+    // playlist technique et vide, jamais une vraie playlist de l'utilisateur.
+    if (comment.startsWith(personalSyncTagPrefix)) continue;
 
     final local = byServerId[serverId];
     if (local != null) {

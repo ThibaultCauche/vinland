@@ -24,7 +24,23 @@ commit.
 - Job CI `services` : `ruff`, `pytest` quand un service a des tests, et
   validation du `docker compose`.
 
+### Sécurité
+- Jam : reprendre l'hébergement d'une session existante exige désormais le
+  secret d'hôte remis par le relais à la création (protocole v2). Un ami qui
+  connaît le code ne peut plus détourner la session ; un transfert d'hôte
+  remet un nouveau secret au nouvel hôte.
+- Synchro perso : l'identifiant ne se calcule plus à partir du pseudo. Il
+  dérive d'un secret aléatoire propre au compte, partagé entre ses appareils
+  par une playlist privée.
+- Codes de Jam entre amis sur 16 octets aléatoires (au lieu de 6).
+- Relais Jam : messages de 256 Ko max, 200 sessions, 50 participants par
+  session, 1 000 connexions, ping toutes les 20 s, fermeture des connexions
+  qui ne rejoignent rien en 30 s, journal sans contenu.
+
 ### Modifié
+- La synchro perso ne sonde plus le relais toutes les 20 s pour toujours :
+  le délai double à chaque essai (jusqu'à 5 min) et repart à 20 s au retour
+  dans l'app.
 - Le relais Jam passe de `jam_relay/` à `services/jam-relay/`.
 - Une release ne part plus si la CI est rouge sur le commit tagué.
 - Tout le code Dart est formaté avec `dart format`.

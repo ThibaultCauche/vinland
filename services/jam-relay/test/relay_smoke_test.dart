@@ -2,7 +2,7 @@
 // processus a part (sur un port libre choisi par l'OS) et on lui parle en
 // WebSocket comme le ferait l'app. Il ne verifie que le chemin nominal
 // (un hote cree la session, un ami la rejoint) : les regles de securite du
-// Jam auront leurs propres tests avec la session 05.
+// Jam sont couvertes par relay_test.dart.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';

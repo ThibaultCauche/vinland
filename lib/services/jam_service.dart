@@ -1,9 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'package:crypto/crypto.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'navidrome_service.dart';
+
+/// Delai avant la prochaine tentative de rejoindre la synchro perso apres
+/// [failures] echecs consecutifs (voir AppState._pollPersonalSync) : 20 s,
+/// puis double a chaque echec, plafonne a 5 min.
+Duration personalSyncRetryDelay(int failures) {
+  const base = Duration(seconds: 20);
+  const max = Duration(minutes: 5);
+  if (failures <= 1) return base;
+  final shift = failures - 1 > 4 ? 4 : failures - 1;
+  final delay = base * (1 << shift);
+  return delay > max ? max : delay;
+}
 
 class JamStateMessage {
   final String trackId;
@@ -63,6 +74,10 @@ class JamCommandMessage {
 /// lecture via sendState(), les participants le recoivent via stateStream et
 /// n'envoient jamais d'etat eux-memes.
 class JamService {
+  /// Version du protocole du relais (voir services/jam-relay/lib/relay.dart),
+  /// envoyee dans chaque message. v2 : secret d'hebergement.
+  static const protocolVersion = 2;
+
   static final JamService _instance = JamService._internal();
   factory JamService() => _instance;
   JamService._internal();
@@ -74,7 +89,13 @@ class JamService {
   String? _sessionId;
   bool _isHost = false;
 
+  /// Secret d'hebergement remis par le relais (voir services/jam-relay/
+  /// lib/relay.dart) quand on cree la session ou qu'on en recoit la main :
+  /// lui seul permet de reprendre l'hebergement de cette session plus tard.
+  String? _hostSecret;
+
   String? get sessionId => _sessionId;
+  String? get hostSecret => _hostSecret;
   bool get isHost => _isHost;
   bool get isActive => _channel != null;
 
@@ -116,28 +137,26 @@ class JamService {
     return '$wsBase/jam';
   }
 
+  /// 16 octets aleatoires (22 caracteres) : 6 octets suffisaient tant que le
+  /// code ne circulait qu'entre amis, mais il donne acces a l'ecoute et aux
+  /// commandes de l'hote, donc il doit resister a une enumeration.
   String generateSessionId() {
     final random = Random.secure();
-    final bytes = List.generate(6, (_) => random.nextInt(256));
+    final bytes = List.generate(16, (_) => random.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
   }
 
-  /// SessionId stable et prive pour la synchro multi-appareils "perso" (voir
-  /// AppState._maybeBecomePersonalHost/_tryJoinPersonalSync) : deterministe a
-  /// partir du compte Navidrome, pour que tous les appareils du meme compte
-  /// se retrouvent automatiquement sans code a partager. Hashe (avec un sel
-  /// fixe) plutot qu'utilise tel quel pour ne pas exposer le nom d'utilisateur
-  /// Navidrome en clair a qui intercepterait ce sessionId.
-  String personalSessionId(String username) {
-    final digest = sha256.convert(utf8.encode('vinland_personal_$username'));
-    return digest.toString().substring(0, 24);
-  }
-
-  Future<bool> host(String sessionId) => _connect(sessionId, asHost: true);
+  /// [hostSecret] : a fournir pour reprendre une session qui existe deja
+  /// (synchro perso entre appareils du meme compte, voir PersonalSyncIds) ;
+  /// sans lui, le relais refuse ("hebergement refuse"). Pour une nouvelle
+  /// session, il devient le secret de la session.
+  Future<bool> host(String sessionId, {String? hostSecret}) =>
+      _connect(sessionId, asHost: true, hostSecret: hostSecret);
 
   Future<bool> join(String sessionId) => _connect(sessionId, asHost: false);
 
-  Future<bool> _connect(String sessionId, {required bool asHost}) async {
+  Future<bool> _connect(String sessionId,
+      {required bool asHost, String? hostSecret}) async {
     final url = _relayUrl();
     if (url == null) return false;
     await leave();
@@ -158,9 +177,11 @@ class JamService {
         },
       );
       channel.sink.add(jsonEncode({
+        'v': protocolVersion,
         'type': asHost ? 'host' : 'join',
         'sessionId': sessionId,
         'username': _navidrome.username,
+        if (asHost && hostSecret != null) 'hostSecret': hostSecret,
       }));
     } catch (_) {
       if (!completer.isCompleted) completer.complete(false);
@@ -182,6 +203,7 @@ class JamService {
       case 'joined':
         _sessionId = msg['sessionId'] as String?;
         _isHost = msg['role'] == 'host';
+        _hostSecret = msg['hostSecret'] as String?;
         if (!joinCompleter.isCompleted) joinCompleter.complete(true);
         break;
       case 'error':
@@ -220,6 +242,7 @@ class JamService {
         break;
       case 'host_transferred':
         _isHost = msg['role'] == 'host';
+        _hostSecret = _isHost ? msg['hostSecret'] as String? : null;
         _hostTransferredController.add(_isHost);
         break;
     }
@@ -234,6 +257,7 @@ class JamService {
   }) {
     if (!_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
+      'v': protocolVersion,
       'type': 'state',
       'trackId': trackId,
       'positionMs': positionMs,
@@ -250,6 +274,7 @@ class JamService {
       {String? trackId, int? positionMs, String? deviceName}) {
     if (_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
+      'v': protocolVersion,
       'type': 'command',
       'action': action,
       if (trackId != null) 'trackId': trackId,
@@ -265,6 +290,7 @@ class JamService {
   void sendTransferHost(String targetUsername) {
     if (!_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
+      'v': protocolVersion,
       'type': 'transfer_host',
       'targetUsername': targetUsername,
     }));
@@ -277,5 +303,6 @@ class JamService {
     _channel = null;
     _sessionId = null;
     _isHost = false;
+    _hostSecret = null;
   }
 }
