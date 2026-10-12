@@ -36,10 +36,15 @@ class PartyRules {
   final int maxGuests;
   final int recentHistory;
 
+  /// Faux : personne ne vote, la file suit seulement l'ordre equitable
+  /// (l'hote prefere parfois eviter les « -1 » entre amis).
+  final bool votesEnabled;
+
   const PartyRules({
     this.maxPendingPerGuest = 3,
     this.maxGuests = 50,
     this.recentHistory = 20,
+    this.votesEnabled = true,
   });
 
   /// Regles demandees par l'hote, ramenees dans des bornes raisonnables
@@ -55,6 +60,9 @@ class PartyRules {
       maxPendingPerGuest: pick('maxPendingPerGuest', 3, 1, 10),
       maxGuests: pick('maxGuests', 50, 1, 200),
       recentHistory: pick('recentHistory', 20, 0, 200),
+      votesEnabled: json['votesEnabled'] is bool
+          ? json['votesEnabled'] as bool
+          : true,
     );
   }
 
@@ -62,6 +70,7 @@ class PartyRules {
         'maxPendingPerGuest': maxPendingPerGuest,
         'maxGuests': maxGuests,
         'recentHistory': recentHistory,
+        'votesEnabled': votesEnabled,
       };
 }
 

@@ -92,6 +92,8 @@ l'app (plus simple à fermer proprement).
   limite.
 - **Doublons refusés** : un titre déjà dans la file, en cours, ou parmi les
   `recentHistory` derniers titres joués (20 par défaut) est refusé.
+- **Votes** : `votesEnabled` (vrai par défaut). Faux : un `vote` est refusé
+  (`forbidden`) et la file suit seulement l'ordre équitable.
 - **Veto** : l'hôte retire un titre de la file.
 - **Invités** : `maxGuests` (50 par défaut).
 - Quand l'hôte lance un titre de la file (`now_playing` avec `itemId`), il
@@ -108,7 +110,7 @@ celui-ci répond `party_error` avec le code `version`.
 
 | type | qui | champs |
 |---|---|---|
-| `party_create` | futur hôte | `v`, `name` (soirée), `hostName`, `auth`, `rules?` {`maxPendingPerGuest`, `maxGuests`, `recentHistory`} |
+| `party_create` | futur hôte | `v`, `name` (soirée), `hostName`, `auth`, `rules?` {`maxPendingPerGuest`, `maxGuests`, `recentHistory`, `votesEnabled`} |
 | `party_join` | invité | `v`, `code` + `name` ; ou `token` pour revenir |
 | `search` | membre | `requestId`, `query` (2 à 100 caractères) |
 | `suggest` | membre | `songId` ; sans catalogue côté relais, aussi `title`, `artist`, `album`, `durationMs`, `coverId` |
@@ -172,6 +174,23 @@ relais → (à tous) {"type":"now_playing","song":{"songId":"s42", …}}
 - Changer le sens d'un champ ou retirer un message fait passer à `v: 2`.
   Le relais refuse un client plus récent que lui (`version`) pour que l'app
   puisse dire « mets à jour le relais » au lieu de se comporter bizarrement.
+
+## Dans l'app (session 17)
+
+- `lib/controllers/party_controller.dart` : client du protocole (connexion
+  dédiée, reconnexion avec le jeton, place gardée dans les préférences
+  pour revenir après un redémarrage).
+- `lib/controllers/party_host_dj.dart` : chez l'hôte, la tête de la file
+  devient le prochain titre du lecteur (préchargement et fondu compris) ;
+  chaque titre qui démarre est annoncé par `now_playing` (`itemId` s'il
+  vient de la file, `songId` + infos sinon). File de soirée vide : la file
+  de l'hôte reprend, pas de silence.
+- Écrans dans `lib/screens/party/` ; entrée par le menu Jam, par le lien
+  `vinland://soiree` (QR scanné avec l'appareil photo) ou par l'écran de
+  connexion pour un invité sans compte. Un code tapé sans QR vise le relais
+  du serveur de l'invité.
+- Tests : `test/party/` branche la vraie logique du relais
+  (`jam_relay/lib/party/`) en mémoire, sans réseau.
 
 ## Tester sans l'app
 

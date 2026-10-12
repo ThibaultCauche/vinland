@@ -11,6 +11,10 @@ import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
 import '../widgets/user_avatar.dart';
+import '../controllers/party_controller.dart';
+import '../screens/party/party_home_screen.dart';
+import '../screens/party/party_join_screen.dart';
+import 'party/party_link.dart';
 
 const String _scheme = 'vinland';
 
@@ -287,6 +291,7 @@ class DeepLinkService {
 
   Future<void> _handle(Uri uri) async {
     if (uri.scheme != _scheme) return;
+    if (uri.host == 'soiree') return _openPartyInvite(uri);
     final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
     if (id == null || id.isEmpty) return;
 
@@ -300,6 +305,21 @@ class DeepLinkService {
     // openSharedItem, navigation/shared_item_opener.dart).
     final ok = await openSharedItem(_state, type: uri.host, id: id);
     if (!ok) _notFound();
+  }
+
+  /// QR code d'une soiree scanne avec l'appareil photo du telephone (ou
+  /// lien envoye) : ecran pour choisir son pseudo. Sans attendre la
+  /// connexion au NAS : un invite n'a pas besoin de compte.
+  void _openPartyInvite(Uri uri) {
+    final navigator = vinlandNavigatorKey.currentState;
+    final invite = PartyInvite.tryParse(uri.toString());
+    if (navigator == null || invite == null) return;
+    final party = navigator.context.read<PartyController>();
+    if (party.isActive) {
+      openPartyMode(navigator, party);
+      return;
+    }
+    navigator.push(PartyJoinScreen.route(invite: invite));
   }
 
   /// isLoggedIn ne reflete que des identifiants presents en local (pas de

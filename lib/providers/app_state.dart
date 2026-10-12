@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../controllers/jam_controller.dart';
 import '../controllers/jam_sync_settings.dart';
+import '../controllers/party_controller.dart';
+import '../controllers/party_host_dj.dart';
 import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
@@ -27,6 +29,9 @@ import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
+import '../services/party/party_link.dart';
+import '../services/party/party_socket.dart';
+import '../controllers/party_environment.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
 import '../services/download_worker_service.dart';
@@ -58,6 +63,17 @@ class AppState extends ChangeNotifier
   String? get jamSessionId => _jamCtl.sessionId;
   int get jamParticipantCount => _jamCtl.participantCount;
   List<String> get jamTransferTargets => _jamCtl.transferTargets;
+
+  // Mode Soiree : voir PartyController (protocole) et PartyHostDj (la file
+  // de la soiree jouee par le lecteur de l'hote).
+  late final PartyController party;
+  late final PartyHostDj _partyDj;
+  late final PartyEnvironment partyEnvironment = PartyEnvironment(
+    relayUrl: () => relayUrlFromServer(_navidrome.baseUrl),
+    hostAuth: () => _navidrome.authParams,
+    userName: () => _navidrome.username,
+    playNow: (item) => _partyDj.playNow(item),
+  );
   bool get isPersonalSyncParticipant => _jamCtl.isPersonalSyncParticipant;
   bool get isPersonalSyncHost => _jamCtl.isPersonalSyncHost;
   bool get isFriendJamActive => _jamCtl.isFriendJamActive;
@@ -231,6 +247,7 @@ class AppState extends ChangeNotifier
     required MusicService music,
     required NavidromeService navidrome,
     required JamService jamService,
+    PartyController? party,
   })  : _audioHandler = audioHandler,
         _music = music,
         _navidrome = navidrome {
@@ -254,6 +271,20 @@ class AppState extends ChangeNotifier
     // Un participant qui suit un hote change de titre quand l'hote le dit,
     // jamais en avance par un fondu (voir PlayerController.allowCrossfade).
     _player.allowCrossfade = () => !_jamCtl.isActive || _jamCtl.isHost;
+    this.party = party ??
+        PartyController(
+          connect: WebSocketPartySocket.connect,
+          store: PrefsPartySeatStore(),
+        );
+    _partyDj = PartyHostDj(
+      this.party,
+      PlayerPartyPlayback(
+        player: _player,
+        playTrack: playTrack,
+        findTrack: _findTrackById,
+      ),
+    );
+    this.party.addListener(_partyDj.sync);
     _player.addListener(_notify);
     _jamCtl.addListener(_notify);
     _theme.addListener(_notify);
@@ -284,6 +315,8 @@ class AppState extends ChangeNotifier
     // JamController.onLocalTrackStarted) tant qu'aucune session Jam entre
     // amis manuelle n'est en cours -- diffuse aussi l'etat si deja hote.
     unawaited(_jamCtl.onLocalTrackStarted());
+    final partySong = partySongForTrack(track);
+    if (partySong != null) _partyDj.onTrackStarted(partySong);
   }
 
   /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee
@@ -536,6 +569,7 @@ class AppState extends ChangeNotifier
     _notifyDebounce?.cancel();
     _nowPlayingHeartbeat?.cancel();
     _jamCtl.dispose();
+    party.dispose();
     _player.dispose();
     _theme.dispose();
     _navigator.dispose();

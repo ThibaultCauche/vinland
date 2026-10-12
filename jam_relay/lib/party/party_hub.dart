@@ -412,6 +412,10 @@ class PartyHub {
     final found = _member(conn);
     if (found == null) return;
     final (party, member, seat) = found;
+    if (!party.rules.votesEnabled) {
+      _error(conn, 'forbidden', 'les votes sont desactives pour cette soiree');
+      return;
+    }
     final value = msg['value'];
     if (value is! int || value < -1 || value > 1) {
       _error(conn, 'invalid', 'vote = 1, -1 ou 0');

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
 import '../../controllers/jam_sync_settings.dart';
+import '../../controllers/party_controller.dart';
 import '../../providers/app_state.dart';
 import '../../screens/jam_sync_debug_screen.dart';
+import '../../screens/party/party_home_screen.dart';
 
 /// Menu Jam partage entre mobile (player_options_sheet.dart) et desktop
 /// (desktop_player_bar.dart) : demarrer/rejoindre/quitter une session
@@ -12,6 +14,10 @@ import '../../screens/jam_sync_debug_screen.dart';
 void showJamMenu(BuildContext context) {
   final state = context.read<AppState>();
   final transferTargets = state.jamTransferTargets;
+  // Pris maintenant : la feuille d'options qui a ouvert ce menu peut etre
+  // fermee (contexte demonte) au moment du tap.
+  final navigator = Navigator.of(context);
+  final party = context.read<PartyController>();
   showModalBottomSheet(
     context: context,
     backgroundColor: const Color(0xFF1E1E1E),
@@ -87,6 +93,21 @@ void showJamMenu(BuildContext context) {
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
             ),
           ],
+          // Mode Soiree : file partagee avec les invites, voir
+          // docs/soiree-protocole.md.
+          ListTile(
+            leading: const Icon(Icons.nightlife, color: Colors.white, size: 26),
+            title: const Text('Mode soirée',
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+            subtitle: const Text('Les invités proposent, tu gardes le veto',
+                style: TextStyle(color: Colors.white54, fontSize: 13)),
+            onTap: () {
+              Navigator.pop(ctx);
+              openPartyMode(navigator, party);
+            },
+            minLeadingWidth: 24,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          ),
           const SizedBox(height: 8),
         ],
       ),

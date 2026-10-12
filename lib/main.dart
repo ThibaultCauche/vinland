@@ -12,6 +12,8 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'providers/app_state.dart';
 import 'controllers/jam_controller.dart';
+import 'controllers/party_controller.dart';
+import 'controllers/party_environment.dart';
 import 'services/discovery_service.dart';
 import 'services/jam_service.dart';
 import 'services/navidrome_service.dart';
@@ -234,6 +236,8 @@ class VinlandApp extends StatelessWidget {
         providers: [
           ChangeNotifierProvider<AppState>.value(value: appState),
           ChangeNotifierProvider<JamController>.value(value: appState.jam),
+          ChangeNotifierProvider<PartyController>.value(value: appState.party),
+          Provider<PartyEnvironment>.value(value: appState.partyEnvironment),
           Provider<MusicService>.value(value: music),
           Provider<NavidromeService>.value(value: navidrome),
           Provider<DiscoveryService>.value(value: discovery),

@@ -10,12 +10,21 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Mode Soirée dans l'app (menu Jam > « Mode soirée ») : l'hôte lance une
+  soirée, affiche un QR code plein écran, voit la file avec qui a proposé
+  quoi, lance un titre ou met un veto, retire ou exclut un invité, change le
+  code. Les invités scannent le QR (ou tapent le code), choisissent un
+  pseudo, cherchent, proposent et votent. La file de la soirée passe
+  toute seule sur le lecteur de l'hôte, sa propre file reprend quand elle
+  est vide. Réglages : titres max par invité, votes activés ou non.
+  Reconnexion automatique après une coupure, et « Revenir à la soirée »
+  après un redémarrage. Un invité sans compte peut entrer depuis l'écran
+  de connexion.
 - Mode Soirée, côté relais : protocole hôte/invités (`docs/soiree-protocole.md`),
   code court + jetons signés, recherche en lecture seule dans Navidrome pour
   les invités sans compte, file équitable (alternance entre invités, votes,
   3 titres en attente max, pas de doublon), veto et bannissement par l'hôte,
   et un client en ligne de commande pour tester (`jam_relay/bin/party_cli.dart`).
-  L'écran de l'app arrive avec la session 17.
 - CI GitHub Actions sur chaque PR et chaque push sur `main` : formatage,
   analyse et tests de l'app, analyse et tests du relais Jam, couverture de
   tests en artefact.

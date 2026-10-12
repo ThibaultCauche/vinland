@@ -329,6 +329,29 @@ void main() {
     });
   });
 
+  test("votes coupes par l'hote : un vote est refuse, la file reste equitable",
+      () async {
+    final quiet = FakeConn();
+    await hub.handle(quiet, {
+      'type': 'party_create',
+      'v': 1,
+      'name': 'Calme',
+      'hostName': 'Thibault',
+      'auth': hostAuth,
+      'rules': {'votesEnabled': false},
+    });
+    final joined = quiet.last('party_joined');
+    expect(joined['rules']['votesEnabled'], false);
+    final lea = await join('Lea', withCode: joined['code'] as String);
+    await suggest(lea, 's1');
+    await hub.handle(lea, {
+      'type': 'vote',
+      'itemId': lea.last('suggested')['itemId'],
+      'value': 1,
+    });
+    expect(lea.lastErrorCode, 'forbidden');
+  });
+
   group("pouvoirs de l'hote", () {
     test('un invite ne peut pas faire de veto ni exclure', () async {
       final lea = await join('Lea');

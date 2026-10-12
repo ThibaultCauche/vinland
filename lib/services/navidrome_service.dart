@@ -218,6 +218,12 @@ class NavidromeService {
     }
   }
 
+  /// Parametres d'authentification de la session en cours, a transmettre
+  /// au relais pour lancer une soiree (il les verifie par un ping puis les
+  /// oublie). Jamais le mot de passe : seulement le jeton md5 + sel, ou la
+  /// cle d'API. Null tant que rien n'est charge.
+  Map<String, String>? get authParams => _canBuildUrls ? _authParams : null;
+
   /// Parametres d'authentification Subsonic de la session en cours.
   Map<String, String> get _authParams => _apiKey != null
       ? {'apiKey': _apiKey!}
