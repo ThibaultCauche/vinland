@@ -17,10 +17,24 @@ commit.
   vides et lancer l'analyse et les tests sans les secrets.
 - Premier test du relais Jam (un hôte crée la session, un ami la rejoint).
 - Dependabot, modèles de PR et d'issue, ce journal.
+- Au premier lancement, l'app demande ce que tu partages avec tes amis
+  (likes, écoutes récentes, titre en cours). Un nouveau compte ne partage
+  plus rien par défaut ; un compte existant retrouve ses réglages
+  actuels, à confirmer.
+- Documentation : architecture, décisions d'architecture (ADR), sécurité,
+  confidentialité, liens et badges dans le README.
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.
+- La CI refuse toute remarque de `flutter analyze`, même « info » (91
+  remarques historiques corrigées, règles `unawaited_futures`,
+  `avoid_print`, `prefer_final_locals` et `always_declare_return_types`
+  activées).
 - Tout le code Dart est formaté avec `dart format`.
+
+### Corrigé
+- Plus de plantage possible si on quitte l'écran pendant une connexion à
+  Navidrome, une recherche ou le choix d'un fichier à importer.
 
 ### Supprimé
 - Variante « compacte » des cartes d'album de la page artiste, qui n'était
