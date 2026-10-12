@@ -10,7 +10,7 @@ updates:
     commit-message:
       prefix: chore
   - package-ecosystem: pub
-    directory: /jam_relay
+    directory: /services/jam-relay
     schedule:
       interval: weekly
     commit-message:

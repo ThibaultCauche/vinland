@@ -18,7 +18,7 @@ analyzer:
     - linux/**
     # Le relais Jam est un projet Dart a part, avec ses propres dependances
     # et son propre job CI (relay) : ne pas l'analyser avec l'app.
-    - jam_relay/**
+    - services/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

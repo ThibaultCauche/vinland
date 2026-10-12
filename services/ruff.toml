@@ -1,0 +1,7 @@
+# Lint des services Python (download-worker, share-inbox, avatar-server).
+# Regles par defaut de ruff (erreurs reelles : imports inutiles, noms non
+# definis...) plus le tri des imports ; le style est gere par `ruff format`.
+target-version = "py311"
+
+[lint]
+extend-select = ["I"]

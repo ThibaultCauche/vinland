@@ -1,8 +1,8 @@
 name: CI
 
 # Verifie chaque PR et chaque push sur main : formatage, analyse et tests de
-# l'app Flutter, puis analyse et tests du relais Jam. release.yml l'appelle
-# aussi (workflow_call) avant de builder, pour qu'une release ne parte jamais
+# l'app Flutter, du relais Jam et des services Python du NAS (ruff, pytest,
+# docker compose). release.yml l'appelle aussi (workflow_call) avant de builder, pour qu'une release ne parte jamais
 # avec des tests rouges.
 on:
   push:
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: jam_relay
+        working-directory: services/jam-relay
     steps:
       - uses: actions/checkout@v4
 
@@ -79,3 +79,41 @@ jobs:
       - run: dart pub get
       - run: dart analyze
       - run: dart test
+
+  services:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install ruff pytest
+
+      # Regles dans services/ruff.toml.
+      - run: ruff check services
+      - run: ruff format --check services
+
+      # pytest seulement pour les services Python qui ont des tests : un
+      # service sans dossier tests/ ne doit pas faire echouer la CI.
+      - name: Test Python services
+        run: |
+          for dir in services/*/; do
+            if [ -d "${dir}tests" ]; then
+              echo "::group::pytest $dir"
+              if [ -f "${dir}requirements.txt" ]; then
+                pip install -r "${dir}requirements.txt"
+              fi
+              (cd "$dir" && python -m pytest)
+              echo "::endgroup::"
+            fi
+          done
+
+      # Le compose doit rester valide ; des cles factices remplacent les
+      # vraies (services/.env n'existe que sur le NAS).
+      - name: Validate docker compose
+        working-directory: services
+        run: |
+          sed 's/_API_KEY=$/_API_KEY=ci/' .env.example > ci.env
+          docker compose --env-file ci.env config -q

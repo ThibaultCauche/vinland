@@ -98,7 +98,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Nom de l'appareil participant actuellement connecte a NOTRE synchro
   /// perso (voir isPersonalSyncHost) -- annonce par lui via la commande
   /// 'announce_device' (voir _announceDeviceToHost/_applyJamCommand), pas
-  /// connu du relais (voir jam_relay/, qui ne suit que des pseudos, memes
+  /// connu du relais (voir services/jam-relay/, qui ne suit que des pseudos, memes
   /// pour tous les appareils du meme compte). Sert uniquement a afficher
   /// "Connecte : <appareil>" dans showDeviceMenu -- le controle a distance
   /// marche deja sans ca, c'est juste pour que l'hote voie que l'autre
@@ -1308,7 +1308,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Demarre une session Jam en tant qu'hote : pilote la lecture normalement,
   /// diffuse son etat (titre/position/lecture-pause) aux participants via le
-  /// relais (voir jam_relay/) a chaque changement et toutes les 5s pour
+  /// relais (voir services/jam-relay/) a chaque changement et toutes les 5s pour
   /// rattraper la derive. Renvoie le sessionId a partager, ou null en cas
   /// d'echec (relais injoignable).
   Future<String?> startJamSession() async {
@@ -1417,7 +1417,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     } else {
       // Ce callback est partage par deux cas bien distincts qui envoient
       // tous les deux un 'host_transferred' cote relais (voir le cas 'host'
-      // dans jam_relay/bin/server.dart, "prise de controle" y compris) :
+      // dans services/jam-relay/bin/server.dart, "prise de controle" y compris) :
       // 1. un vrai transfert d'hebergement Jam entre amis (voir
       //    transferJamHost) -- celui qui le recoit doit redevenir un vrai
       //    suiveur Jam (isFriendJamActive, actions locales ignorees).
@@ -1935,7 +1935,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // BOITE DE RECEPTION DE PARTAGES (phase 2 du partage titre/album/playlist,
   // voir deep_link_service.dart pour la phase 1 -- lien envoye via le
   // partage natif OS) : permet d'envoyer un partage CIBLE a un ami precis,
-  // via le petit service maison share-inbox/ (voir ShareInboxService).
+  // via le petit service maison services/share-inbox/ (voir ShareInboxService).
   final ShareInboxService _shareInbox = ShareInboxService();
   List<ReceivedShare> pendingShares = [];
   bool get shareInboxConfigured => _shareInbox.isConfigured;
@@ -2281,7 +2281,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   // Taille max d'un lot d'upload (voir importLocalFilesToPlaylist) : garde
   // une marge confortable sous MAX_IMPORT_BODY_BYTES cote worker (500 Mo par
-  // defaut, voir download-worker/server.py) pour ne jamais s'en approcher,
+  // defaut, voir services/download-worker/server.py) pour ne jamais s'en approcher,
   // et evite une seule requete HTTP de plusieurs centaines de Mo/Go pour un
   // gros import (bibliotheque "titres likes" d'un ami) -- fragile (un seul
   // hoquet reseau perd tout le lot) et gourmande en RAM cote NAS (le worker

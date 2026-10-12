@@ -17,8 +17,15 @@ commit.
   vides et lancer l'analyse et les tests sans les secrets.
 - Premier test du relais Jam (un hôte crée la session, un ami la rejoint).
 - Dependabot, modèles de PR et d'issue, ce journal.
+- Dossier `services/` pour les services du NAS : `docker-compose.yml`
+  (ports liés à `127.0.0.1`, volumes nommés), modèle `.env.example`,
+  `README.md` (déploiement, routes Tailscale), Dockerfile générique pour les
+  services Python.
+- Job CI `services` : `ruff`, `pytest` quand un service a des tests, et
+  validation du `docker compose`.
 
 ### Modifié
+- Le relais Jam passe de `jam_relay/` à `services/jam-relay/`.
 - Une release ne part plus si la CI est rouge sur le commit tagué.
 - Tout le code Dart est formaté avec `dart format`.
 

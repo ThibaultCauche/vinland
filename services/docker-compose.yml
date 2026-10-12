@@ -1,0 +1,89 @@
+# Tous les services maison de Vinland, a lancer sur le NAS :
+#
+#   cd services
+#   cp .env.example .env      # puis remplir .env (jamais commite)
+#   docker compose up -d --build
+#
+# Chaque port est lie a 127.0.0.1 : rien n'est expose directement sur le
+# reseau, c'est `tailscale serve` qui route les chemins HTTPS vers ces ports
+# (voir README.md). Les donnees vivent dans des volumes nommes, donc un
+# `docker compose up -d --build` apres une mise a jour du code ne perd rien.
+
+name: vinland
+
+services:
+  jam-relay:
+    build: ./jam-relay
+    restart: unless-stopped
+    environment:
+      PORT: "8765"
+    ports:
+      - "127.0.0.1:${JAM_RELAY_PORT:-8765}:8765"
+
+  avatar-server:
+    build: ./avatar-server
+    restart: unless-stopped
+    environment:
+      PORT: "8766"
+      API_KEY: ${AVATAR_API_KEY:?remplir AVATAR_API_KEY dans services/.env}
+      DATA_DIR: /data
+    volumes:
+      - avatars:/data
+    ports:
+      - "127.0.0.1:${AVATAR_SERVER_PORT:-8766}:8766"
+
+  share-inbox:
+    build: ./share-inbox
+    restart: unless-stopped
+    environment:
+      PORT: "8767"
+      API_KEY: ${SHARE_INBOX_API_KEY:?remplir SHARE_INBOX_API_KEY dans services/.env}
+      DATA_DIR: /data
+    volumes:
+      - shares:/data
+    ports:
+      - "127.0.0.1:${SHARE_INBOX_PORT:-8767}:8767"
+
+  download-worker:
+    build: ./download-worker
+    restart: unless-stopped
+    environment:
+      PORT: "8768"
+      API_KEY: ${DOWNLOAD_WORKER_API_KEY:?remplir DOWNLOAD_WORKER_API_KEY dans services/.env}
+      DATA_DIR: /data
+      MUSIC_DIR: /music
+      NAVIDROME_URL: ${NAVIDROME_URL:-http://navidrome:4533}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASS: ${NAVIDROME_PASS:-}
+      LIDARR_URL: ${LIDARR_URL:-}
+      LIDARR_API_KEY: ${LIDARR_API_KEY:-}
+      LIDARR_TIMEOUT_SECONDS: ${LIDARR_TIMEOUT_SECONDS:-900}
+      MAX_IMPORT_BODY_BYTES: ${MAX_IMPORT_BODY_BYTES:-524288000}
+    volumes:
+      - downloads:/data
+      # La bibliotheque musicale est un dossier existant du NAS, pas un
+      # volume Docker : le worker y range les morceaux que Navidrome lit.
+      - ${MUSIC_DIR:-/volume1/music}:/music
+    ports:
+      - "127.0.0.1:${DOWNLOAD_WORKER_PORT:-8768}:8768"
+
+  # Navidrome tourne deja sur le NAS avec sa propre configuration. Pour le
+  # gerer ici aussi, decommenter ce bloc et le volume navidrome plus bas,
+  # puis arreter l'ancien conteneur (ses donnees doivent etre recopiees dans
+  # le volume, ou remplacer le volume par le dossier existant).
+  # navidrome:
+  #   image: deluan/navidrome:latest
+  #   restart: unless-stopped
+  #   environment:
+  #     ND_MUSICFOLDER: /music
+  #   volumes:
+  #     - navidrome:/data
+  #     - ${MUSIC_DIR:-/volume1/music}:/music:ro
+  #   ports:
+  #     - "127.0.0.1:4533:4533"
+
+volumes:
+  avatars:
+  shares:
+  downloads:
+  # navidrome:
