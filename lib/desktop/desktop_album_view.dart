@@ -49,7 +49,8 @@ class DesktopAlbumView extends StatefulWidget {
 }
 
 class _DesktopAlbumViewState extends State<DesktopAlbumView> {
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   final _scrollController = SmoothScrollController();
   List<DiscoveredTrack> _discoveredTracks = [];
@@ -68,6 +69,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _loadDeezerTracks();
   }
 

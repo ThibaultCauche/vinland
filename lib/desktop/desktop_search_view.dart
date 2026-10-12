@@ -44,7 +44,8 @@ class DesktopSearchView extends StatefulWidget {
 
 class _DesktopSearchViewState extends State<DesktopSearchView> {
   final _controller = TextEditingController();
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _historyService = SearchHistoryService();
   final _downloadWorker = DownloadWorkerService();
   final _scrollController = SmoothScrollController();
@@ -62,6 +63,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     final state = context.read<AppState>();
     _historyService.setCurrentUser(state.currentUserId);
     _loadHistory();

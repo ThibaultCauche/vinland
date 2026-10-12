@@ -27,6 +27,11 @@ commit.
   (testés avec un faux moteur audio), les thèmes pour `ThemeController`
   et la navigation plein écran pour `OverlayNavigator`. `AppState` ne
   dépend plus d'aucun écran.
+- Interne : le Jam et la synchro perso quittent `AppState` pour
+  `JamController`, qui pilote la lecture à travers une interface et se
+  teste à deux appareils avec un faux relais. `MusicService`,
+  `NavidromeService`, `JamService` et `DiscoveryService` ne sont plus des
+  singletons : ils sont créés une fois dans `main.dart` et injectés.
 - Tout le code Dart est formaté avec `dart format`.
 - Le jeton Subsonic n'est plus écrit sur le disque : le cache de
   bibliothèque, les albums, l'historique de recherche et la pochette
@@ -63,6 +68,10 @@ commit.
 - Une coupure réseau ne crée plus de playlist miroir en double (likes,
   écoutes récentes, épingles, « en cours ») ni de titres en double dans une
   playlist.
+- Synchro perso : « Reprendre ici » relance bien le titre sur cet appareil
+  (il demandait à l'autre appareil de rejouer son propre titre).
+- Jam : le changement de titre de l'hôte part tout de suite vers les
+  participants au lieu d'attendre le battement suivant.
 
 ## [1.2.2] - 2026-10-08
 

@@ -8,17 +8,19 @@ import '../data/track_repository.dart';
 import '../domain/queue.dart';
 import '../models/track.dart';
 import '../services/player_engine.dart';
+import 'jam_playback.dart';
 
 /// Lecture locale : titre en cours, play/pause, seek, passage au suivant
 /// (fin de titre, titre injouable, filet de securite en fin de titre),
 /// lecture aleatoire/repetition et sauvegarde de l'etat de lecture.
 ///
-/// Ne connait ni le Jam ni la synchro perso : AppState garde les gardes
-/// "participant de Jam" devant chaque action et se branche sur les crochets
-/// (onPlayingChanged, onTrackStarted...) pour diffuser l'etat. Le moteur et
+/// Ne connait ni le Jam ni la synchro perso : JamController le pilote a
+/// travers JamPlayback, AppState lui demande avant chaque action si le Jam
+/// la prend en charge et se branche sur les crochets (onPlayingChanged,
+/// onTrackStarted...) pour diffuser l'etat. Le moteur et
 /// la bibliotheque sont injectes (PlaybackOutput, TrackRepository) pour
 /// pouvoir tester tout ca avec un faux moteur (voir test/fakes/).
-class PlayerController extends ChangeNotifier {
+class PlayerController extends ChangeNotifier implements JamPlayback {
   PlayerController({
     required PlaybackOutput output,
     required TrackRepository tracks,
@@ -94,8 +96,11 @@ class PlayerController extends ChangeNotifier {
   /// Tout evenement lecture/index du moteur (rediffusion de l'etat en Jam).
   void Function()? onEngineEvent;
 
+  @override
   Track? currentTrack;
+  @override
   bool isPlaying = false;
+  @override
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
 
@@ -107,6 +112,7 @@ class PlayerController extends ChangeNotifier {
 
   /// Titres a venir (voir PlayQueue.upcoming, y compris pourquoi cette
   /// liste est exposee telle quelle).
+  @override
   List<Track> get queue => _queue.upcoming;
 
   PlayerEngine get player => _output.player;
@@ -160,6 +166,7 @@ class PlayerController extends ChangeNotifier {
   /// Lance `track` et construit la file a partir de `trackList` (le
   /// contexte -- album, playlist, titres likes, artiste...) : voir
   /// PlayQueue.start.
+  @override
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
     _queue.start(track, trackList, shuffled: isShuffled);
     _consecutiveLoadFailures = 0;
@@ -225,6 +232,7 @@ class PlayerController extends ChangeNotifier {
   /// l'app : le mini-player affiche le dernier titre joue mais aucune
   /// source n'est encore chargee dans le moteur, et un simple play() sur un
   /// moteur vide ne fait rien), true pour une vraie bascule play/pause.
+  @override
   bool togglePlayPause() {
     if (currentTrack != null && !_output.player.hasSource) {
       unawaited(_playSingle(currentTrack!));
@@ -242,16 +250,19 @@ class PlayerController extends ChangeNotifier {
     return true;
   }
 
+  @override
   void seek(Duration pos) {
     unawaited(_output.seek(pos));
     _notify();
   }
 
+  @override
   Future<void> next() => _advanceQueue();
 
   /// Avant 3s de lecture : revient au titre precedent (file d'attente
   /// remise en tete). Au-dela : redemarre simplement le titre en cours,
   /// comme la plupart des lecteurs.
+  @override
   Future<void> previous() async {
     if (position > const Duration(seconds: 3) || !_queue.hasHistory) {
       seek(Duration.zero);
@@ -366,11 +377,13 @@ class PlayerController extends ChangeNotifier {
 
   // --- File d'attente --------------------------------------------------
 
+  @override
   void addToQueue(Track track) {
     _queue.add(track);
     _queueChanged();
   }
 
+  @override
   void playNext(Track track) {
     _queue.insertNext(track);
     _queueChanged();
@@ -395,9 +408,20 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// File de l'hote recue en Jam : remplace la notre telle quelle.
+  @override
   void replaceQueue(List<Track> tracks) {
     _queue.replaceUpcoming(tracks);
     _notify();
+  }
+
+  /// Suivi d'un hote de Jam : aligne lecture/pause sur lui.
+  @override
+  Future<void> setPlaying(bool playing) async {
+    if (playing && !isPlaying) {
+      await _output.play();
+    } else if (!playing && isPlaying) {
+      await _output.pause();
+    }
   }
 
   /// Bascule le mode aleatoire (voir PlayQueue.reshuffle : les titres

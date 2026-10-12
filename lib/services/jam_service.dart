@@ -13,10 +13,10 @@ class JamStateMessage {
   final String? deviceName;
 
   /// Ids de la file d'attente de l'hote, non-null seulement quand elle a
-  /// change depuis le dernier envoi (voir AppState._broadcastJamState) --
+  /// change depuis le dernier envoi (voir JamController.broadcastState) --
   /// evite de rerepeter potentiellement des milliers d'ids a chaque
   /// battement de 5s. Permet au participant de refleter la vraie file de
-  /// l'hote (voir AppState._applyJamState) plutot que sa propre file locale,
+  /// l'hote (voir JamController._applyJamState) plutot que sa propre file locale,
   /// jamais lue tant qu'on suit un hote.
   final List<String>? queueIds;
 
@@ -46,7 +46,7 @@ class JamStateMessage {
 /// participant et recue uniquement par l'hote -- voir sendCommand. Un
 /// participant ne pilote jamais sa propre file d'attente ni son propre
 /// moteur audio (rien n'est charge localement tant qu'on suit un hote, voir
-/// AppState.playTrack/PlayerController) : ce canal est le seul moyen pour lui
+/// JamController.interceptPlayTrack) : ce canal est le seul moyen pour lui
 /// d'influencer ce qui va vraiment jouer.
 class JamCommandMessage {
   final String action;
@@ -57,54 +57,110 @@ class JamCommandMessage {
       {this.trackId, this.positionMs, this.deviceName});
 }
 
-/// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
-/// separe de Navidrome, expose sur le meme hostname Funnel sous /jam (voir
-/// jam_relay/README.md). Modele hote-autoritaire : l'hote envoie son etat de
-/// lecture via sendState(), les participants le recoivent via stateStream et
-/// n'envoient jamais d'etat eux-memes.
-class JamService {
-  static final JamService _instance = JamService._internal();
-  factory JamService() => _instance;
-  JamService._internal();
+/// Connexion au relais Jam vue par JamController : une seule session a la
+/// fois, hote ou participant. Interface pour que le controleur se teste
+/// avec un faux relais en memoire (voir test/fakes/fake_jam_service.dart) ;
+/// l'implementation de l'app est [WebSocketJamService].
+abstract class JamService {
+  String? get sessionId;
+  bool get isHost;
 
-  final NavidromeService _navidrome = NavidromeService();
+  /// Vrai des que la connexion est ouverte, y compris le temps que le
+  /// relais confirme host()/join().
+  bool get isActive;
 
-  WebSocketChannel? _channel;
-  StreamSubscription? _sub;
-  String? _sessionId;
-  bool _isHost = false;
-
-  String? get sessionId => _sessionId;
-  bool get isHost => _isHost;
-  bool get isActive => _channel != null;
-
-  final _stateController = StreamController<JamStateMessage>.broadcast();
-  Stream<JamStateMessage> get stateStream => _stateController.stream;
-
-  final _hostLeftController = StreamController<void>.broadcast();
-  Stream<void> get hostLeftStream => _hostLeftController.stream;
-
-  final _participantCountController = StreamController<int>.broadcast();
-  Stream<int> get participantCountStream => _participantCountController.stream;
+  /// Etat de l'hote, recu uniquement par les participants.
+  Stream<JamStateMessage> get stateStream;
+  Stream<void> get hostLeftStream;
+  Stream<int> get participantCountStream;
 
   /// Pseudos des participants actuels (voir _Peer.username cote relais) --
   /// permet a l'hote de choisir a qui ceder l'hebergement (voir
   /// sendTransferHost). Emis en meme temps que participantCountStream.
-  final _participantsController = StreamController<List<String>>.broadcast();
-  Stream<List<String>> get participantsStream => _participantsController.stream;
+  Stream<List<String>> get participantsStream;
 
-  final _errorController = StreamController<String>.broadcast();
-  Stream<String> get errorStream => _errorController.stream;
-
-  final _commandController = StreamController<JamCommandMessage>.broadcast();
-  Stream<JamCommandMessage> get commandStream => _commandController.stream;
+  /// Commandes envoyees par les participants, recues uniquement par l'hote.
+  Stream<JamCommandMessage> get commandStream;
 
   /// Emis quand ce peer change de role suite a un transfert d'hebergement
   /// (voir sendTransferHost) : true s'il vient de devenir hote, false s'il
   /// vient d'etre retrograde en participant. Ne concerne que les deux
   /// extremites du transfert -- les autres participants suivent simplement
   /// le nouvel hote sans rien remarquer.
+  Stream<bool> get hostTransferredStream;
+
+  String generateSessionId();
+
+  /// SessionId stable de la synchro perso du compte (voir
+  /// JamController.personalSessionId).
+  String personalSessionId(String username);
+
+  Future<bool> host(String sessionId);
+  Future<bool> join(String sessionId);
+
+  void sendState({
+    required String trackId,
+    required int positionMs,
+    required bool isPlaying,
+    String? deviceName,
+    List<String>? queueIds,
+  });
+
+  void sendCommand(String action,
+      {String? trackId, int? positionMs, String? deviceName});
+
+  void sendTransferHost(String targetUsername);
+
+  Future<void> leave();
+}
+
+/// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
+/// separe de Navidrome, expose sur le meme hostname Funnel sous /jam (voir
+/// jam_relay/README.md). Modele hote-autoritaire : l'hote envoie son etat de
+/// lecture via sendState(), les participants le recoivent via stateStream et
+/// n'envoient jamais d'etat eux-memes.
+class WebSocketJamService implements JamService {
+  WebSocketJamService(this._navidrome);
+
+  final NavidromeService _navidrome;
+
+  WebSocketChannel? _channel;
+  StreamSubscription? _sub;
+  String? _sessionId;
+  bool _isHost = false;
+
+  @override
+  String? get sessionId => _sessionId;
+  @override
+  bool get isHost => _isHost;
+  @override
+  bool get isActive => _channel != null;
+
+  final _stateController = StreamController<JamStateMessage>.broadcast();
+  @override
+  Stream<JamStateMessage> get stateStream => _stateController.stream;
+
+  final _hostLeftController = StreamController<void>.broadcast();
+  @override
+  Stream<void> get hostLeftStream => _hostLeftController.stream;
+
+  final _participantCountController = StreamController<int>.broadcast();
+  @override
+  Stream<int> get participantCountStream => _participantCountController.stream;
+
+  final _participantsController = StreamController<List<String>>.broadcast();
+  @override
+  Stream<List<String>> get participantsStream => _participantsController.stream;
+
+  final _errorController = StreamController<String>.broadcast();
+  Stream<String> get errorStream => _errorController.stream;
+
+  final _commandController = StreamController<JamCommandMessage>.broadcast();
+  @override
+  Stream<JamCommandMessage> get commandStream => _commandController.stream;
+
   final _hostTransferredController = StreamController<bool>.broadcast();
+  @override
   Stream<bool> get hostTransferredStream => _hostTransferredController.stream;
 
   String? _relayUrl() {
@@ -116,6 +172,7 @@ class JamService {
     return '$wsBase/jam';
   }
 
+  @override
   String generateSessionId() {
     final random = Random.secure();
     final bytes = List.generate(6, (_) => random.nextInt(256));
@@ -123,18 +180,21 @@ class JamService {
   }
 
   /// SessionId stable et prive pour la synchro multi-appareils "perso" (voir
-  /// AppState._maybeBecomePersonalHost/_tryJoinPersonalSync) : deterministe a
+  /// JamController.onLocalTrackStarted/_tryJoinPersonalSync) : deterministe a
   /// partir du compte Navidrome, pour que tous les appareils du meme compte
   /// se retrouvent automatiquement sans code a partager. Hashe (avec un sel
   /// fixe) plutot qu'utilise tel quel pour ne pas exposer le nom d'utilisateur
   /// Navidrome en clair a qui intercepterait ce sessionId.
+  @override
   String personalSessionId(String username) {
     final digest = sha256.convert(utf8.encode('vinland_personal_$username'));
     return digest.toString().substring(0, 24);
   }
 
+  @override
   Future<bool> host(String sessionId) => _connect(sessionId, asHost: true);
 
+  @override
   Future<bool> join(String sessionId) => _connect(sessionId, asHost: false);
 
   Future<bool> _connect(String sessionId, {required bool asHost}) async {
@@ -191,7 +251,7 @@ class JamService {
         // la session "perso" antes qu'aucun appareil ne l'ait hebergee --
         // le cas d'un compte teste sur un seul appareil) : isActive
         // continuait de rapporter true bien que ni host() ni join() n'aient
-        // reellement abouti, ce qui faisait passer AppState en mode "suivi
+        // reellement abouti, ce qui faisait passer le Jam en mode "suivi
         // passif" et bloquait silencieusement playTrack/togglePlayPause/
         // nextTrack/previousTrack (retour testeur : plus aucun bouton ne
         // repondait, seule la navigation via la file d'attente restait
@@ -225,6 +285,7 @@ class JamService {
     }
   }
 
+  @override
   void sendState({
     required String trackId,
     required int positionMs,
@@ -246,6 +307,7 @@ class JamService {
 
   /// Envoie une commande de controle a distance vers l'hote (voir
   /// commandStream cote hote) -- reserve aux participants.
+  @override
   void sendCommand(String action,
       {String? trackId, int? positionMs, String? deviceName}) {
     if (_isHost || _channel == null) return;
@@ -262,6 +324,7 @@ class JamService {
   /// pour la liste des pseudos disponibles) -- reserve a l'hote actuel.
   /// Les deux extremites sont notifiees via hostTransferredStream ; les
   /// autres participants ne voient que le prochain 'state' venir d'ailleurs.
+  @override
   void sendTransferHost(String targetUsername) {
     if (!_isHost || _channel == null) return;
     _channel!.sink.add(jsonEncode({
@@ -270,6 +333,7 @@ class JamService {
     }));
   }
 
+  @override
   Future<void> leave() async {
     await _sub?.cancel();
     _sub = null;

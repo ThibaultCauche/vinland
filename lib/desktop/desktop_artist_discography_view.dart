@@ -42,7 +42,8 @@ class DesktopArtistDiscographyView extends StatefulWidget {
 
 class _DesktopArtistDiscographyViewState
     extends State<DesktopArtistDiscographyView> {
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   final _scrollController = SmoothScrollController();
   final Map<int, DownloadUiState> _downloadStates = {};
@@ -55,6 +56,7 @@ class _DesktopArtistDiscographyViewState
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _load();
   }
 

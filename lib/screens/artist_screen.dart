@@ -56,7 +56,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
   // pattern que _deezerCache ci-dessus.
   static final Map<String, double> _savedScrollOffsets = {};
 
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   final Map<int, DownloadUiState> _downloadStates = {};
   late final ScrollController _scrollController;
@@ -82,6 +83,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _scrollController = ScrollController(
         initialScrollOffset: _savedScrollOffsets[widget.artistName] ?? 0);
     _scrollController.addListener(() {

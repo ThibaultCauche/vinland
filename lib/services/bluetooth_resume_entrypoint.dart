@@ -38,7 +38,7 @@ Future<void> _run() async {
       return;
     }
 
-    final music = MusicService();
+    final music = MusicService(navidrome);
     music.setCurrentUser(navidrome.username);
     await music.initialize();
 

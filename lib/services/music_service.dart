@@ -125,9 +125,9 @@ PlaylistSyncPlan planPlaylistSync(
 }
 
 class MusicService {
-  static final MusicService _instance = MusicService._internal();
-  factory MusicService() => _instance;
-  MusicService._internal();
+  /// Une seule instance par processus, creee dans main.dart (ou par
+  /// l'entree Bluetooth headless) puis injectee.
+  MusicService(this._navidrome);
 
   List<Track> _allTracks = [];
   List<Album> _albums = [];
@@ -191,7 +191,7 @@ class MusicService {
   List<Album> get albums => _albumsView ??= List.unmodifiable(_albums);
   List<Playlist> get playlists => List.unmodifiable(_playlists);
 
-  final NavidromeService _navidrome = NavidromeService();
+  final NavidromeService _navidrome;
   List<Track> _navidromeTracks = [];
   Map<String, String> _offlineFiles = {}; // navidrome_id -> local path
 

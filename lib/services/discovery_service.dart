@@ -14,12 +14,12 @@ import 'matching_service.dart';
 import 'music_service.dart';
 
 class DiscoveryService {
-  static final DiscoveryService _instance = DiscoveryService._internal();
-  factory DiscoveryService() => _instance;
-  DiscoveryService._internal();
+  /// Une seule instance, creee dans main.dart et lue par les ecrans via
+  /// `provider` : le cache memoire ci-dessous est partage entre eux.
+  DiscoveryService(this._music);
 
   final String _baseUrl = 'https://api.deezer.com';
-  final MusicService _music = MusicService();
+  final MusicService _music;
 
   // ── CACHE DISQUE ──
   // Les metadonnees Deezer (recherche album/artiste, tracklists) changent

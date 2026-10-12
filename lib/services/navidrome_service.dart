@@ -17,14 +17,13 @@ import '../config/credentials.dart';
 /// URL de lecture/pochette, et conversion des reponses en modeles de l'app.
 /// Les appels eux-memes (et leurs erreurs) sont dans lib/data/subsonic/.
 ///
-/// L'instance de l'app est fournie aux widgets par `provider` (voir
-/// main.dart) ; `NavidromeService()` la renvoie encore pour les services
-/// pas encore decoupes (MusicService, JamService...), le temps des sessions
-/// suivantes. Les tests construisent la leur avec [NavidromeService.withClient].
+/// Une seule instance par processus, creee dans main.dart (ou par l'entree
+/// Bluetooth headless) puis injectee : dans AppState, MusicService et
+/// WebSocketJamService, et fournie aux widgets par `provider`. Les tests
+/// construisent la leur avec [NavidromeService.withClient].
 class NavidromeService {
-  static final NavidromeService _instance =
-      NavidromeService.withClient(SubsonicClient(), registerRefs: true);
-  factory NavidromeService() => _instance;
+  /// Instance de l'app : branche aussi SubsonicRefs sur ses URL.
+  NavidromeService() : this.withClient(SubsonicClient(), registerRefs: true);
 
   NavidromeService.withClient(this._client, {bool registerRefs = false}) {
     if (registerRefs) {

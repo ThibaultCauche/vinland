@@ -47,7 +47,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Color? _dominantColor;
   late final ScrollController _scrollController;
   double _scrollOffset = 0;
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   List<DiscoveredTrack> _discoveredTracks = [];
   // Reste a false le temps du tout premier chargement pour ne montrer ni les
@@ -70,6 +71,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _scrollOffset = _savedScrollOffsets[widget.album.id] ?? 0;
     _scrollController = ScrollController(initialScrollOffset: _scrollOffset);
     _extractColor();

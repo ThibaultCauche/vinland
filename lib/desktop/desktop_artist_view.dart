@@ -61,7 +61,8 @@ class DesktopArtistView extends StatefulWidget {
 
 class _DesktopArtistViewState extends State<DesktopArtistView> {
   static final Map<String, _ArtistCache> _deezerCache = {};
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   final Map<int, DownloadUiState> _downloadStates = {};
 
@@ -92,6 +93,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     final cached = _deezerCache[MatchingService.normalize(widget.artistName)];
     if (cached != null) {
       _discoveredArtist = cached.artist;

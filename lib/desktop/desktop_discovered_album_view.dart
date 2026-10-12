@@ -47,7 +47,8 @@ class DesktopDiscoveredAlbumView extends StatefulWidget {
 
 class _DesktopDiscoveredAlbumViewState
     extends State<DesktopDiscoveredAlbumView> {
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _downloadWorker = DownloadWorkerService();
   DiscoveredAlbum? _album;
   List<DiscoveredTrack> _tracks = [];
@@ -127,6 +128,7 @@ class _DesktopDiscoveredAlbumViewState
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _load();
   }
 

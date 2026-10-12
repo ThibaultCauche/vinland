@@ -11,6 +11,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'providers/app_state.dart';
+import 'controllers/jam_controller.dart';
+import 'services/discovery_service.dart';
+import 'services/jam_service.dart';
 import 'services/navidrome_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -173,11 +176,27 @@ Future<void> main() async {
       ),
     );
 
-    final appState = AppState(audioHandler: audioHandler);
+    // Services crees une seule fois ici puis injectes (plus de singletons
+    // `factory X() => _instance`) : AppState et les widgets partagent les
+    // memes instances, fournies par le MultiProvider de VinlandApp.
+    final navidrome = NavidromeService();
+    final music = MusicService(navidrome);
+    final appState = AppState(
+      audioHandler: audioHandler,
+      music: music,
+      navidrome: navidrome,
+      jamService: WebSocketJamService(navidrome),
+    );
     appState.initialize();
     DeepLinkService(appState).init();
 
-    runApp(VinlandApp(audioHandler: audioHandler, appState: appState));
+    runApp(VinlandApp(
+      audioHandler: audioHandler,
+      appState: appState,
+      music: music,
+      navidrome: navidrome,
+      discovery: DiscoveryService(music),
+    ));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');
   });
@@ -186,8 +205,17 @@ Future<void> main() async {
 class VinlandApp extends StatelessWidget {
   final VinlandAudioHandler audioHandler;
   final AppState appState;
-  const VinlandApp(
-      {super.key, required this.audioHandler, required this.appState});
+  final MusicService music;
+  final NavidromeService navidrome;
+  final DiscoveryService discovery;
+  const VinlandApp({
+    super.key,
+    required this.audioHandler,
+    required this.appState,
+    required this.music,
+    required this.navidrome,
+    required this.discovery,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -201,8 +229,10 @@ class VinlandApp extends StatelessWidget {
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider<AppState>.value(value: appState),
-          Provider<MusicService>.value(value: MusicService()),
-          Provider<NavidromeService>.value(value: NavidromeService()),
+          ChangeNotifierProvider<JamController>.value(value: appState.jam),
+          Provider<MusicService>.value(value: music),
+          Provider<NavidromeService>.value(value: navidrome),
+          Provider<DiscoveryService>.value(value: discovery),
           Provider<VinlandAudioHandler>.value(value: audioHandler),
         ],
         child: MaterialApp(

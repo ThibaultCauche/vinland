@@ -30,7 +30,8 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
-  final _discovery = DiscoveryService();
+  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
+  late final DiscoveryService _discovery;
   final _historyService = SearchHistoryService();
   final _downloadWorker = DownloadWorkerService();
   late TabController _tabController;
@@ -48,6 +49,7 @@ class _SearchScreenState extends State<SearchScreen>
   @override
   void initState() {
     super.initState();
+    _discovery = context.read<DiscoveryService>();
     _tabController = TabController(length: 3, vsync: this);
     final state = context.read<AppState>();
     _historyService.setCurrentUser(state.currentUserId);
