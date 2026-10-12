@@ -1,5 +1,7 @@
 # Vinland
 
+[![CI](https://github.com/ThibaultCauche/vinland/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ThibaultCauche/vinland/actions/workflows/ci.yml)
+
 Un lecteur de musique personnel : streaming des morceaux hébergés sur mon NAS, accessible depuis n'importe où, avec les fonctionnalités sociales d'un vrai service (playlists collaboratives, amis, découverte) qu'un simple client Navidrome n'offre pas.
 
 ## Pourquoi ce projet
@@ -20,7 +22,7 @@ Je voulais garder le contrôle de ma bibliothèque musicale (pas d'abonnement, p
 - **Client** : Flutter (Android + Windows desktop depuis la même base de code), `provider` pour l'état, `media_kit`/`just_audio` pour la lecture audio selon la plateforme, `audio_service` pour les contrôles média système
 - **Backend musical** : [Navidrome](https://www.navidrome.org/) (API Subsonic) sur un NAS auto-hébergé
 - **Accès distant** : tunnel sécurisé (Tailscale Funnel) plutôt qu'un port exposé directement
-- **CI/CD** : GitHub Actions (`.github/workflows/release.yml`) build et publie les binaires Android et Windows à chaque release
+- **CI/CD** : GitHub Actions. `ci.yml` vérifie formatage, analyse et tests à chaque PR ; `release.yml` rejoue ces vérifications puis build et publie les binaires Android et Windows à chaque release
 
 ## Lancer le projet
 

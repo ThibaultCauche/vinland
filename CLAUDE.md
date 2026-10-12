@@ -1,5 +1,32 @@
 # Vinland -- notes pour Claude Code
 
+## Conventions de travail
+
+- **Jamais de push direct sur `main`** : toute modification passe par une
+  branche puis une PR vers `main`. La PR ne se fusionne que si la CI
+  (`.github/workflows/ci.yml`, check `app`) est verte.
+- **Branches** : `mX/slug`, ou `X` est le jalon (M0 securite, M1 socle,
+  M2 architecture, M3 lecture, M4 mode soiree). Ex : `m1/ci-socle`.
+- **Commits conventionnels** : `feat:` (fonctionnalite), `fix:` (bug),
+  `test:`, `docs:`, `style:` (formatage seul), `refactor:`, `ci:`,
+  `chore:` (dependances, outillage). Message en francais, qui explique le
+  pourquoi.
+- **CHANGELOG.md** : chaque PR qui change quelque chose de visible ajoute
+  une ligne dans la section « Non publie ». Au moment d'une release, cette
+  section est renommee avec le numero de version et la date.
+- **Avant d'ouvrir une PR** :
+  ```bash
+  ./tool/write_stub_config.sh   # seulement si lib/config/ est vide (CI, clone neuf)
+  dart format lib test
+  flutter analyze               # aucune nouvelle remarque
+  flutter test
+  (cd jam_relay && dart analyze && dart test)
+  ```
+  `tool/write_stub_config.sh` n'ecrase jamais un fichier de config existant.
+- **Releases** : `release.yml` rejoue toute la CI sur le commit tague avant
+  de builder ; si elle est rouge, rien n'est publie (corriger, puis tagger
+  une nouvelle version).
+
 ## Publier une nouvelle version (release Windows + Android)
 
 1. Bump `version:` dans `pubspec.yaml` (ex: `1.1.5+7` -> `1.1.6+8` -- le nombre
@@ -30,13 +57,15 @@ Android l'exige). Rien d'autre a faire cote distribution.
   `/await` deprecated de `permission_handler_windows`. `windows-2022` evite
   les deux.
 - **`lib/config/*.dart`** (credentials.dart, discord_config.dart,
-  avatar_config.dart, download_worker_config.dart) sont gitignores (secrets/
+  avatar_config.dart, download_worker_config.dart, share_inbox_config.dart)
+  sont gitignores (secrets/
   URLs internes au NAS) et n'existent donc pas dans le checkout CI : le
   workflow les regenere a partir de secrets du repo GitHub avant chaque
   build (voir les etapes "Write local config files"). Si un nouveau fichier
   de ce type est ajoute en local, il faut aussi l'ajouter au workflow +
-  creer le(s) secret(s) correspondant(s) sinon le build CI cassera avec des
-  erreurs "getter isn't defined".
+  creer le(s) secret(s) correspondant(s), et l'ajouter a
+  `tool/write_stub_config.sh` (utilise par la CI), sinon la CI cassera avec
+  des erreurs "getter isn't defined".
 - **Secrets deja configures** sur le repo GitHub (Settings > Secrets and
   variables > Actions), pas besoin d'y retoucher sauf rotation :
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
