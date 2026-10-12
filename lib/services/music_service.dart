@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:metadata_god/metadata_god.dart';
+import '../data/cache/library_cache.dart';
 import '../data/subsonic/subsonic_exception.dart';
 import '../models/track.dart';
 import '../models/album.dart';
@@ -126,8 +127,12 @@ PlaylistSyncPlan planPlaylistSync(
 
 class MusicService {
   /// Une seule instance par processus, creee dans main.dart (ou par
-  /// l'entree Bluetooth headless) puis injectee.
-  MusicService(this._navidrome);
+  /// l'entree Bluetooth headless) puis injectee. [storageRoot] remplace les
+  /// dossiers de l'app (cache, covers) dans les tests.
+  MusicService(this._navidrome, {Future<Directory> Function()? storageRoot})
+      : _storageRoot = storageRoot;
+
+  final Future<Directory> Function()? _storageRoot;
 
   List<Track> _allTracks = [];
   List<Album> _albums = [];
@@ -204,6 +209,18 @@ class MusicService {
 
   List<RecentPlay> _recentPlays = [];
   List<RecentPlay> get recentPlays => List.unmodifiable(_recentPlays);
+
+  /// Etat perso par titre (like, date du like, super-like, ecoutes), tel
+  /// qu'enregistre dans le fichier de donnees perso. Garde aussi les titres
+  /// absents de la bibliotheque en memoire (synchro en cours, ou
+  /// bibliotheque perdue) pour que la synchro suivante les retrouve :
+  /// jamais vide par une synchro.
+  Map<String, Map<String, dynamic>> _trackStates = {};
+
+  /// Vrai pendant que la synchro complete remplit la bibliotheque lot par
+  /// lot : une sauvegarde a ce moment n'ecrit que les donnees perso, pas une
+  /// bibliotheque a moitie recue.
+  bool _libraryFetchInProgress = false;
 
   /// Enregistre un album/playlist/artiste comme "recemment ecoute".
   /// Deplace l'entree en tete si elle existe deja au lieu de la dupliquer.
@@ -373,6 +390,7 @@ class MusicService {
     _missingTracks = [];
     _missingTracksView = null;
     _recentPlays = [];
+    _trackStates = {};
     _pinnedItems = [];
     _existingCovers.clear();
     _tracksNeedingOrderRecovery.clear();
@@ -386,12 +404,12 @@ class MusicService {
     _pinnedMirrorServerId = null;
   }
 
-  String get _cacheFileName {
-    if (_currentUserId != null && _currentUserId!.isNotEmpty) {
-      return 'library_$_currentUserId.json';
-    }
-    return 'library.json';
-  }
+  String get _cacheFileName => 'library$_accountSuffix.json';
+  String get _userDataFileName => 'userdata$_accountSuffix.json';
+  String get _accountSuffix =>
+      (_currentUserId != null && _currentUserId!.isNotEmpty)
+          ? '_$_currentUserId'
+          : '';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -403,7 +421,7 @@ class MusicService {
   }
 
   Future<String> _getCoversDir() async {
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await (_storageRoot ?? getApplicationDocumentsDirectory)();
     final dir = Directory(p.join(appDir.path, 'covers'));
     await dir.create(recursive: true);
     return dir.path;
@@ -1063,24 +1081,37 @@ class MusicService {
     _syncRecentPlaysMirror();
   }
 
-  /// Le cache de bibliotheque vit dans le dossier support de l'app
-  /// (AppData\Roaming sous Windows, dossier prive sous Android) et plus dans
-  /// Documents, que Windows synchronise souvent avec OneDrive : ce fichier
-  /// n'a rien a faire dans le cloud de l'utilisateur.
-  Future<File> _getCacheFile() async {
-    final supportDir = await getApplicationSupportDirectory();
-    final cacheDir = Directory(p.join(supportDir.path, 'cache'));
-    await cacheDir.create(recursive: true);
-    final file = File(p.join(cacheDir.path, _cacheFileName));
-    await _migrateLegacyCacheFile(file);
-    return file;
+  /// Le cache vit dans le dossier support de l'app (AppData\Roaming sous
+  /// Windows, dossier prive sous Android) et plus dans Documents, que
+  /// Windows synchronise souvent avec OneDrive : ces fichiers n'ont rien a
+  /// faire dans le cloud de l'utilisateur. La bibliotheque va dans cache/,
+  /// les donnees perso dans userdata/ (voir LibraryCacheStore).
+  ///
+  /// Les noms de fichiers sont lus AVANT tout await : un changement de
+  /// compte pendant la recherche du dossier ne doit pas faire ecrire les
+  /// donnees d'un compte dans les fichiers d'un autre.
+  Future<LibraryCacheStore> _cacheStore() {
+    final libraryName = _cacheFileName;
+    final userDataName = _userDataFileName;
+    return _cacheStoreFor(libraryName, userDataName);
+  }
+
+  Future<LibraryCacheStore> _cacheStoreFor(
+      String libraryName, String userDataName) async {
+    final root = await (_storageRoot ?? getApplicationSupportDirectory)();
+    final libraryPath = p.join(root.path, 'cache', libraryName);
+    if (_storageRoot == null) await _migrateLegacyCacheFile(File(libraryPath));
+    return LibraryCacheStore(
+      libraryPath: libraryPath,
+      userDataPath: p.join(root.path, 'userdata', userDataName),
+    );
   }
 
   /// Migration unique depuis Documents/cache (<= 1.2.x) : deplace l'ancien
   /// fichier s'il n'existe pas encore de cache au nouvel endroit, puis
   /// supprime l'ancien dans tous les cas (il contenait des URL avec jeton,
   /// voir SubsonicRefs). Le contenu est assaini au premier chargement
-  /// (Track.fromJson) puis reecrit sans URL a la sauvegarde suivante.
+  /// (Track.fromJson) puis reecrit sans URL tout de suite apres.
   Future<void> _migrateLegacyCacheFile(File target) async {
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
@@ -1092,25 +1123,58 @@ class MusicService {
     }
   }
 
-  Future _saveToCache() async {
-    final file = await _getCacheFile();
-    final data = {
-      'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
-      'offlineFiles': _offlineFiles,
+  /// Reporte l'etat perso des titres en memoire dans [_trackStates]. Les
+  /// titres absents de la bibliotheque en memoire gardent leur etat.
+  void _captureTrackStates() {
+    for (final t in _navidromeTracks) {
+      final state = trackUserStateOf(t);
+      if (state == null) {
+        _trackStates.remove(t.id);
+      } else {
+        _trackStates[t.id] = state;
+      }
+    }
+  }
+
+  Map<String, dynamic> _userDataJson() {
+    _captureTrackStates();
+    return {
+      'offlineFiles': Map<String, String>.from(_offlineFiles),
       'missingTracks': _missingTracks,
       'recentPlays': _recentPlays.map((r) => r.toJson()).toList(),
       'playlists': _playlists.map((pl) => pl.toJson()).toList(),
-      'albums': _albums.map((a) => a.toJson()).toList(),
+      'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
       'shareLikesWithFriends': _shareLikesWithFriends,
       'likesMirrorServerId': _likesMirrorServerId,
       'shareRecentPlaysWithFriends': _shareRecentPlaysWithFriends,
       'recentPlaysMirrorServerId': _recentPlaysMirrorServerId,
       'shareNowPlayingWithFriends': _shareNowPlayingWithFriends,
       'nowPlayingMirrorServerId': _nowPlayingMirrorServerId,
-      'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
       'pinnedMirrorServerId': _pinnedMirrorServerId,
+      'trackStates': Map<String, dynamic>.from(_trackStates),
     };
-    await file.writeAsString(jsonEncode(data));
+  }
+
+  Map<String, dynamic> _libraryJson() => {
+        'navidromeTracks': _navidromeTracks
+            .map((t) => withoutTrackUserFields(t.toJson()))
+            .toList(),
+        'albums': _albums.map((a) => a.toJson()).toList(),
+      };
+
+  Future _saveToCache() async {
+    // Contenu fige tout de suite (avant le premier await), comme les noms
+    // de fichiers dans _cacheStore.
+    final userData = _userDataJson();
+    final library = _libraryFetchInProgress ? null : _libraryJson();
+    final store = _cacheStore();
+    try {
+      await (await store).save(userData: userData, library: library);
+    } catch (e) {
+      // Le fichier precedent est intact (ecriture atomique) : on log et la
+      // prochaine sauvegarde reessaiera.
+      debugPrint('ERREUR SAUVEGARDE CACHE: $e');
+    }
   }
 
   void addTrack(Track track) {
@@ -1125,68 +1189,97 @@ class MusicService {
   }
 
   Future _loadFromCache() async {
-    final file = await _getCacheFile();
-    if (await file.exists()) {
+    final LoadedCache loaded;
+    try {
+      loaded = await (await _cacheStore()).load();
+    } catch (e) {
+      debugPrint('ERREUR CHARGEMENT CACHE: $e');
+      return;
+    }
+    debugPrint('CACHE: bibliotheque ${loaded.libraryBytes ~/ 1024} Ko, '
+        'donnees perso ${loaded.userDataBytes ~/ 1024} Ko');
+
+    final user = loaded.userData;
+    if (user != null) {
       try {
-        final raw = await file.readAsString();
-        final data = jsonDecode(raw);
-
-        _navidromeTracks = (data['navidromeTracks'] as List?)
-                ?.map((json) => Track.fromJson(json))
-                .toList() ??
-            [];
-        _navidromeTracksView = null;
-        _allTracks = List.from(_navidromeTracks);
-
-        _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
-
-        _playlists = (data['playlists'] as List?)
-                ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
-                .toList() ??
-            [];
-        _shareLikesWithFriends = data['shareLikesWithFriends'] ?? true;
-        _likesMirrorServerId = data['likesMirrorServerId'];
-        _shareRecentPlaysWithFriends =
-            data['shareRecentPlaysWithFriends'] ?? true;
-        _recentPlaysMirrorServerId = data['recentPlaysMirrorServerId'];
-        _shareNowPlayingWithFriends =
-            data['shareNowPlayingWithFriends'] ?? true;
-        _nowPlayingMirrorServerId = data['nowPlayingMirrorServerId'];
-        _missingTracks = (data['missingTracks'] as List?)
-                ?.map((m) => Map<String, dynamic>.from(m))
-                .toList() ??
-            [];
-        _missingTracksView = null;
-        _recentPlays = (data['recentPlays'] as List?)
-                ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
-                .toList() ??
-            [];
-        _pinnedItems = (data['pinnedItems'] as List?)
-                ?.map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
-                .toList() ??
-            [];
-        _pinnedMirrorServerId = data['pinnedMirrorServerId'];
-        _albums = (data['albums'] as List?)
-                ?.map((json) => Album.fromJson(json))
-                .toList() ??
-            [];
-        _albumsView = null;
-
-        // Ne rebuild que si pas d'albums en cache (premier chargement)
-        if (_albums.isEmpty) {
-          rebuildAlbums();
-        }
-
-        // Cache ecrit avant la 1.3 : les modeles l'ont deja converti en
-        // references sans jeton (voir SubsonicRefs) a la lecture ; on le
-        // reecrit tout de suite plutot qu'a la prochaine synchro, pour que
-        // les URL avec jeton disparaissent du disque des le premier lancement.
-        if (raw.contains('/rest/stream') || raw.contains('/rest/getCoverArt')) {
-          await _saveToCache();
-        }
+        _applyUserData(user);
       } catch (e) {
-        debugPrint('ERREUR CHARGEMENT CACHE: $e');
+        debugPrint('ERREUR LECTURE DONNEES PERSO: $e');
       }
+    }
+    final library = loaded.library;
+    if (library != null) {
+      try {
+        _applyLibrary(library, hasUserData: user != null);
+      } catch (e) {
+        debugPrint('ERREUR LECTURE BIBLIOTHEQUE: $e');
+      }
+    }
+
+    // Migration de schema, version precedente rechargee, ou cache d'avant
+    // la 1.3 (URL avec jeton, deja converties en references a la lecture,
+    // voir SubsonicRefs) : reecrit tout de suite plutot qu'a la prochaine
+    // synchro, pour que le disque soit sain des le premier lancement.
+    if (loaded.needsRewrite) await _saveToCache();
+  }
+
+  void _applyUserData(Map<String, dynamic> data) {
+    _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
+    _playlists = (data['playlists'] as List?)
+            ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
+            .toList() ??
+        [];
+    _shareLikesWithFriends = data['shareLikesWithFriends'] ?? true;
+    _likesMirrorServerId = data['likesMirrorServerId'];
+    _shareRecentPlaysWithFriends = data['shareRecentPlaysWithFriends'] ?? true;
+    _recentPlaysMirrorServerId = data['recentPlaysMirrorServerId'];
+    _shareNowPlayingWithFriends = data['shareNowPlayingWithFriends'] ?? true;
+    _nowPlayingMirrorServerId = data['nowPlayingMirrorServerId'];
+    _missingTracks = (data['missingTracks'] as List?)
+            ?.map((m) => Map<String, dynamic>.from(m))
+            .toList() ??
+        [];
+    _missingTracksView = null;
+    _recentPlays = (data['recentPlays'] as List?)
+            ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
+            .toList() ??
+        [];
+    _pinnedItems = (data['pinnedItems'] as List?)
+            ?.map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
+            .toList() ??
+        [];
+    _pinnedMirrorServerId = data['pinnedMirrorServerId'];
+    _trackStates = {
+      for (final e in ((data['trackStates'] as Map?) ?? const {}).entries)
+        if (e.value is Map)
+          e.key.toString(): Map<String, dynamic>.from(e.value as Map),
+    };
+  }
+
+  void _applyLibrary(Map<String, dynamic> data, {required bool hasUserData}) {
+    _navidromeTracks = (data['navidromeTracks'] as List?)
+            ?.map((json) => Track.fromJson(Map<String, dynamic>.from(json)))
+            .toList() ??
+        [];
+    // Le fichier de donnees perso fait foi pour les likes et compteurs. S'il
+    // est perdu (lui et sa version precedente), les likes reviendront du
+    // serveur a la prochaine synchro (voir reconcileTrack).
+    if (hasUserData) {
+      for (final t in _navidromeTracks) {
+        applyTrackUserState(t, _trackStates[t.id]);
+      }
+    }
+    _navidromeTracksView = null;
+    _allTracks = List.from(_navidromeTracks);
+    _albums = (data['albums'] as List?)
+            ?.map((json) => Album.fromJson(Map<String, dynamic>.from(json)))
+            .toList() ??
+        [];
+    _albumsView = null;
+
+    // Ne rebuild que si pas d'albums en cache (premier chargement)
+    if (_albums.isEmpty) {
+      rebuildAlbums();
     }
   }
 
@@ -1272,7 +1365,13 @@ class MusicService {
         await _navidrome.fetchStarredTrackIds(); // Map<String, DateTime?>
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
-    final localData = <String, Map<String, dynamic>>{};
+    // Etat perso enregistre d'abord (couvre les titres absents de la
+    // bibliotheque en memoire, ex. cache de bibliotheque perdu), puis celui
+    // des titres en memoire, plus recent.
+    final localData = <String, Map<String, dynamic>>{
+      for (final e in _trackStates.entries)
+        e.key: trackUserStateForReconcile(e.value),
+    };
     for (final t in _navidromeTracks) {
       localData[t.id] = {
         'isLiked': t.isLiked,
@@ -1299,6 +1398,11 @@ class MusicService {
     final previousTracks = _navidromeTracks;
     final merged = <Track>[];
     final List<Track> fresh;
+    // Les titres en memoire vont etre remplaces lot par lot : leur etat perso
+    // est mis de cote avant, pour qu'une sauvegarde pendant la synchro ne
+    // perde rien de ce qui n'a pas encore ete re-recu.
+    _captureTrackStates();
+    _libraryFetchInProgress = true;
     try {
       fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
         for (final t in batch) {
@@ -1321,6 +1425,8 @@ class MusicService {
       applyAlbumStarred();
       onProgress?.call();
       return false;
+    } finally {
+      _libraryFetchInProgress = false;
     }
 
     _navidromeTracks = fresh;

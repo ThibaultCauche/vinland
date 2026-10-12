@@ -63,6 +63,12 @@ commit.
   plus utilisée nulle part.
 
 ### Corrigé
+- Une app tuée pendant une sauvegarde ou une synchro ne perd plus les
+  titres hors ligne, les playlists locales, les épingles ni l'ordre des
+  likes : écriture atomique avec copie de secours (`.bak`) rechargée si le
+  fichier est abîmé, et données perso dans un fichier à part
+  (`userdata_<compte>.json`) que la synchro de bibliothèque ne réécrit
+  jamais. L'ancien fichier est découpé tout seul au premier lancement.
 - Sur Windows, la page d'un album au titre court (« 99 ») n'affiche plus
   les titres d'un autre album dont le nom le contient (« 99 Nights »).
 - Sur Windows, une playlist partagée par un ami s'ouvre même quand aucun
