@@ -160,8 +160,7 @@ class _LikeButton extends StatelessWidget {
           size: 22,
           idleColor: Colors.white,
           onTap: () => context.read<AppState>().toggleLike(trackId),
-          onLongPress: () =>
-              context.read<AppState>().toggleSuperLike(trackId),
+          onLongPress: () => context.read<AppState>().toggleSuperLike(trackId),
         );
       },
     );
@@ -182,8 +181,7 @@ class _MiniProgressBar extends StatelessWidget {
     if (isRemote) {
       return Selector<AppState, Duration>(
         selector: (_, state) => state.displayPosition,
-        builder: (context, position, __) =>
-            _buildBar(position, track.duration),
+        builder: (context, position, __) => _buildBar(position, track.duration),
       );
     }
     final player = context.read<AppState>().player;

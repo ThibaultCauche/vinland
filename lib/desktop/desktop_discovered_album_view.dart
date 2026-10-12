@@ -452,9 +452,8 @@ class _DiscoveredTrackRow extends StatelessWidget {
                 icon: localTrack!.isLiked
                     ? Icons.favorite
                     : Icons.favorite_border,
-                color: localTrack!.isLiked
-                    ? DesktopGlass.accent
-                    : Colors.white54,
+                color:
+                    localTrack!.isLiked ? DesktopGlass.accent : Colors.white54,
                 size: 16,
                 onPressed: () =>
                     context.read<AppState>().toggleLike(localTrack!.id),

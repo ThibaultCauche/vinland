@@ -252,10 +252,10 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                 SliverToBoxAdapter(
                   child: _Header(
                     album: widget.album,
-                    trackCount: _hasLoadedOnce ? items.length : albumTracks.length,
+                    trackCount:
+                        _hasLoadedOnce ? items.length : albumTracks.length,
                     isLiked: isLiked,
-                    onToggleLike: () =>
-                        state.toggleLikeAlbum(widget.album.id),
+                    onToggleLike: () => state.toggleLikeAlbum(widget.album.id),
                     onOpenArtist: () =>
                         widget.onOpenArtist(widget.album.artist),
                     onPlay: albumTracks.isEmpty
@@ -304,8 +304,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                         DesktopHeroMenuAction(
                           label: 'Télécharger',
                           icon: Icons.download_outlined,
-                          onTap: () =>
-                              state.downloadTracksOffline(albumTracks),
+                          onTap: () => state.downloadTracksOffline(albumTracks),
                         ),
                         DesktopHeroMenuAction(
                           label: 'Ajouter à une playlist',
@@ -343,8 +342,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                               isPlaying: currentTrack?.id == track.id,
                               onTap: () {
                                 _recordRecent(state);
-                                state.playTrack(track,
-                                    trackList: albumTracks);
+                                state.playTrack(track, trackList: albumTracks);
                               },
                               onLike: () => state.toggleLike(track.id),
                               onMore: () {},
@@ -531,8 +529,7 @@ class _Header extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text('Album • $trackCount titre${trackCount > 1 ? 's' : ''}',
-                  style:
-                      const TextStyle(color: Colors.white54, fontSize: 12)),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
               const SizedBox(height: 16),
               Row(
                 children: [

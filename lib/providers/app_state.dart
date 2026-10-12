@@ -202,8 +202,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _music.likedTracks.any((t) => t.id == displayTrack!.id);
   bool get isCurrentTrackSuperLiked =>
       displayTrack != null &&
-      _music.likedTracks
-          .any((t) => t.id == displayTrack!.id && t.superLiked);
+      _music.likedTracks.any((t) => t.id == displayTrack!.id && t.superLiked);
 
   // Getters
   List<Track> get allTracks => _music.navidromeTracks;
@@ -449,8 +448,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       // arrive, on arrete d'ignorer -- une vraie interruption externe
       // (perte du focus audio, appel telephonique...) survenant APRES cet
       // accord est donc toujours prise en compte normalement.
-      final contradictsManualIntent =
-          _lastManualPlaybackIntent != null && _lastManualPlaybackIntent != playing;
+      final contradictsManualIntent = _lastManualPlaybackIntent != null &&
+          _lastManualPlaybackIntent != playing;
       if (!contradictsManualIntent) {
         _lastManualPlaybackIntent = null;
         if (playing != isPlaying) {
@@ -902,8 +901,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _performSync() async {
     final prefs = await SharedPreferences.getInstance();
     final lastFullMs = prefs.getInt(_keyLastFullSyncAt);
-    final lastFull =
-        lastFullMs != null ? DateTime.fromMillisecondsSinceEpoch(lastFullMs) : null;
+    final lastFull = lastFullMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(lastFullMs)
+        : null;
     final needsFullSync = _music.navidromeTracks.isEmpty ||
         lastFull == null ||
         DateTime.now().difference(lastFull) > _fullSyncInterval;
@@ -1079,9 +1079,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _history.clear();
     _sourceOrder = trackList ?? [track];
     final startIndex = _sourceOrder.indexWhere((t) => t.id == track.id);
-    var remainder = startIndex == -1
-        ? <Track>[]
-        : _sourceOrder.sublist(startIndex + 1);
+    var remainder =
+        startIndex == -1 ? <Track>[] : _sourceOrder.sublist(startIndex + 1);
     if (isShuffled) remainder = List<Track>.of(remainder)..shuffle();
     queue = remainder;
     _consecutiveLoadFailures = 0;
@@ -1561,8 +1560,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // a revoir si ca devient sensible a la latence/batterie.
   void _startPersonalSyncPolling() {
     _personalSyncPoll?.cancel();
-    _personalSyncPoll =
-        Timer.periodic(const Duration(seconds: 20), (_) => _tryJoinPersonalSync());
+    _personalSyncPoll = Timer.periodic(
+        const Duration(seconds: 20), (_) => _tryJoinPersonalSync());
     _tryJoinPersonalSync();
   }
 
@@ -1682,8 +1681,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         break;
       case 'queue_add':
       case 'play_next':
-        final track =
-            cmd.trackId == null ? null : _findTrackById(cmd.trackId!);
+        final track = cmd.trackId == null ? null : _findTrackById(cmd.trackId!);
         if (track == null) return;
         if (cmd.action == 'play_next') {
           playNext(track);
@@ -1696,8 +1694,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         // (voir remotePlayTrack) : contrairement a queue_add/play_next, on
         // veut vraiment lancer ce titre tout de suite, comme si on l'avait
         // tape localement sur l'hote.
-        final track =
-            cmd.trackId == null ? null : _findTrackById(cmd.trackId!);
+        final track = cmd.trackId == null ? null : _findTrackById(cmd.trackId!);
         if (track == null) return;
         playTrack(track);
         break;
@@ -1770,7 +1767,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// l'hote quand on est un participant de synchro perso (voir
   /// isPersonalSyncParticipant) -- rien ne joue localement dans ce cas, donc
   /// currentTrack/isPlaying/position locaux seraient perimes ou vides.
-  Track? get displayTrack => isPersonalSyncParticipant ? remoteTrack : currentTrack;
+  Track? get displayTrack =>
+      isPersonalSyncParticipant ? remoteTrack : currentTrack;
   bool get displayIsPlaying =>
       isPersonalSyncParticipant ? remoteIsPlaying : isPlaying;
   Duration get displayPosition =>
@@ -1981,7 +1979,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// boite de reception -- meme resolution/navigation dans les deux cas
   /// (voir DeepLinkService, qui appelle cette methode). Retourne false si
   /// l'element est introuvable (id invalide, playlist privee inaccessible...).
-  Future<bool> openSharedItem({required String type, required String id}) async {
+  Future<bool> openSharedItem(
+      {required String type, required String id}) async {
     switch (type) {
       case 'track':
         final track = _findSharedTrack(id);
@@ -2049,6 +2048,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       }
       return null;
     }
+
     final found = searchFriends();
     if (found != null) return found;
     // Pas trouvee dans le cache actuel : peut-etre juste pas encore
@@ -2417,8 +2417,8 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         continue;
       }
       anyBatchSucceeded = true;
-      uploadedTrackIds
-          .addAll(status.files.where((f) => f.trackId != null).map((f) => f.trackId!));
+      uploadedTrackIds.addAll(
+          status.files.where((f) => f.trackId != null).map((f) => f.trackId!));
       unmatched.addAll(status.files
           .where((f) => f.trackId == null)
           .map((f) => f.originalFilename));

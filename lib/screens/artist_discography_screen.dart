@@ -104,7 +104,8 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
       album: dt.albumName == 'Inconnu' ? null : dt.albumName,
     );
     if (jobId == null) {
-      if (mounted) setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
+      if (mounted)
+        setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
       return;
     }
 
@@ -151,7 +152,9 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
         ),
         title: Text('Discographie · ${widget.artistName}',
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
       ),
       body: _loading
           ? const Center(

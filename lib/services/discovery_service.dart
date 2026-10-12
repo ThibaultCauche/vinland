@@ -208,7 +208,8 @@ class DiscoveryService {
 
     int matches = 0;
     for (final dt in deezerTracks) {
-      if (localTracks.any((lt) => MatchingService.titlesMatch(lt.title, dt.title))) {
+      if (localTracks
+          .any((lt) => MatchingService.titlesMatch(lt.title, dt.title))) {
         matches++;
       }
     }

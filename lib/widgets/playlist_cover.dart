@@ -44,7 +44,8 @@ class PlaylistCover extends StatelessWidget {
           color: const Color(0xFF2A2A2A),
           borderRadius: borderRadius,
         ),
-        child: Icon(Icons.queue_music, color: Colors.white54, size: size * 0.45),
+        child:
+            Icon(Icons.queue_music, color: Colors.white54, size: size * 0.45),
       );
     }
 

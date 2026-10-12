@@ -129,7 +129,8 @@ class _DesktopArtistDiscographyViewState
       album: dt.albumName == 'Inconnu' ? null : dt.albumName,
     );
     if (jobId == null) {
-      if (mounted) setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
+      if (mounted)
+        setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
       return;
     }
 
@@ -149,7 +150,9 @@ class _DesktopArtistDiscographyViewState
   }
 
   String? _coverPath(ArtistAlbumEntry entry) =>
-      entry.local?.coverPath ?? entry.discovered?.coverBigUrl ?? entry.discovered?.coverUrl;
+      entry.local?.coverPath ??
+      entry.discovered?.coverBigUrl ??
+      entry.discovered?.coverUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -257,8 +260,7 @@ class _DesktopArtistDiscographyViewState
                                     state.playTrack(rt.local!,
                                         trackList: localTracks);
                                   },
-                                  onLike: () =>
-                                      state.toggleLike(rt.local!.id),
+                                  onLike: () => state.toggleLike(rt.local!.id),
                                   onMore: () {},
                                 );
                               }
@@ -349,8 +351,7 @@ class _ReleaseHeader extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '$type${year != null ? ' • $year' : ''} • ${entry.trackCount} titre${entry.trackCount > 1 ? 's' : ''}',
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 12),
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
               ),
@@ -396,8 +397,7 @@ class _MissingReleaseTrackRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text(track.artistName,
-                    style: const TextStyle(
-                        color: Colors.white24, fontSize: 12),
+                    style: const TextStyle(color: Colors.white24, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ],

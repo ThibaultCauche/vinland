@@ -44,9 +44,8 @@ class PlayerScreen extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.queue_music, color: Colors.white),
                 tooltip: 'File d\'attente',
-                onPressed: () => context
-                    .read<AppState>()
-                    .pushOverlay(const QueueScreen()),
+                onPressed: () =>
+                    context.read<AppState>().pushOverlay(const QueueScreen()),
               ),
               // Bouton reel a cote de la file d'attente (voir showDeviceMenu),
               // pas cache dans les options -- meme visibilite que cote
@@ -57,9 +56,8 @@ class PlayerScreen extends StatelessWidget {
                     state.connectedParticipantDeviceName != null,
                 builder: (context, isConnected, __) => IconButton(
                   icon: Icon(Icons.devices,
-                      color: isConnected
-                          ? const Color(0xFF1DB954)
-                          : Colors.white),
+                      color:
+                          isConnected ? const Color(0xFF1DB954) : Colors.white),
                   tooltip: 'Périphériques',
                   onPressed: () => showDeviceMenu(context),
                 ),

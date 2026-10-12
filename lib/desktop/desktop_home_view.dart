@@ -190,8 +190,8 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: const Text('Tout afficher',
-                    style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600)),
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
           ],
         ),
@@ -381,7 +381,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ArtistAvatar(
-                      artistName: artist, fallbackCoverPath: coverPath, size: 96),
+                      artistName: artist,
+                      fallbackCoverPath: coverPath,
+                      size: 96),
                   const SizedBox(height: 8),
                   Text(artist,
                       maxLines: 1,
@@ -542,7 +544,8 @@ class _RecentPlayCover extends StatelessWidget {
           .cast<Playlist?>()
           .firstWhere((p) => p?.id == entry.id, orElse: () => null);
       if (playlist != null) {
-        return PlaylistCover(playlist: playlist, size: 48, borderRadius: _shape);
+        return PlaylistCover(
+            playlist: playlist, size: 48, borderRadius: _shape);
       }
     }
 
@@ -615,7 +618,8 @@ class _RecentPlayCover extends StatelessWidget {
 class DesktopShelfCover extends StatelessWidget {
   final String? coverPath;
   final double size;
-  const DesktopShelfCover({super.key, required this.coverPath, required this.size});
+  const DesktopShelfCover(
+      {super.key, required this.coverPath, required this.size});
 
   @override
   Widget build(BuildContext context) {

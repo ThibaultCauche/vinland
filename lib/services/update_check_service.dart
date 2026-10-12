@@ -36,9 +36,9 @@ class UpdateCheckService {
 
   Future<UpdateInfo?> checkForUpdate() async {
     try {
-      final response = await http
-          .get(Uri.parse(_apiUrl), headers: {'Accept': 'application/vnd.github+json'})
-          .timeout(const Duration(seconds: 8));
+      final response = await http.get(Uri.parse(_apiUrl), headers: {
+        'Accept': 'application/vnd.github+json'
+      }).timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return null;
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -89,7 +89,8 @@ class UpdateCheckService {
   }
 
   bool _isNewer(List<int> latest, List<int> current) {
-    final length = latest.length > current.length ? latest.length : current.length;
+    final length =
+        latest.length > current.length ? latest.length : current.length;
     for (var i = 0; i < length; i++) {
       final l = i < latest.length ? latest[i] : 0;
       final c = i < current.length ? current[i] : 0;

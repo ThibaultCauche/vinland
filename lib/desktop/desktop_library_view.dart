@@ -232,9 +232,8 @@ class _GridTile extends StatelessWidget {
                       )
                     : null,
               ),
-              child: !exists
-                  ? Icon(icon, color: Colors.white54, size: 40)
-                  : null,
+              child:
+                  !exists ? Icon(icon, color: Colors.white54, size: 40) : null,
             ),
             const SizedBox(height: 8),
             Text(title,

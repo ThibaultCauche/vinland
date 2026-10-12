@@ -83,7 +83,8 @@ class _SmoothScrollPosition extends ScrollPositionWithSingleContext {
     final double targetPixels =
         (pixels + delta * boost).clamp(minScrollExtent, maxScrollExtent);
     if (targetPixels != pixels) {
-      animateTo(targetPixels, duration: _animDuration, curve: Curves.easeOutCubic);
+      animateTo(targetPixels,
+          duration: _animDuration, curve: Curves.easeOutCubic);
     }
   }
 }

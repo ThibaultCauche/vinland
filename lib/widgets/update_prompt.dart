@@ -54,8 +54,7 @@ void _confirmAutoUpdate(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
-      title:
-          const Text('Mettre à jour', style: TextStyle(color: Colors.white)),
+      title: const Text('Mettre à jour', style: TextStyle(color: Colors.white)),
       content: Text(
         isWindows
             ? "L'app va se fermer, se mettre à jour, puis redémarrer automatiquement. "
@@ -68,8 +67,7 @@ void _confirmAutoUpdate(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child:
-              const Text('Annuler', style: TextStyle(color: Colors.white54)),
+          child: const Text('Annuler', style: TextStyle(color: Colors.white54)),
         ),
         TextButton(
           onPressed: () {

@@ -119,7 +119,8 @@ class _SearchScreenState extends State<SearchScreen>
       setState(() {
         _tracks = [
           for (final dt in discoveredTracks)
-            _SearchTrack(discovered: dt, local: _findLocalTrack(dt, localTracks)),
+            _SearchTrack(
+                discovered: dt, local: _findLocalTrack(dt, localTracks)),
         ];
         _artists = results[0] as List<DiscoveredArtist>;
         _albums = results[1] as List<DiscoveredAlbum>;
@@ -409,7 +410,8 @@ class _SearchScreenState extends State<SearchScreen>
   Widget _buildTracks() {
     if (_tracks.isEmpty) {
       return const Center(
-        child: Text('Aucun titre trouvé', style: TextStyle(color: Colors.white38)),
+        child:
+            Text('Aucun titre trouvé', style: TextStyle(color: Colors.white38)),
       );
     }
     final state = context.read<AppState>();

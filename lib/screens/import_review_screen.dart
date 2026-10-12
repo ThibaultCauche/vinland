@@ -99,28 +99,29 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
               : Column(
                   children: [
                     _buildStatsCard(),
-                  if (_previewTracks.isNotEmpty) ...[
-                    _buildValidationWarning(),
-                    _buildSelectAllBar(selectedCount),
-                    Expanded(
-                      child: ListView.builder(
-                        itemCount: _previewTracks.length,
-                        itemBuilder: (context, index) =>
-                            _buildReviewTile(index),
-                      ),
-                    ),
-                  ],
-                  if (_previewTracks.isEmpty && !_isLoading)
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          'Aucun fichier musical trouvé',
-                          style: TextStyle(color: Colors.white38, fontSize: 16),
+                    if (_previewTracks.isNotEmpty) ...[
+                      _buildValidationWarning(),
+                      _buildSelectAllBar(selectedCount),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: _previewTracks.length,
+                          itemBuilder: (context, index) =>
+                              _buildReviewTile(index),
                         ),
                       ),
-                    ),
-                ],
-              ),
+                    ],
+                    if (_previewTracks.isEmpty && !_isLoading)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'Aucun fichier musical trouvé',
+                            style:
+                                TextStyle(color: Colors.white38, fontSize: 16),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
         ),
       ),
     );

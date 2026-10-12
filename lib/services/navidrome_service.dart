@@ -259,7 +259,8 @@ class NavidromeService {
             .timeout(const Duration(seconds: 15));
 
         if (response.statusCode != 200) {
-          debugPrint('ERREUR LISTE ALBUMS (offset=$offset): ${response.statusCode}');
+          debugPrint(
+              'ERREUR LISTE ALBUMS (offset=$offset): ${response.statusCode}');
           break;
         }
 
@@ -371,7 +372,8 @@ class NavidromeService {
         return fetchAlbumTracks(albumId,
             albumArtist: albumArtist, retriesLeft: retriesLeft - 1);
       }
-      debugPrint('fetchAlbumTracks error (album $albumId, no more retries): $e');
+      debugPrint(
+          'fetchAlbumTracks error (album $albumId, no more retries): $e');
     }
     return [];
   }
@@ -401,7 +403,8 @@ class NavidromeService {
     return '$_baseUrl/rest/getCoverArt.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland';
   }
 
-  Track _mapSubsonicTrack(dynamic json, {String? albumArtist, String? albumId}) {
+  Track _mapSubsonicTrack(dynamic json,
+      {String? albumArtist, String? albumId}) {
     final id = json['id']?.toString() ?? '';
     final durationSec = json['duration'] ?? 180;
     return Track(

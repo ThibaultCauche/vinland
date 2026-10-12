@@ -23,8 +23,8 @@ void showJamMenu(BuildContext context) {
           if (state.isJamHost && transferTargets.isNotEmpty)
             for (final username in transferTargets)
               ListTile(
-                leading: const Icon(Icons.swap_horiz,
-                    color: Colors.white, size: 26),
+                leading:
+                    const Icon(Icons.swap_horiz, color: Colors.white, size: 26),
                 title: Text('Céder l\'hébergement à $username',
                     style: const TextStyle(color: Colors.white, fontSize: 16)),
                 onTap: () {
@@ -125,8 +125,7 @@ void showDeviceMenu(BuildContext context) {
           else if (state.isPersonalSyncHost &&
               state.connectedParticipantDeviceName != null)
             ListTile(
-              leading:
-                  const Icon(Icons.devices, color: Colors.white, size: 26),
+              leading: const Icon(Icons.devices, color: Colors.white, size: 26),
               title: Text(
                 'Connecté : ${state.connectedParticipantDeviceName}',
                 style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -140,7 +139,8 @@ void showDeviceMenu(BuildContext context) {
             )
           else
             const ListTile(
-              leading: Icon(Icons.devices_other, color: Colors.white38, size: 26),
+              leading:
+                  Icon(Icons.devices_other, color: Colors.white38, size: 26),
               title: Text('Aucun autre appareil connecté',
                   style: TextStyle(color: Colors.white38, fontSize: 16)),
               minLeadingWidth: 24,

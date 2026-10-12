@@ -18,33 +18,39 @@ void showArtistPicker(BuildContext context, String artistsField) {
       .toList();
 
   if (artists.length <= 1) {
-    context.read<AppState>().pushOverlay(ArtistScreen(artistName: artistsField));
+    context
+        .read<AppState>()
+        .pushOverlay(ArtistScreen(artistName: artistsField));
     return;
   }
 
-  showOptionsSheet(context, builder: (ctx) => [
-    const Padding(
-      padding: EdgeInsets.all(16),
-      child: Text(
-        'Sélectionner un artiste',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
-    const Divider(color: Color(0xFF2A2A2A), height: 1),
-    ...artists.map((artist) => ListTile(
-          leading: const Icon(Icons.person, color: Colors.white),
-          title: Text(artist, style: const TextStyle(color: Colors.white)),
-          onTap: () {
-            Navigator.pop(ctx);
-            context.read<AppState>().pushOverlay(ArtistScreen(artistName: artist));
-          },
-        )),
-    const SizedBox(height: 8),
-  ]);
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Sélectionner un artiste',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            ...artists.map((artist) => ListTile(
+                  leading: const Icon(Icons.person, color: Colors.white),
+                  title:
+                      Text(artist, style: const TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context
+                        .read<AppState>()
+                        .pushOverlay(ArtistScreen(artistName: artist));
+                  },
+                )),
+            const SizedBox(height: 8),
+          ]);
 }
 
 /// Feuille d'options d'un artiste (clic long sur sa tuile) -- pas d'action
@@ -58,69 +64,70 @@ void showArtistOptions(BuildContext context, String artistName,
       MatchingService.artistFieldContains(field, artistName);
   final tracks = state.allTracks.where((t) => artistMatch(t.artist)).toList();
 
-  showOptionsSheet(context, builder: (ctx) => [
-    BottomSheetHeader(
-      coverPath: coverPath,
-      title: artistName,
-      subtitle: 'Artiste',
-      fallbackIcon: Icons.person,
-    ),
-    const Divider(color: Color(0xFF2A2A2A), height: 1),
-    SheetTile(
-      icon: state.isPinned(PinnedItemType.artist, artistName)
-          ? Icons.push_pin
-          : Icons.push_pin_outlined,
-      label: state.isPinned(PinnedItemType.artist, artistName)
-          ? "Désépingler de l'accueil"
-          : "Épingler à l'accueil",
-      onTap: () {
-        Navigator.pop(ctx);
-        state.togglePin(PinnedItem(
-          type: PinnedItemType.artist,
-          id: artistName,
-          title: artistName,
-          subtitle: 'Artiste',
-        ));
-      },
-    ),
-    SheetTile(
-      icon: Icons.shuffle,
-      label: 'Lecture aléatoire',
-      onTap: () {
-        Navigator.pop(ctx);
-        if (tracks.isEmpty) return;
-        state.recordRecentPlay(RecentPlay(
-          type: RecentPlayType.artist,
-          id: artistName,
-          title: artistName,
-          subtitle: 'Artiste',
-          coverPath: coverPath,
-          playedAt: DateTime.now(),
-        ));
-        final shuffled = List.of(tracks)..shuffle();
-        state.playTrack(shuffled.first, trackList: shuffled);
-      },
-    ),
-    SheetTile(
-      icon: Icons.playlist_play,
-      label: 'Lire ensuite',
-      onTap: () {
-        Navigator.pop(ctx);
-        for (final t in tracks.reversed) {
-          state.playNext(t);
-        }
-      },
-    ),
-    SheetTile(
-      icon: Icons.playlist_add,
-      label: "Ajouter à la file d'attente",
-      onTap: () {
-        Navigator.pop(ctx);
-        for (final t in tracks) {
-          state.addToQueue(t);
-        }
-      },
-    ),
-    const SizedBox(height: 8),
-  ]);
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            BottomSheetHeader(
+              coverPath: coverPath,
+              title: artistName,
+              subtitle: 'Artiste',
+              fallbackIcon: Icons.person,
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            SheetTile(
+              icon: state.isPinned(PinnedItemType.artist, artistName)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              label: state.isPinned(PinnedItemType.artist, artistName)
+                  ? "Désépingler de l'accueil"
+                  : "Épingler à l'accueil",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.togglePin(PinnedItem(
+                  type: PinnedItemType.artist,
+                  id: artistName,
+                  title: artistName,
+                  subtitle: 'Artiste',
+                ));
+              },
+            ),
+            SheetTile(
+              icon: Icons.shuffle,
+              label: 'Lecture aléatoire',
+              onTap: () {
+                Navigator.pop(ctx);
+                if (tracks.isEmpty) return;
+                state.recordRecentPlay(RecentPlay(
+                  type: RecentPlayType.artist,
+                  id: artistName,
+                  title: artistName,
+                  subtitle: 'Artiste',
+                  coverPath: coverPath,
+                  playedAt: DateTime.now(),
+                ));
+                final shuffled = List.of(tracks)..shuffle();
+                state.playTrack(shuffled.first, trackList: shuffled);
+              },
+            ),
+            SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                for (final t in tracks.reversed) {
+                  state.playNext(t);
+                }
+              },
+            ),
+            SheetTile(
+              icon: Icons.playlist_add,
+              label: "Ajouter à la file d'attente",
+              onTap: () {
+                Navigator.pop(ctx);
+                for (final t in tracks) {
+                  state.addToQueue(t);
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+          ]);
 }

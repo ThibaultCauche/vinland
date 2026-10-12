@@ -72,8 +72,7 @@ class DesktopImportView extends StatelessWidget {
                         const SizedBox(height: 6),
                         const Text(
                           'Un ou plusieurs fichiers audio',
-                          style: TextStyle(
-                              color: Colors.white38, fontSize: 12),
+                          style: TextStyle(color: Colors.white38, fontSize: 12),
                         ),
                       ],
                     ),

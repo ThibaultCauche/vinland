@@ -208,9 +208,9 @@ class DownloadWorkerService {
     if (!isConfigured) return null;
     final uri = Uri.parse('$kDownloadWorkerServiceBaseUrl/downloads/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       debugPrint(
           '[DownloadWorker] GET $uri -> ${response.statusCode} ${response.body}');
       if (response.statusCode != 200) return null;
@@ -234,9 +234,9 @@ class DownloadWorkerService {
     final uri =
         Uri.parse('$kDownloadWorkerServiceBaseUrl/maintenance/run-tag-scan');
     try {
-      final response = await http
-          .post(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.post(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       debugPrint(
           '[DownloadWorker] POST $uri -> ${response.statusCode} ${response.body}');
       if (response.statusCode != 202) return null;
@@ -252,12 +252,12 @@ class DownloadWorkerService {
   /// "summary" une fois termine -- voir GET /maintenance/tag-scan/<job_id>.
   Future<DownloadJobStatus?> getTagScanStatus(String jobId) async {
     if (!isConfigured) return null;
-    final uri = Uri.parse(
-        '$kDownloadWorkerServiceBaseUrl/maintenance/tag-scan/$jobId');
+    final uri =
+        Uri.parse('$kDownloadWorkerServiceBaseUrl/maintenance/tag-scan/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
       return DownloadJobStatus.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,
@@ -308,9 +308,11 @@ class DownloadWorkerService {
       final request = http.MultipartRequest('POST', uri)
         ..headers['X-Api-Key'] = kDownloadWorkerServiceApiKey;
       for (final file in files) {
-        request.files.add(await http.MultipartFile.fromPath('files', file.path));
+        request.files
+            .add(await http.MultipartFile.fromPath('files', file.path));
       }
-      final streamed = await request.send().timeout(const Duration(minutes: 10));
+      final streamed =
+          await request.send().timeout(const Duration(minutes: 10));
       final response = await http.Response.fromStream(streamed);
       debugPrint(
           '[DownloadWorker] POST $uri (${files.length} fichiers) -> ${response.statusCode}');
@@ -327,9 +329,9 @@ class DownloadWorkerService {
     if (!isConfigured) return null;
     final uri = Uri.parse('$kDownloadWorkerServiceBaseUrl/imports/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
       return ImportJobStatus.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,

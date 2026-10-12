@@ -291,8 +291,8 @@ class MusicService {
   /// toutes les 6h (voir AppState._performSync).
   void _applyPinnedMirrorFrom(List<Map<String, dynamic>> ownedPlaylists) {
     final match = ownedPlaylists.firstWhere(
-      (pl) => (pl['comment'] as String? ?? '')
-          .startsWith(_pinnedMirrorTagPrefix),
+      (pl) =>
+          (pl['comment'] as String? ?? '').startsWith(_pinnedMirrorTagPrefix),
       orElse: () => <String, dynamic>{},
     );
     final id = match['id'] as String?;
@@ -1562,7 +1562,8 @@ class MusicService {
     }
     _tracksNeedingOrderRecovery.clear();
     if (recovered > 0) {
-      debugPrint('ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
+      debugPrint(
+          'ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
       _debouncedSave();
     }
   }

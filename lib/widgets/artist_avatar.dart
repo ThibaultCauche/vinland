@@ -60,8 +60,8 @@ class _ArtistAvatarState extends State<ArtistAvatar> {
           break;
         }
       }
-      url = (match ?? (results.isNotEmpty ? results.first : null))
-          ?.pictureBigUrl;
+      url =
+          (match ?? (results.isNotEmpty ? results.first : null))?.pictureBigUrl;
     } catch (_) {
       // ponytail: pas de retry -- l'avatar reste sur la cover de repli, deja
       // un rendu correct.

@@ -159,7 +159,8 @@ class _ReceivedShareCard extends StatelessWidget {
     return DesktopHoverable(
       onTap: () async {
         final state = context.read<AppState>();
-        final ok = await state.openSharedItem(type: share.type, id: share.itemId);
+        final ok =
+            await state.openSharedItem(type: share.type, id: share.itemId);
         if (ok) await state.dismissShare(share);
       },
       borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
@@ -283,8 +284,8 @@ class _FriendCard extends StatelessWidget {
                 ),
                 if (alreadyInThisJam)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white10,
                       borderRadius: BorderRadius.circular(16),

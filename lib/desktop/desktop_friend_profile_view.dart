@@ -167,10 +167,8 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                                     ownerUsername: pl.ownerUsername,
                                     isLikesMirror: pl.isLikesMirror,
                                   );
-                                  state.pushOverlay(
-                                      PlaylistScreen(
-                                          playlist: refreshed,
-                                          readOnly: true));
+                                  state.pushOverlay(PlaylistScreen(
+                                      playlist: refreshed, readOnly: true));
                                 },
                               );
                             },
@@ -378,8 +376,7 @@ class _Header extends StatelessWidget {
                               hoverColor: Colors.white.withOpacity(0.18),
                               splashColor: Colors.white.withOpacity(0.12),
                               onTap: () async {
-                                final messenger =
-                                    ScaffoldMessenger.of(context);
+                                final messenger = ScaffoldMessenger.of(context);
                                 final ok = await context
                                     .read<AppState>()
                                     .joinJamSession(friend.jamSessionId!);

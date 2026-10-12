@@ -314,12 +314,12 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                               },
                         moreActions: [
                           DesktopHeroMenuAction(
-                            label: state.isPinned(PinnedItemType.artist,
-                                    widget.artistName)
+                            label: state.isPinned(
+                                    PinnedItemType.artist, widget.artistName)
                                 ? "Désépingler de l'accueil"
                                 : "Épingler à l'accueil",
-                            icon: state.isPinned(PinnedItemType.artist,
-                                    widget.artistName)
+                            icon: state.isPinned(
+                                    PinnedItemType.artist, widget.artistName)
                                 ? Icons.push_pin
                                 : Icons.push_pin_outlined,
                             onTap: () => state.togglePin(PinnedItem(
@@ -381,13 +381,12 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                             builder: (context, constraints) {
                               const maxExtent = 170.0;
                               const spacing = 14.0;
-                              final columns = ((constraints.maxWidth +
-                                          spacing) /
-                                      (maxExtent + spacing))
-                                  .floor()
-                                  .clamp(1, albumEntries.length);
-                              final shown =
-                                  albumEntries.take(columns).toList();
+                              final columns =
+                                  ((constraints.maxWidth + spacing) /
+                                          (maxExtent + spacing))
+                                      .floor()
+                                      .clamp(1, albumEntries.length);
+                              final shown = albumEntries.take(columns).toList();
                               return GridView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
@@ -728,9 +727,8 @@ class _PopularTrackRow extends StatelessWidget {
                 icon: track.local!.isLiked
                     ? Icons.favorite
                     : Icons.favorite_border,
-                color: track.local!.isLiked
-                    ? DesktopGlass.accent
-                    : Colors.white54,
+                color:
+                    track.local!.isLiked ? DesktopGlass.accent : Colors.white54,
                 size: 18,
                 onPressed: () =>
                     context.read<AppState>().toggleLike(track.local!.id),

@@ -46,88 +46,91 @@ void showAlbumOptions(BuildContext context, Album album) {
   final state = context.read<AppState>();
   final tracks = tracksForAlbum(state, album);
 
-  showOptionsSheet(context, builder: (ctx) => [
-    BottomSheetHeader(
-      coverPath: album.coverPath,
-      title: album.title,
-      subtitle: album.artist,
-    ),
-    const Divider(color: Color(0xFF2A2A2A), height: 1),
-    SheetTile(
-      icon: album.isSaved ? Icons.favorite : Icons.favorite_border,
-      label: album.isSaved ? 'Retirer des albums likes' : 'Ajouter aux albums likes',
-      iconColor: album.isSaved ? const Color(0xFF1DB954) : Colors.white,
-      onTap: () {
-        Navigator.pop(ctx);
-        state.toggleLikeAlbum(album.id);
-      },
-    ),
-    SheetTile(
-      icon: Icons.person_outline,
-      label: "Accéder à l'artiste",
-      onTap: () {
-        Navigator.pop(ctx);
-        showArtistPicker(context, album.artist);
-      },
-    ),
-    SheetTile(
-      icon: state.isPinned(PinnedItemType.album, album.id)
-          ? Icons.push_pin
-          : Icons.push_pin_outlined,
-      label: state.isPinned(PinnedItemType.album, album.id)
-          ? "Désépingler de l'accueil"
-          : "Épingler à l'accueil",
-      onTap: () {
-        Navigator.pop(ctx);
-        state.togglePin(PinnedItem(
-          type: PinnedItemType.album,
-          id: album.id,
-          title: album.title,
-          subtitle: album.artist,
-        ));
-      },
-    ),
-    SheetTile(
-      icon: Icons.playlist_play,
-      label: 'Lire ensuite',
-      onTap: () {
-        Navigator.pop(ctx);
-        for (final t in tracks.reversed) {
-          state.playNext(t);
-        }
-      },
-    ),
-    SheetTile(
-      icon: Icons.playlist_add,
-      label: "Ajouter à la file d'attente",
-      onTap: () {
-        Navigator.pop(ctx);
-        for (final t in tracks) {
-          state.addToQueue(t);
-        }
-      },
-    ),
-    SheetTile(
-      icon: Icons.ios_share,
-      label: 'Partager',
-      onTap: () {
-        Navigator.pop(ctx);
-        shareAlbum(album);
-      },
-    ),
-    if (state.shareInboxConfigured)
-      SheetTile(
-        icon: Icons.send_outlined,
-        label: 'Envoyer à un ami',
-        onTap: () {
-          Navigator.pop(ctx);
-          showSendToFriendDialog(context,
-              type: 'album',
-              itemId: album.id,
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            BottomSheetHeader(
+              coverPath: album.coverPath,
               title: album.title,
-              subtitle: album.artist);
-        },
-      ),
-    const SizedBox(height: 8),
-  ]);
+              subtitle: album.artist,
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            SheetTile(
+              icon: album.isSaved ? Icons.favorite : Icons.favorite_border,
+              label: album.isSaved
+                  ? 'Retirer des albums likes'
+                  : 'Ajouter aux albums likes',
+              iconColor: album.isSaved ? const Color(0xFF1DB954) : Colors.white,
+              onTap: () {
+                Navigator.pop(ctx);
+                state.toggleLikeAlbum(album.id);
+              },
+            ),
+            SheetTile(
+              icon: Icons.person_outline,
+              label: "Accéder à l'artiste",
+              onTap: () {
+                Navigator.pop(ctx);
+                showArtistPicker(context, album.artist);
+              },
+            ),
+            SheetTile(
+              icon: state.isPinned(PinnedItemType.album, album.id)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              label: state.isPinned(PinnedItemType.album, album.id)
+                  ? "Désépingler de l'accueil"
+                  : "Épingler à l'accueil",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.togglePin(PinnedItem(
+                  type: PinnedItemType.album,
+                  id: album.id,
+                  title: album.title,
+                  subtitle: album.artist,
+                ));
+              },
+            ),
+            SheetTile(
+              icon: Icons.playlist_play,
+              label: 'Lire ensuite',
+              onTap: () {
+                Navigator.pop(ctx);
+                for (final t in tracks.reversed) {
+                  state.playNext(t);
+                }
+              },
+            ),
+            SheetTile(
+              icon: Icons.playlist_add,
+              label: "Ajouter à la file d'attente",
+              onTap: () {
+                Navigator.pop(ctx);
+                for (final t in tracks) {
+                  state.addToQueue(t);
+                }
+              },
+            ),
+            SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                shareAlbum(album);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer à un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'album',
+                      itemId: album.id,
+                      title: album.title,
+                      subtitle: album.artist);
+                },
+              ),
+            const SizedBox(height: 8),
+          ]);
 }
