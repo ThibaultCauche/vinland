@@ -34,9 +34,12 @@ import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
 import '../theme/solid_color_effect.dart';
 import '../theme/theme_controller.dart';
+import '../features/shared/library_port.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class AppState extends ChangeNotifier with WidgetsBindingObserver {
+class AppState extends ChangeNotifier
+    with WidgetsBindingObserver
+    implements LibraryPort {
   final MusicService _music;
   final NavidromeService _navidrome;
   final VinlandAudioHandler _audioHandler;
@@ -109,6 +112,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _music.likedTracks.any((t) => t.id == displayTrack!.id && t.superLiked);
 
   // Getters
+  @override
   List<Track> get allTracks => _music.navidromeTracks;
   // MusicService.likedTracks trie deja par dateAdded (plus recent d'abord)
   // avec un tiebreak stable -- ne pas re-trier ici : un deuxieme List.sort
@@ -150,6 +154,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   String? get userName => _navidrome.username;
   String? get navidromeUrl => _navidrome.baseUrl;
   String? get currentUserId => _navidrome.username;
+  @override
   List<Album> get albums => _music.albums;
   MusicService get musicService => _music;
   bool get isLocalMode => false;
@@ -450,6 +455,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   // recommandation" alors que la vraie cause etait une synchro qui n'avait
   // pas fini, ou avait echoue, sans aucun signal a l'ecran).
   bool _isSyncing = false;
+  @override
   bool get isSyncing => _isSyncing;
 
   /// Vrai seulement apres une synchro terminee (pas au tout premier
@@ -547,6 +553,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// la lecture aleatoire est active). `trackList` devient aussi l'ordre
   /// d'origine (voir PlayQueue), reutilise pour regenerer la file quand
   /// elle s'epuise ou qu'on (re)bascule le mode aleatoire.
+  @override
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
     // Participant de Jam ou de synchro perso : voir
     // JamController.interceptPlayTrack.
@@ -924,6 +931,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// la grille desktop (retour utilisateur).
   List<RecentPlay> get recentPlays => _music.recentPlays.take(10).toList();
 
+  @override
   void recordRecentPlay(RecentPlay entry) {
     _music.recordRecentPlay(entry);
     _notify();
@@ -1038,6 +1046,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// apparaitre dans la fenetre "derniers ajouts" de syncRecentlyAdded seul
   /// (retour utilisateur : "impossible de telecharger" alors que le fichier
   /// existe bien cote NAS).
+  @override
   Future<void> handleTrackDownloaded(String artist, String title,
       {int albumCount = 5}) async {
     await _music.syncRecentlyAdded(albumCount: albumCount);

@@ -13,6 +13,24 @@ import '../models/track.dart';
 import 'matching_service.dart';
 import 'music_service.dart';
 
+/// Donnees Deezer d'une page artiste gardees pour la session (voir
+/// DiscoveryService.artistPages).
+class CachedArtistPage {
+  CachedArtistPage({
+    this.artist,
+    required this.albums,
+    required this.topTracks,
+    this.deepMatched = false,
+  });
+
+  final DiscoveredArtist? artist;
+  final List<DiscoveredAlbum> albums;
+  final List<DiscoveredTrack> topTracks;
+
+  /// Le statut "possede" des albums a deja ete verifie titre par titre.
+  bool deepMatched;
+}
+
 class DiscoveryService {
   /// Une seule instance, creee dans main.dart et lue par les ecrans via
   /// `provider` : le cache memoire ci-dessous est partage entre eux.
@@ -20,6 +38,13 @@ class DiscoveryService {
 
   final String _baseUrl = 'https://api.deezer.com';
   final MusicService _music;
+
+  /// Pages artiste deja chargees pendant la session (cle : nom d'artiste
+  /// normalise), pour rouvrir une page sans refaire la recherche ni le
+  /// deep-matching. Vivait avant dans un cache statique de chaque vue
+  /// artiste (mobile et desktop chacun le sien) ; ici il est partage et
+  /// remis a zero avec le service.
+  final Map<String, CachedArtistPage> artistPages = {};
 
   // ── CACHE DISQUE ──
   // Les metadonnees Deezer (recherche album/artiste, tracklists) changent

@@ -1,14 +1,14 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/discovered_album/discovered_album_model.dart';
+import '../features/shared/download_waiters.dart';
+import '../services/download_worker_service.dart' show DownloadUiState;
 import '../providers/app_state.dart';
 import '../models/discovered_album.dart';
 import '../models/discovered_track.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
-import '../services/local_track_matcher.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/cover_image.dart';
 import 'desktop_hero_card.dart'
@@ -19,8 +19,6 @@ import 'desktop_hero_card.dart'
         trackMoreMenuActions;
 import '../widgets/artist_avatar.dart';
 import 'glass.dart';
-
-enum _DownloadUiState { downloading, failed }
 
 /// Page album "decouvert" desktop : equivalent de DiscoveredAlbumScreen
 /// (mobile) pour un album Deezer qui n'a pas de correspondance locale
@@ -47,117 +45,33 @@ class DesktopDiscoveredAlbumView extends StatefulWidget {
 
 class _DesktopDiscoveredAlbumViewState
     extends State<DesktopDiscoveredAlbumView> {
-  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
-  late final DiscoveryService _discovery;
-  final _downloadWorker = DownloadWorkerService();
-  DiscoveredAlbum? _album;
-  List<DiscoveredTrack> _tracks = [];
-  bool _isLoading = true;
+  late final DiscoveredAlbumModel _model;
   final _scrollController = SmoothScrollController();
-  final Map<int, _DownloadUiState> _downloadStates = {};
-
-  AppState? _appState;
-  bool _wasSyncing = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final appState = context.read<AppState>();
-    if (!identical(appState, _appState)) {
-      _appState?.removeListener(_onAppStateChanged);
-      _appState = appState;
-      _wasSyncing = appState.isSyncing;
-      appState.addListener(_onAppStateChanged);
-    }
-  }
-
-  /// Voir discovered_album_screen.dart : recharge automatiquement des
-  /// qu'une synchro Navidrome se termine pendant que cet ecran est ouvert.
-  void _onAppStateChanged() {
-    final syncing = _appState?.isSyncing ?? false;
-    if (_wasSyncing && !syncing && mounted) {
-      _load();
-    }
-    _wasSyncing = syncing;
-  }
-
-  /// [showProgressPopup] : false pour le bouton "Telecharger (N titres)" qui
-  /// lance plusieurs _downloadTrack en parallele -- un popup par titre s'y
-  /// empilerait sur le meme Navigator (seul le dernier resterait pilotable).
-  /// L'icone de ligne (_downloadStates) reste le seul retour visuel dans ce
-  /// cas ; le popup de progression est reserve au tap sur une ligne seule.
-  Future<void> _downloadTrack(DiscoveredTrack track,
-      {bool showProgressPopup = true}) async {
-    setState(() => _downloadStates[track.id] = _DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = _DownloadUiState.failed);
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final status = showProgressPopup
-        ? await showDownloadProgressDialog(context,
-            worker: _downloadWorker, jobId: jobId)
-        : await _downloadWorker.waitForCompletion(jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      // Voir discovered_album_screen.dart et AppState.handleTrackDownloaded :
-      // plus rapide qu'un syncNavidrome() complet (qui reconstruit toute la
-      // bibliotheque lot par lot et la rend temporairement injouable), tout
-      // en retrouvant fiablement ce titre precis malgre la fenetre limitee
-      // de syncRecentlyAdded().
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) await _load();
-      if (mounted) setState(() => _downloadStates.remove(track.id));
-    } else {
-      setState(() => _downloadStates[track.id] = _DownloadUiState.failed);
-    }
-  }
 
   @override
   void initState() {
     super.initState();
-    _discovery = context.read<DiscoveryService>();
-    _load();
+    _model = DiscoveredAlbumModel(
+      album: widget.album,
+      albumId: widget.albumId,
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+    )..addListener(_onModelChanged);
   }
+
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
-    _appState?.removeListener(_onAppStateChanged);
+    _model.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    if (widget.album != null) {
-      _album = widget.album;
-    } else if (widget.albumId != null) {
-      _album = await _discovery.getAlbum(widget.albumId!);
-    }
-    if (_album != null) {
-      _tracks = await _discovery.getAlbumTracks(_album!.id);
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Track? _findLocalTrack(DiscoveredTrack dt) =>
-      findLocalTrackMatch(dt, context.read<AppState>().allTracks);
-
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
-    final album = _album;
+    final album = _model.album;
 
     // topInsetCompact -- meme raison que DesktopCollectionView.
     return Padding(
@@ -166,7 +80,7 @@ class _DesktopDiscoveredAlbumViewState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: (_isLoading || album == null)
+            child: (_model.isLoading || album == null)
                 ? const Center(
                     child:
                         CircularProgressIndicator(color: DesktopGlass.accent))
@@ -184,7 +98,8 @@ class _DesktopDiscoveredAlbumViewState
     // plutot que de risquer de tout masquer parce que l'artiste par lequel
     // on est arrive n'apparait qu'en featuring sur chaque titre Deezer
     // (retour utilisateur).
-    final displayTracks = _tracks;
+    final displayTracks = _model.tracks;
+    final localMatches = _model.localMatches();
 
     // Titres deja sur le NAS (jouables/telechargeables/ajoutables a une
     // playlist) vs. encore a telecharger -- cette vue s'ouvre justement
@@ -192,11 +107,10 @@ class _DesktopDiscoveredAlbumViewState
     // DesktopAlbumView qui a toujours au moins un titre jouable. Sans ce
     // menu, un album comme celui-ci n'avait AUCUNE option (retour
     // utilisateur : "pourquoi certains albums n'ont pas d'option").
-    final localTracks =
-        displayTracks.map(_findLocalTrack).whereType<Track>().toList();
+    final localTracks = localMatches.values.whereType<Track>().toList();
     final missingTracks = [
       for (final dt in displayTracks)
-        if (_findLocalTrack(dt) == null) dt,
+        if (localMatches[dt.id] == null) dt,
     ];
     final moreActions = [
       if (localTracks.isNotEmpty)
@@ -213,11 +127,8 @@ class _DesktopDiscoveredAlbumViewState
         DesktopHeroMenuAction(
           label: 'Télécharger',
           icon: Icons.download_outlined,
-          onTap: () {
-            for (final dt in missingTracks) {
-              _downloadTrack(dt, showProgressPopup: false);
-            }
-          },
+          onTap: () =>
+              _model.downloadMissing(missingTracks, wait: waitSilently),
         ),
       if (localTracks.isNotEmpty)
         DesktopHeroMenuAction(
@@ -227,17 +138,7 @@ class _DesktopDiscoveredAlbumViewState
         ),
     ];
 
-    // album.artistName vient du champ "artist" de l'ALBUM cote Deezer, qui
-    // est "Inconnu" pour certaines sorties (compilations, singles mal
-    // catalogues...) meme quand les TITRES individuels ont, eux, un artiste
-    // correctement renseigne -- repli sur le premier titre qui en a un
-    // plutot que d'afficher "Inconnu" alors que l'info existe ailleurs
-    // (retour utilisateur).
-    final resolvedArtistName = album.artistName != 'Inconnu'
-        ? album.artistName
-        : _tracks
-            .map((t) => t.artistName)
-            .firstWhere((a) => a != 'Inconnu', orElse: () => album.artistName);
+    final resolvedArtistName = _model.artistName;
 
     return CustomScrollView(
       controller: _scrollController,
@@ -346,14 +247,15 @@ class _DesktopDiscoveredAlbumViewState
             (context, index) => _DiscoveredTrackRow(
               index: index,
               track: displayTracks[index],
-              localTrack: _findLocalTrack(displayTracks[index]),
-              downloadState: _downloadStates[displayTracks[index].id],
-              showDownloadButton: _downloadWorker.isConfigured,
+              localTrack: localMatches[displayTracks[index].id],
+              downloadState: _model.downloadStateOf(displayTracks[index].id),
+              showDownloadButton: _model.canDownload,
               onTap: () {
-                final localTrack = _findLocalTrack(displayTracks[index]);
-                if (localTrack != null) state.playTrack(localTrack);
+                final localTrack = localMatches[displayTracks[index].id];
+                if (localTrack != null) _model.play(localTrack);
               },
-              onDownloadTap: () => _downloadTrack(displayTracks[index]),
+              onDownloadTap: () => _model.downloadTrack(displayTracks[index],
+                  wait: waitWithProgressDialog(context)),
             ),
             childCount: displayTracks.length,
           ),
@@ -368,12 +270,12 @@ class _DesktopDiscoveredAlbumViewState
 class _DiscoveredTrackRow extends StatelessWidget {
   final int index;
   final DiscoveredTrack track;
-  // Titre local resolu (voir _findLocalTrack) : non-null exactement quand
+  // Titre local resolu (voir DiscoveredAlbumModel.localMatches) : non-null exactement quand
   // track.isInLibrary est vrai, requis pour le like/menu "..." (retour
   // utilisateur : une simple coche ne menait a aucune action).
   final Track? localTrack;
   final VoidCallback onTap;
-  final _DownloadUiState? downloadState;
+  final DownloadUiState? downloadState;
   final bool showDownloadButton;
   final VoidCallback onDownloadTap;
 
@@ -465,7 +367,7 @@ class _DiscoveredTrackRow extends StatelessWidget {
                 actions: trackMoreMenuActions(
                     context, context.read<AppState>(), localTrack!),
               ),
-            ] else if (downloadState == _DownloadUiState.downloading)
+            ] else if (downloadState == DownloadUiState.downloading)
               const SizedBox(
                 width: 16,
                 height: 16,
@@ -481,10 +383,10 @@ class _DiscoveredTrackRow extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: Icon(
-                    downloadState == _DownloadUiState.failed
+                    downloadState == DownloadUiState.failed
                         ? Icons.error_outline
                         : Icons.download_rounded,
-                    color: downloadState == _DownloadUiState.failed
+                    color: downloadState == DownloadUiState.failed
                         ? Colors.redAccent
                         : Colors.white54,
                     size: 18,

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/friend_profile/friend_profile_model.dart';
 import '../providers/app_state.dart';
 import '../models/friend_profile.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
-import '../models/recent_play.dart';
 import '../services/navidrome_service.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/user_avatar.dart';
@@ -23,29 +23,22 @@ class FriendProfileScreen extends StatefulWidget {
 }
 
 class _FriendProfileScreenState extends State<FriendProfileScreen> {
-  bool _loadingPlaylistId = false;
+  late final _model = FriendProfileModel(
+    friend: widget.friend,
+    library: context.read<AppState>(),
+    fetchPlaylistIds: context.read<NavidromeService>().fetchPlaylistSongIds,
+  );
+  bool _openingPlaylist = false;
 
   Future<void> _openPlaylist(Playlist playlist) async {
-    final state = context.read<AppState>();
-    if (playlist.trackIds.isNotEmpty || _loadingPlaylistId) {
-      state.pushOverlay(PlaylistScreen(playlist: playlist, readOnly: true));
-      return;
-    }
-    final navidrome = context.read<NavidromeService>();
-    setState(() => _loadingPlaylistId = true);
-    final trackIds = await navidrome.fetchPlaylistSongIds(playlist.serverId!);
-    setState(() => _loadingPlaylistId = false);
+    if (_openingPlaylist) return;
+    _openingPlaylist = true;
+    final toOpen = await _model.playlistToOpen(playlist);
+    _openingPlaylist = false;
     if (!mounted) return;
-    final refreshed = Playlist(
-      id: playlist.id,
-      name: playlist.name,
-      trackIds: trackIds,
-      serverId: playlist.serverId,
-      isPublic: true,
-      ownerUsername: playlist.ownerUsername,
-      isLikesMirror: playlist.isLikesMirror,
-    );
-    state.pushOverlay(PlaylistScreen(playlist: refreshed, readOnly: true));
+    context
+        .read<AppState>()
+        .pushOverlay(PlaylistScreen(playlist: toOpen, readOnly: true));
   }
 
   @override
@@ -60,27 +53,10 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
         final alreadyInThisJam = friend.jamSessionId != null &&
             isJamActive &&
             currentJamSessionId == friend.jamSessionId;
-        final byId = {for (final t in allTracks) t.id: t};
-        final likedTracks = (friend.likesPlaylist?.trackIds ?? [])
-            .map((id) => byId[id])
-            .whereType<Track>()
-            .toList();
+        final likedTracks = _model.likedTracks;
         final preview = likedTracks.take(5).toList();
-        final recentTracks = (friend.recentPlaysPlaylist?.trackIds ?? [])
-            .map((id) => byId[id])
-            .whereType<Track>()
-            .toList();
+        final recentTracks = _model.recentTracks;
         final recentPreview = recentTracks.take(5).toList();
-
-        void recordRecent() {
-          state.recordRecentPlay(RecentPlay(
-            type: RecentPlayType.friend,
-            id: friend.username,
-            title: friend.username,
-            subtitle: 'Ami',
-            playedAt: DateTime.now(),
-          ));
-        }
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -118,10 +94,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                             ),
                             const SizedBox(height: 4),
                             Builder(builder: (context) {
-                              final nowPlayingTrack =
-                                  friend.nowPlayingTrackId == null
-                                      ? null
-                                      : byId[friend.nowPlayingTrackId];
+                              final nowPlayingTrack = _model.nowPlayingTrack;
                               if (nowPlayingTrack != null) {
                                 return Text(
                                   '🎧 ${nowPlayingTrack.title} · ${nowPlayingTrack.artist}',
@@ -200,11 +173,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                     child: Row(
                       children: [
                         ElevatedButton.icon(
-                          onPressed: () {
-                            recordRecent();
-                            state.playTrack(likedTracks.first,
-                                trackList: likedTracks);
-                          },
+                          onPressed: _model.playLikes,
                           icon: const Icon(Icons.play_arrow),
                           label: const Text('Lecture'),
                           style: ElevatedButton.styleFrom(
@@ -218,12 +187,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                         const SizedBox(width: 12),
                         IconButton(
                           icon: const Icon(Icons.shuffle, color: Colors.white),
-                          onPressed: () {
-                            recordRecent();
-                            final shuffled = List.of(likedTracks)..shuffle();
-                            state.playTrack(shuffled.first,
-                                trackList: shuffled);
-                          },
+                          onPressed: () => _model.playLikes(shuffle: true),
                         ),
                       ],
                     ),
@@ -264,11 +228,7 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                         builder: (context, currentTrack, __) => TrackTile(
                           track: preview[index],
                           isPlaying: currentTrack?.id == preview[index].id,
-                          onTap: () {
-                            recordRecent();
-                            state.playTrack(preview[index],
-                                trackList: likedTracks);
-                          },
+                          onTap: () => _model.play(preview[index], likedTracks),
                           onLike: () => state.toggleLike(preview[index].id),
                         ),
                       ),
@@ -313,11 +273,8 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
                           track: recentPreview[index],
                           isPlaying:
                               currentTrack?.id == recentPreview[index].id,
-                          onTap: () {
-                            recordRecent();
-                            state.playTrack(recentPreview[index],
-                                trackList: recentTracks);
-                          },
+                          onTap: () =>
+                              _model.play(recentPreview[index], recentTracks),
                           onLike: () =>
                               state.toggleLike(recentPreview[index].id),
                         ),

@@ -6,12 +6,11 @@ import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import '../models/discovered_track.dart';
-import '../models/discovered_album.dart';
-import '../models/recent_play.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
-import '../services/matching_service.dart';
 import '../services/deep_link_service.dart';
+import '../features/album/album_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../widgets/download_button.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/artist_avatar.dart';
@@ -47,20 +46,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
   Color? _dominantColor;
   late final ScrollController _scrollController;
   double _scrollOffset = 0;
-  // Lu une fois dans initState : voir DiscoveryService (instance partagee).
-  late final DiscoveryService _discovery;
-  final _downloadWorker = DownloadWorkerService();
-  List<DiscoveredTrack> _discoveredTracks = [];
-  // Reste a false le temps du tout premier chargement pour ne montrer ni les
-  // titres locaux seuls ni une liste incomplete avant d'avoir la reponse
-  // Deezer complete (evite le "flash" 4 titres -> 16 titres). Les
-  // rechargements suivants (fin de synchro) ne remettent pas ce flag a false
-  // -- meme logique que DesktopAlbumView.
-  bool _hasLoadedOnce = false;
-  final Map<int, DownloadUiState> _downloadStates = {};
-
-  AppState? _appState;
-  bool _wasSyncing = false;
+  late final AlbumModel _model;
 
   // Cle du titre cible de widget.scrollToTrackId, assignee a sa tuile des
   // qu'elle est construite pour pouvoir la faire defiler dans la vue une
@@ -71,11 +57,14 @@ class _AlbumScreenState extends State<AlbumScreen> {
   @override
   void initState() {
     super.initState();
-    _discovery = context.read<DiscoveryService>();
+    _model = AlbumModel(
+      album: widget.album,
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+    )..addListener(_onModelChanged);
     _scrollOffset = _savedScrollOffsets[widget.album.id] ?? 0;
     _scrollController = ScrollController(initialScrollOffset: _scrollOffset);
     _extractColor();
-    _loadDeezerTracks();
     _scrollController.addListener(() {
       if (!mounted) return;
       final newOffset = _scrollController.offset;
@@ -92,29 +81,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     });
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final appState = context.read<AppState>();
-    if (!identical(appState, _appState)) {
-      _appState?.removeListener(_onAppStateChanged);
-      _appState = appState;
-      _wasSyncing = appState.isSyncing;
-      appState.addListener(_onAppStateChanged);
-    }
-  }
-
-  /// Si cette page a ete ouverte pendant une synchro NAS en cours, le statut
-  /// "possede" calcule alors serait fige et faux pour le reste de la session
-  /// -- on recharge une fois la synchro terminee. Meme logique que
-  /// DesktopAlbumView.
-  void _onAppStateChanged() {
-    final syncing = _appState?.isSyncing ?? false;
-    if (_wasSyncing && !syncing && mounted) {
-      _loadDeezerTracks();
-    }
-    _wasSyncing = syncing;
-  }
+  void _onModelChanged() => setState(() {});
 
   double _appBarOpacity(double offset) => ((offset - 320) / 80).clamp(0.0, 1.0);
 
@@ -131,7 +98,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
 
   @override
   void dispose() {
-    _appState?.removeListener(_onAppStateChanged);
+    _model.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -156,156 +123,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
     } catch (_) {}
   }
 
-  Future<void> _loadDeezerTracks() async {
-    try {
-      final albums =
-          await _discovery.searchAlbums(widget.album.title, limit: 10);
-      DiscoveredAlbum? match;
-      for (final a in albums) {
-        if (MatchingService.artistsMatch(a.artistName, widget.album.artist) &&
-            MatchingService.albumsMatch(a.title, widget.album.title)) {
-          match = a;
-          break;
-        }
-      }
-      if (match != null) {
-        final tracks = await _discovery.getAlbumTracks(match.id);
-        if (mounted) setState(() => _discoveredTracks = tracks);
-      }
-    } catch (e) {
-      debugPrint('Deezer album tracks error: $e');
-    }
-    if (mounted) setState(() => _hasLoadedOnce = true);
-  }
-
-  /// Demande le telechargement automatique d'un titre absent du NAS (voir
-  /// DownloadWorkerService) -- meme logique que DesktopAlbumView, jusqu'ici
-  /// jamais branchee cote mobile (retour utilisateur).
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-      }
-      return;
-    }
-
-    final status = await _downloadWorker.waitForCompletion(jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) await _loadDeezerTracks();
-      if (mounted) setState(() => _downloadStates.remove(track.id));
-    } else {
-      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-    }
-  }
-
-  void _recordRecent(AppState state) {
-    state.recordRecentPlay(RecentPlay(
-      type: RecentPlayType.album,
-      id: widget.album.id,
-      title: widget.album.title,
-      subtitle: widget.album.artist,
-      coverPath: widget.album.coverPath,
-      playedAt: DateTime.now(),
-    ));
-  }
-
-  /// Fusionne les pistes locales par titre normalise (garde la version likee
-  /// si le NAS a deux fois le meme morceau range dans cet album) : evite
-  /// qu'un titre apparaisse deux fois (une fois like, une fois non-like).
-  List<Track> _dedupByTitle(List<Track> tracks) {
-    final byTitle = <String, Track>{};
-    for (final t in tracks) {
-      final key = MatchingService.normalize(t.title);
-      final existing = byTitle[key];
-      if (existing == null || (!existing.isLiked && t.isLiked)) {
-        byTitle[key] = t;
-      }
-    }
-    return byTitle.values.toList();
-  }
-
-  /// Construit la liste affichee a partir du tracklist Deezer (ordre et
-  /// contenu de reference) : pour chaque titre, on cherche juste s'il existe
-  /// en local (blanc/like) ou non (grise). Les pistes locales qu'on possede
-  /// mais qui ne sont pas dans le tracklist Deezer (bonus...) sont ajoutees
-  /// a la suite.
-  List<_AlbumListItem> _buildTrackList(List<Track> localTracks) {
-    if (_discoveredTracks.isEmpty) {
-      return [for (final t in localTracks) _AlbumListItem(localTrack: t)];
-    }
-
-    final byTitle = {
-      for (final t in localTracks) MatchingService.normalize(t.title): t
-    };
-    final items = <_AlbumListItem>[];
-    final usedKeys = <String>{};
-
-    for (final dt in _discoveredTracks) {
-      final dtTitle = MatchingService.normalize(dt.title);
-      final exact = byTitle[dtTitle];
-      final match = exact ??
-          localTracks.cast<Track?>().firstWhere(
-                (t) => MatchingService.titlesMatch(t!.title, dt.title),
-                orElse: () => null,
-              );
-
-      if (match != null) {
-        usedKeys.add(MatchingService.normalize(match.title));
-        items.add(_AlbumListItem(localTrack: match));
-      } else {
-        items.add(_AlbumListItem(discoveredTrack: dt));
-      }
-    }
-
-    for (final t in localTracks) {
-      if (!usedKeys.contains(MatchingService.normalize(t.title))) {
-        items.add(_AlbumListItem(localTrack: t));
-      }
-    }
-    return items;
-  }
-
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
 
-    // Match exact par id (widget.album.trackIds, deja assemble correctement
-    // par MusicService.rebuildAlbums) plutot que par similarite floue de
-    // titre : MatchingService.albumsMatch est concu pour rapprocher un album
-    // local d'un resultat de recherche en ligne (Deezer) malgre de petites
-    // variations de titre, pas pour filtrer toute la bibliotheque -- un
-    // titre d'album court/generique pouvait y matcher un album totalement
-    // different (ex: "99" matchant "99 Nights (Edition Deluxe)" par simple
-    // inclusion de sous-chaine), en plus de recalculer cette similarite sur
-    // toute la bibliotheque a chaque frame de scroll (retour utilisateur :
-    // page tres lente, titres d'un autre artiste en fin de liste).
-    final albumTrackIds = widget.album.trackIds.toSet();
-    var albumTracks = appState.allTracks
-        .where((t) => albumTrackIds.contains(t.id))
-        .toList()
-      ..sort((a, b) => a.title.compareTo(b.title));
-
-    // filterArtist n'est plus applique ici : une fois l'album ouvert, on
-    // montre TOUS ses titres, meme ceux ou l'artiste par lequel on est
-    // arrive (page artiste) n'apparait qu'en featuring ou pas du tout dans
-    // le champ artiste/album-artiste brut -- avant, un titre comme un
-    // single "Artiste X feat. Y" ouvert depuis la page de Y pouvait
-    // afficher "0 titres" alors que l'album existe bien (retour
-    // utilisateur, meme fix que sur desktop).
-    albumTracks = _dedupByTitle(albumTracks);
-    final items = _buildTrackList(albumTracks);
+    final albumTracks = _model.localTracks;
+    final items = _model.items(albumTracks);
 
     if (widget.scrollToTrackId != null && !_didScrollToTarget) {
       WidgetsBinding.instance
@@ -378,7 +201,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
             SliverToBoxAdapter(
               child: _buildActionBar(albumTracks, appState),
             ),
-            if (!_hasLoadedOnce)
+            if (!_model.hasLoadedOnce)
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
                 sliver: SliverList(
@@ -395,8 +218,8 @@ class _AlbumScreenState extends State<AlbumScreen> {
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final item = items[index];
-                      if (item.localTrack != null) {
-                        final track = item.localTrack!;
+                      if (item.local != null) {
+                        final track = item.local!;
                         final isScrollTarget = !_didScrollToTarget &&
                             track.id == widget.scrollToTrackId;
                         if (isScrollTarget) {
@@ -407,21 +230,19 @@ class _AlbumScreenState extends State<AlbumScreen> {
                           index: index,
                           track: track,
                           isPlaying: appState.displayTrack?.id == track.id,
-                          onTap: () {
-                            _recordRecent(appState);
-                            appState.playTrack(track, trackList: albumTracks);
-                          },
+                          onTap: () => _model.play(track, albumTracks),
                           onLike: () => appState.toggleLike(track.id),
                           onMore: () => _showTrackOptions(context, track),
                         );
                       } else {
-                        final dt = item.discoveredTrack!;
+                        final dt = item.discovered!;
                         return _DiscoveredTrackTile(
                           index: index,
                           track: dt,
-                          downloadState: _downloadStates[dt.id],
-                          showDownloadButton: _downloadWorker.isConfigured,
-                          onDownloadTap: () => _downloadTrack(dt),
+                          downloadState: _model.downloadStateOf(dt.id),
+                          showDownloadButton: _model.canDownload,
+                          onDownloadTap: () =>
+                              _model.downloadTrack(dt, wait: waitSilently),
                         );
                       }
                     },
@@ -560,16 +381,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.shuffle, color: Colors.white54, size: 26),
-            onPressed: () {
-              if (tracks.isNotEmpty) {
-                _recordRecent(state);
-                final shuffled = List<Track>.of(tracks)..shuffle();
-                state.playTrack(shuffled.first, trackList: shuffled);
-              }
-            },
+            onPressed: () => _model.playAll(tracks, shuffle: true),
           ),
           const SizedBox(width: 4),
-          _PlayPauseButton(album: widget.album, albumTracks: tracks),
+          _PlayPauseButton(model: _model, albumTracks: tracks),
         ],
       ),
     );
@@ -716,12 +531,6 @@ class _AlbumScreenState extends State<AlbumScreen> {
   }
 }
 
-class _AlbumListItem {
-  final Track? localTrack;
-  final DiscoveredTrack? discoveredTrack;
-  const _AlbumListItem({this.localTrack, this.discoveredTrack});
-}
-
 /// Ligne fantome affichee pendant le tout premier chargement Deezer, le
 /// temps d'avoir la tracklist complete a montrer d'un coup -- meme widget
 /// que DesktopAlbumView.
@@ -775,9 +584,9 @@ class _SkeletonTrackRow extends StatelessWidget {
 }
 
 class _PlayPauseButton extends StatelessWidget {
-  final Album album;
+  final AlbumModel model;
   final List<Track> albumTracks;
-  const _PlayPauseButton({required this.album, required this.albumTracks});
+  const _PlayPauseButton({required this.model, required this.albumTracks});
 
   @override
   Widget build(BuildContext context) {
@@ -796,16 +605,8 @@ class _PlayPauseButton extends StatelessWidget {
             final state = context.read<AppState>();
             if (isPlayingThisAlbum) {
               state.togglePlayPause();
-            } else if (albumTracks.isNotEmpty) {
-              state.recordRecentPlay(RecentPlay(
-                type: RecentPlayType.album,
-                id: album.id,
-                title: album.title,
-                subtitle: album.artist,
-                coverPath: album.coverPath,
-                playedAt: DateTime.now(),
-              ));
-              state.playTrack(albumTracks.first, trackList: albumTracks);
+            } else {
+              model.playAll(albumTracks);
             }
           },
           child: Container(
