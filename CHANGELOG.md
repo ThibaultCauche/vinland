@@ -10,6 +10,12 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Mode Soirée, côté relais : protocole hôte/invités (`docs/soiree-protocole.md`),
+  code court + jetons signés, recherche en lecture seule dans Navidrome pour
+  les invités sans compte, file équitable (alternance entre invités, votes,
+  3 titres en attente max, pas de doublon), veto et bannissement par l'hôte,
+  et un client en ligne de commande pour tester (`jam_relay/bin/party_cli.dart`).
+  L'écran de l'app arrive avec la session 17.
 - CI GitHub Actions sur chaque PR et chaque push sur `main` : formatage,
   analyse et tests de l'app, analyse et tests du relais Jam, couverture de
   tests en artefact.

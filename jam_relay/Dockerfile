@@ -6,6 +6,7 @@ WORKDIR /app
 COPY pubspec.yaml .
 RUN dart pub get
 COPY bin/ bin/
+COPY lib/ lib/
 RUN dart pub get --offline
 RUN dart compile exe bin/server.dart -o bin/server
 

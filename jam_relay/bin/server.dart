@@ -15,8 +15,18 @@
 // jam_service.dart) sert de secret partage : quiconque le connait peut
 // rejoindre. Pas d'autre authentification -- coherent avec un usage
 // "cercle proche" ou le sessionId est partage directement entre amis.
+//
+// Le mode Soiree (invites sans compte qui proposent et votent, voir
+// docs/soiree-protocole.md) passe par la meme connexion mais a ses propres
+// messages, geres a part dans lib/party/ ; lui a de vrais jetons et un
+// acces en lecture seule a Navidrome.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
+import 'package:jam_relay/party/catalog.dart';
+import 'package:jam_relay/party/party_hub.dart';
+import 'package:jam_relay/party/party_token.dart';
 
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -42,8 +52,58 @@ class _Session {
 
 final Map<String, _Session> _sessions = {};
 
+// Mode Soiree (docs/soiree-protocole.md) : messages a part, geres par
+// PartyHub. Remplace dans main() selon les variables d'environnement.
+PartyHub _party = PartyHub(signer: PartyTokenSigner.random());
+
+class _PartyConnection implements PartyConnection {
+  final WebSocketChannel channel;
+  _PartyConnection(this.channel);
+
+  @override
+  void send(Map<String, dynamic> message) => _send(channel, message);
+
+  @override
+  void close() => channel.sink.close();
+}
+
+/// Catalogue Navidrome du relais (recherche des invites, verification des
+/// hotes) : seulement si les trois variables sont fournies.
+PartyHub _partyHubFromEnvironment(Map<String, String> env) {
+  final url = env['NAVIDROME_URL'] ?? '';
+  final user = env['NAVIDROME_USER'] ?? '';
+  final password = env['NAVIDROME_PASSWORD'] ?? '';
+  final ttlHours = int.tryParse(env['PARTY_TTL_HOURS'] ?? '') ?? 6;
+  return PartyHub(
+    signer: PartyTokenSigner.random(),
+    catalog: url.isEmpty || user.isEmpty || password.isEmpty
+        ? null
+        : NavidromeCatalog(baseUrl: url, user: user, password: password),
+    limits: PartyLimits(
+      ttl: Duration(hours: ttlHours.clamp(1, 24)),
+      allowAnonymousHost: env['PARTY_ALLOW_ANON_HOST'] == '1',
+    ),
+  );
+}
+
+/// GET /jam/party/cover/<coverId>?size=300, jeton en `Authorization:
+/// Bearer`. Sous /jam pour passer par la meme route tailscale serve.
+Future<Response> _partyCover(Request request, String coverId) async {
+  final auth = request.headers['authorization'] ?? '';
+  final token = auth.startsWith('Bearer ') ? auth.substring(7) : null;
+  final size = int.tryParse(request.url.queryParameters['size'] ?? '') ?? 300;
+  final (status, image) = await _party.cover(token, coverId, size);
+  if (image == null) return Response(status);
+  return Response.ok(image.bytes, headers: {
+    'content-type': image.contentType,
+    'cache-control': 'private, max-age=3600',
+  });
+}
+
 void main(List<String> args) async {
   final port = int.tryParse(Platform.environment['PORT'] ?? '') ?? 8765;
+  _party = _partyHubFromEnvironment(Platform.environment);
+  Timer.periodic(const Duration(seconds: 30), (_) => _party.sweep());
 
   final handler = webSocketHandler((WebSocketChannel channel, String? _) {
     _handleConnection(channel);
@@ -56,6 +116,11 @@ void main(List<String> args) async {
       if (request.url.path == 'jam' || request.url.path == '') {
         return handler(request);
       }
+      final cover = RegExp(r'^(?:jam/)?party/cover/([^/]+)$')
+          .firstMatch(request.url.path);
+      if (cover != null && request.method == 'GET') {
+        return _partyCover(request, cover.group(1)!);
+      }
       return Response.notFound('not found');
     },
     InternetAddress.anyIPv4,
@@ -66,6 +131,7 @@ void main(List<String> args) async {
 
 void _handleConnection(WebSocketChannel channel) {
   final peer = _Peer(channel);
+  final partyConn = _PartyConnection(channel);
   String? sessionId;
 
   channel.stream.listen(
@@ -74,6 +140,15 @@ void _handleConnection(WebSocketChannel channel) {
       try {
         msg = jsonDecode(raw as String) as Map<String, dynamic>;
       } catch (_) {
+        return;
+      }
+
+      if (_party.handles(msg['type'])) {
+        // Un message de soiree mal forme ne doit jamais faire tomber le
+        // relais (et donc les Jam en cours).
+        _party
+            .handle(partyConn, msg, rawLength: raw.length)
+            .catchError((Object e) => stderr.writeln('soiree : $e'));
         return;
       }
 
@@ -212,8 +287,14 @@ void _handleConnection(WebSocketChannel channel) {
           break;
       }
     },
-    onDone: () => _handleDisconnect(sessionId, peer),
-    onError: (_) => _handleDisconnect(sessionId, peer),
+    onDone: () {
+      _party.disconnected(partyConn);
+      _handleDisconnect(sessionId, peer);
+    },
+    onError: (_) {
+      _party.disconnected(partyConn);
+      _handleDisconnect(sessionId, peer);
+    },
     cancelOnError: true,
   );
 }
