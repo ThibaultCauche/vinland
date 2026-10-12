@@ -7,6 +7,7 @@ import '../controllers/jam_controller.dart';
 import '../controllers/jam_sync_settings.dart';
 import '../controllers/party_controller.dart';
 import '../controllers/party_host_dj.dart';
+import '../controllers/party_radio.dart';
 import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
@@ -29,7 +30,11 @@ import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
+import '../services/deep_link_service.dart';
+import '../services/discovery_service.dart';
+import '../services/matching_service.dart';
 import '../services/party/party_link.dart';
+import '../services/party/party_models.dart';
 import '../services/party/party_socket.dart';
 import '../controllers/party_environment.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
@@ -73,6 +78,25 @@ class AppState extends ChangeNotifier
     hostAuth: () => _navidrome.authParams,
     userName: () => _navidrome.username,
     playNow: (item) => _partyDj.playNow(item),
+    radioEnabled: () => _partyDj.radioEnabled,
+    setRadioEnabled: (enabled) => _partyDj.radioEnabled = enabled,
+    saveRecap: savePartyRecap,
+    shareRecap: _sharePartyRecap,
+    packPlaylists: () => [
+      for (final playlist in playlists)
+        if (playlist.ownerUsername == null && playlist.trackIds.isNotEmpty)
+          (
+            id: playlist.id,
+            name: playlist.name,
+            tracks: playlist.trackIds
+                .map(_findTrackById)
+                .whereType<Track>()
+                .toList(),
+          ),
+    ],
+    isOffline: areTracksOffline,
+    downloadOffline: (tracks, onProgress) =>
+        downloadTracksOffline(tracks, onProgress: onProgress),
   );
   bool get isPersonalSyncParticipant => _jamCtl.isPersonalSyncParticipant;
   bool get isPersonalSyncHost => _jamCtl.isPersonalSyncHost;
@@ -248,6 +272,7 @@ class AppState extends ChangeNotifier
     required NavidromeService navidrome,
     required JamService jamService,
     PartyController? party,
+    DiscoveryService? discovery,
   })  : _audioHandler = audioHandler,
         _music = music,
         _navidrome = navidrome {
@@ -275,6 +300,7 @@ class AppState extends ChangeNotifier
         PartyController(
           connect: WebSocketPartySocket.connect,
           store: PrefsPartySeatStore(),
+          recapStore: PrefsPartyRecapStore(),
         );
     _partyDj = PartyHostDj(
       this.party,
@@ -283,6 +309,15 @@ class AppState extends ChangeNotifier
         playTrack: playTrack,
         findTrack: _findTrackById,
       ),
+      radio: PartyRadio([
+        NavidromeRadioSource(_navidrome.similarSongs),
+        if (discovery != null)
+          RelatedArtistsRadioSource(
+            relatedArtists: (artist) => _relatedArtists(discovery, artist),
+            library: () => allTracks,
+          ),
+        SameArtistRadioSource(() => allTracks),
+      ]),
     );
     this.party.addListener(_partyDj.sync);
     _player.addListener(_notify);
@@ -299,6 +334,56 @@ class AppState extends ChangeNotifier
         previousTrack();
       }
     });
+  }
+
+  /// Artistes proches de [artist] selon Deezer (radio du mode Soiree).
+  static Future<List<String>> _relatedArtists(
+      DiscoveryService discovery, String artist) async {
+    final found = await discovery.searchArtists(artist, limit: 3);
+    for (final candidate in found) {
+      if (MatchingService.artistsMatch(candidate.name, artist)) {
+        return discovery.getRelatedArtistNames(candidate.id);
+      }
+    }
+    return const [];
+  }
+
+  /// Recap du mode Soiree : une playlist avec tout ce qui a ete joue, et
+  /// qui l'a propose en description. Renvoie l'id local de la playlist.
+  Future<String?> savePartyRecap(String name, List<PartyPlayed> played) async {
+    try {
+      final id = await _music.createPlaylist(name);
+      for (final entry in played) {
+        await _music.addToPlaylist(id, 'navidrome_${entry.song.songId}');
+      }
+      final serverId =
+          playlists.where((pl) => pl.id == id).firstOrNull?.serverId;
+      final comment = partyRecapComment(played);
+      if (serverId != null && comment.isNotEmpty) {
+        await _navidrome.setPlaylistMeta(serverId, comment: comment);
+      }
+      _notify();
+      return id;
+    } catch (e) {
+      debugPrint('savePartyRecap error: $e');
+      return null;
+    }
+  }
+
+  Future<void> _sharePartyRecap(BuildContext context, String playlistId) async {
+    final playlist = playlists.where((pl) => pl.id == playlistId).firstOrNull;
+    if (playlist == null) return;
+    if (shareInboxConfigured) {
+      await showSendToFriendDialog(
+        context,
+        type: 'playlist',
+        title: playlist.name,
+        subtitle: 'Recap de soirée',
+        playlistForPrivacyCheck: playlist,
+      );
+    } else {
+      await sharePlaylist(context, playlist);
+    }
   }
 
   /// Un titre vient de demarrer localement (voir PlayerController).

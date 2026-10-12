@@ -410,6 +410,25 @@ void main() {
       expect(lea.last('now_playing')['song']['songId'], 's1');
       expect(lea.queueTitles, isEmpty);
     });
+
+    test(
+        "now_playing dit qui a propose le titre (pour l'ecran d'ambiance et "
+        'le recap)', () async {
+      final lea = await join('Lea');
+      await suggest(lea, 's1');
+      await hub.handle(host,
+          {'type': 'now_playing', 'itemId': lea.last('suggested')['itemId']});
+      expect(lea.last('now_playing')['by'], 'Lea');
+      await hub.handle(host, {
+        'type': 'now_playing',
+        'songId': 's9',
+        'title': 'Titre 9',
+        'by': 'Radio',
+      });
+      expect(lea.last('now_playing')['by'], 'Radio');
+      await hub.handle(host, {'type': 'now_playing'});
+      expect(lea.last('now_playing')['by'], '');
+    });
   });
 
   group('recherche et pochettes', () {

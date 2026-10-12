@@ -64,6 +64,7 @@ class _PartySetupScreenState extends State<PartySetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final env = context.read<PartyEnvironment>();
     return Scaffold(
       backgroundColor: partyBackground,
       appBar: partyAppBar('Lancer une soirée'),
@@ -107,6 +108,20 @@ class _PartySetupScreenState extends State<PartySetupScreen> {
               style: partyMuted,
             ),
           ),
+          if (env.setRadioEnabled != null)
+            SwitchListTile(
+              key: const ValueKey('party-radio'),
+              contentPadding: EdgeInsets.zero,
+              value: env.radioEnabled?.call() ?? false,
+              onChanged: (v) => setState(() => env.setRadioEnabled!(v)),
+              title: const Text('Radio automatique',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text(
+                'Quand personne ne propose rien et que ta file est vide, '
+                'des titres proches du dernier passé prennent le relais.',
+                style: partyMuted,
+              ),
+            ),
           const SizedBox(height: 8),
           const Text(
             'Ta musique passe sur cet appareil : branche-le à l\'enceinte. '

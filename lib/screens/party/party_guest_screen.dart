@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/party_controller.dart';
 import '../../services/party/party_models.dart';
+import 'party_ambiance_screen.dart';
 import 'party_widgets.dart';
 
 /// Invite pendant la soiree : titre en cours et file (avec votes), et un
@@ -31,6 +32,11 @@ class PartyGuestScreen extends StatelessWidget {
           appBar: partyAppBar(
             party.partyName.isEmpty ? 'Soirée' : party.partyName,
             actions: [
+              IconButton(
+                tooltip: "Écran d'ambiance",
+                icon: const Icon(Icons.tv),
+                onPressed: () => openPartyAmbiance(context),
+              ),
               IconButton(
                 tooltip: 'Quitter la soirée',
                 icon: const Icon(Icons.logout),

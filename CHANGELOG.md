@@ -10,6 +10,16 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Mode Soirée, extras : écran d'ambiance pour la télé (grande pochette sur
+  un fond à ses couleurs, titre, qui l'a proposé, les 3 suivants, QR code
+  pour rejoindre ; plein écran, Échap pour sortir) ; radio automatique
+  quand la file est vide (titres similaires de Navidrome, sinon artistes
+  proches selon Deezer présents sur le NAS, sinon même artiste, jamais un
+  titre déjà passé dans la soirée) ; récap de fin de soirée gardé en
+  playlist « Soirée du JJ/MM » avec qui a proposé quoi, à partager avec
+  les amis ; pack hors-ligne pour télécharger une playlist à l'avance
+  avec sa progression. Le relais dit maintenant qui a proposé le titre en
+  cours (`now_playing.by`).
 - Mode Soirée dans l'app (menu Jam > « Mode soirée ») : l'hôte lance une
   soirée, affiche un QR code plein écran, voit la file avec qui a proposé
   quoi, lance un titre ou met un veto, retire ou exclut un invité, change le

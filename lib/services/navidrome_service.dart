@@ -617,4 +617,26 @@ class NavidromeService {
 
   Future<bool> deleteServerPlaylist(String playlistId) =>
       _write('deleteServerPlaylist', () => _client.deletePlaylist(playlistId));
+
+  /// Titres proches de [songId] presents sur le serveur, pour la radio du
+  /// mode Soiree. getSimilarSongs d'abord (a partir du titre), puis
+  /// getSimilarSongs2 a partir de son artiste : selon la version de
+  /// Navidrome et ses agents, l'un peut repondre vide et pas l'autre.
+  /// [] si rien ou en cas d'erreur (la radio essaie alors autre chose).
+  Future<List<Track>> similarSongs(String songId, {int count = 30}) async {
+    if (!isConnected) return const [];
+    try {
+      var songs = await _client.similarSongs(songId, count: count);
+      if (songs.isEmpty) {
+        final artistId = (await _client.song(songId))['artistId']?.toString();
+        if (artistId != null && artistId.isNotEmpty) {
+          songs = await _client.similarSongs2(artistId, count: count);
+        }
+      }
+      return songs.map(trackFromSubsonic).toList();
+    } on SubsonicException catch (e) {
+      debugPrint('similarSongs error: $e');
+      return const [];
+    }
+  }
 }

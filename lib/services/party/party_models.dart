@@ -190,3 +190,66 @@ String partyErrorMessage(String code) => switch (code) {
         "La recherche n'est pas disponible sur ce relais.",
       _ => 'Erreur du relais ($code).',
     };
+
+/// Un titre passe pendant la soiree, pour le recap.
+class PartyPlayed {
+  final PartySong song;
+
+  /// Pseudo de qui l'a propose, « Radio » pour la radio automatique, vide
+  /// pour un titre lance par l'hote lui-meme.
+  final String by;
+  final DateTime at;
+
+  const PartyPlayed({required this.song, required this.by, required this.at});
+
+  Map<String, dynamic> toJson() => {
+        ...song.toJson(),
+        'by': by,
+        'at': at.millisecondsSinceEpoch,
+      };
+
+  static PartyPlayed? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final map = json.cast<String, dynamic>();
+    final song = PartySong.fromJson(map);
+    if (song.songId.isEmpty) return null;
+    return PartyPlayed(
+      song: song,
+      by: _str(map['by']),
+      at: DateTime.fromMillisecondsSinceEpoch(_int(map['at'])),
+    );
+  }
+}
+
+/// Nom de la playlist du recap : « Soirée du 12/10 ». Une soiree commencee
+/// apres minuit (avant 6 h) compte pour la veille, comme on la raconte.
+String partyRecapName(DateTime start) {
+  final day = start.hour < 6 ? start.subtract(const Duration(hours: 6)) : start;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return 'Soirée du ${two(day.day)}/${two(day.month)}';
+}
+
+/// Qui a propose combien de titres, du plus au moins actif :
+/// « Proposé par : Léa (4), Max (2), l'hôte (3), la radio (1) ».
+/// Sert de description a la playlist du recap.
+String partyRecapComment(List<PartyPlayed> played) {
+  final counts = <String, int>{};
+  var host = 0, radio = 0;
+  for (final p in played) {
+    if (p.by.isEmpty) {
+      host++;
+    } else if (p.by == 'Radio') {
+      radio++;
+    } else {
+      counts[p.by] = (counts[p.by] ?? 0) + 1;
+    }
+  }
+  final guests = counts.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  final parts = [
+    for (final e in guests) '${e.key} (${e.value})',
+    if (host > 0) "l'hôte ($host)",
+    if (radio > 0) 'la radio ($radio)',
+  ];
+  return parts.isEmpty ? '' : 'Proposé par : ${parts.join(', ')}';
+}

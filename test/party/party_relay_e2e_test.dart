@@ -19,11 +19,22 @@ class MemorySeatStore implements PartySeatStore {
   Future<void> save(PartySeat? value) async => seat = value;
 }
 
+class MemoryRecapStore implements PartyRecapStore {
+  List<PartyPlayed> saved = [];
+  @override
+  Future<List<PartyPlayed>> load() async => saved;
+  @override
+  Future<void> save(List<PartyPlayed>? played) async =>
+      saved = List.of(played ?? const []);
+}
+
 class RecordingPlayback implements PartyPlayback {
   @override
   bool isIdle = true;
   @override
   String? currentSongId;
+  @override
+  bool hasUpcoming = false;
   final played = <String>[];
   final upNext = <String?>[];
 
@@ -45,10 +56,11 @@ void main() {
   late DateTime now;
   final controllers = <PartyController>[];
 
-  PartyController phone({PartySeatStore? store}) {
+  PartyController phone({PartySeatStore? store, PartyRecapStore? recap}) {
     final c = PartyController(
       connect: relay.connect,
       store: store,
+      recapStore: recap,
       retryDelays: const [Duration(milliseconds: 1)],
       now: () => now,
     );
@@ -56,8 +68,11 @@ void main() {
     return c;
   }
 
-  Future<PartyController> host({PartyRules rules = const PartyRules()}) async {
-    final h = phone();
+  Future<PartyController> host(
+      {PartyRules rules = const PartyRules(),
+      PartySeatStore? store,
+      PartyRecapStore? recap}) async {
+    final h = phone(store: store, recap: recap);
     final ok = await h.create(
       relayUrl: relayUrl,
       partyName: 'Anniv',
@@ -266,5 +281,47 @@ void main() {
         isFalse);
     expect(lea.error, contains('injoignable'));
     expect(lea.phase, PartyPhase.idle);
+  });
+
+  test(
+      'recap : chaque titre passe garde qui l a propose, radio et hote '
+      'compris, meme apres un redemarrage de l app de l hote', () async {
+    final seats = MemorySeatStore();
+    final recap = MemoryRecapStore();
+    final h = await host(store: seats, recap: recap);
+    final playback = RecordingPlayback()..currentSongId = 'perso';
+    playback.isIdle = false;
+    final dj = PartyHostDj(h, playback);
+    h.addListener(dj.sync);
+    final lea = await guest('Léa', h.code!);
+
+    // Titre de l'hote, hors file.
+    dj.onTrackStarted(const PartySong(songId: 'perso', title: 'Perso'));
+    await settle();
+    // Proposition de Lea, jouee ensuite.
+    lea.suggest(const PartySong(songId: 's1', title: 'Titre 1'));
+    await settle();
+    playback.currentSongId = 's1';
+    dj.onTrackStarted(const PartySong(songId: 's1', title: 'Titre 1'));
+    await settle();
+    expect(lea.nowPlayingBy, 'Léa');
+    // Titre choisi par la radio (annonce avec son etiquette).
+    h.announceNowPlaying(
+        song: const PartySong(songId: 's2', title: 'Titre 2'),
+        by: PartyHostDj.radioLabel);
+    await settle();
+    expect(lea.nowPlayingBy, 'Radio');
+
+    expect([for (final p in h.played) '${p.song.songId}:${p.by}'],
+        ['perso:', 's1:Léa', 's2:Radio']);
+    expect(lea.played.length, 3, reason: 'les invites voient le meme recap');
+
+    // L'app de l'hote redemarre : il revient avec son jeton et son recap.
+    final again = phone(store: seats, recap: recap);
+    expect(await again.resume(), isTrue);
+    await settle();
+    expect(again.played.map((p) => p.song.songId), ['perso', 's1', 's2']);
+    expect(partyRecapComment(again.played),
+        "Proposé par : Léa (1), l'hôte (1), la radio (1)");
   });
 }

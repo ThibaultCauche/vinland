@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../controllers/party_controller.dart';
 import '../../services/party/party_link.dart';
 import '../../services/party/party_models.dart';
+import 'party_recap.dart';
 
 // Morceaux communs aux ecrans du mode Soiree (hote et invite).
 
@@ -31,12 +32,25 @@ String formatPartyDuration(int ms) {
 }
 
 /// Pochette servie par le relais (les invites n'ont pas de compte
-/// Navidrome) ; un carre neutre si pas de pochette ou en cas d'erreur.
+/// Navidrome), en [px] pixels de cote ; null sans pochette ou hors soiree.
+ImageProvider? partyCoverImage(PartyController party, String? coverId, int px) {
+  final relay = party.relayUrl, token = party.token;
+  if (coverId == null || relay == null || token == null) return null;
+  return NetworkImage(
+    partyCoverUri(relay, coverId, size: px.clamp(32, 600)).toString(),
+    headers: {'Authorization': 'Bearer $token'},
+  );
+}
+
+/// Pochette servie par le relais ; un carre neutre si pas de pochette ou en
+/// cas d'erreur.
 class PartyCover extends StatelessWidget {
-  const PartyCover({super.key, required this.coverId, this.size = 48});
+  const PartyCover(
+      {super.key, required this.coverId, this.size = 48, this.radius = 4});
 
   final String? coverId;
   final double size;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -47,15 +61,13 @@ class PartyCover extends StatelessWidget {
       color: const Color(0xFF2A2A2A),
       child: Icon(Icons.music_note, color: Colors.white24, size: size * 0.5),
     );
-    final id = coverId, relay = party.relayUrl, token = party.token;
-    if (id == null || relay == null || token == null) return placeholder;
     // Pochette demandee deja reduite (2x pour les ecrans denses).
-    final px = (size * 2).round().clamp(32, 600);
+    final image = partyCoverImage(party, coverId, (size * 2).round());
+    if (image == null) return placeholder;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: Image.network(
-        partyCoverUri(relay, id, size: px).toString(),
-        headers: {'Authorization': 'Bearer $token'},
+      borderRadius: BorderRadius.circular(radius),
+      child: Image(
+        image: image,
         width: size,
         height: size,
         fit: BoxFit.cover,
@@ -313,7 +325,7 @@ class PartyEndedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -325,6 +337,7 @@ class PartyEndedView extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.white, fontSize: 17),
               ),
+              if (party.isHost) PartyRecapCard(party: party),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: () {

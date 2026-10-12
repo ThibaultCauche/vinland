@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/party_controller.dart';
+import '../../controllers/party_environment.dart';
 import '../../services/party/party_models.dart';
 import '../../services/party/party_socket.dart';
 import 'party_guest_screen.dart';
 import 'party_host_screen.dart';
 import 'party_join_screen.dart';
+import 'party_offline_pack_screen.dart';
 import 'party_setup_screen.dart';
 import 'party_widgets.dart';
 
@@ -108,6 +110,16 @@ class _PartyHomeScreenState extends State<PartyHomeScreen> {
             onTap: () =>
                 Navigator.of(context).pushReplacement(PartyJoinScreen.route()),
           ),
+          if (context.read<PartyEnvironment>().packPlaylists != null) ...[
+            const SizedBox(height: 12),
+            _BigChoice(
+              icon: Icons.offline_pin,
+              title: 'Préparer un pack hors-ligne',
+              subtitle: 'Télécharger une playlist avant la soirée',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const PartyOfflinePackScreen())),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 16),
             Text(_error!, style: const TextStyle(color: Colors.redAccent)),

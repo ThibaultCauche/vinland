@@ -268,6 +268,50 @@ void main() {
     });
   });
 
+  group('radio du mode soiree', () {
+    test('titres similaires a partir du titre en cours', () async {
+      await connect();
+      server.json(
+          'getSimilarSongs.view',
+          okResponse({
+            'similarSongs': {'song': fakeSongs(2)}
+          }));
+      final tracks = await navidrome.similarSongs('tr-9');
+      expect(tracks.map((t) => t.id), ['navidrome_tr-0', 'navidrome_tr-1']);
+      expect(server.to('getSimilarSongs.view').single.url.queryParameters['id'],
+          'tr-9');
+    });
+
+    test("rien pour le titre : on essaie par son artiste (getSimilarSongs2)",
+        () async {
+      await connect();
+      server.json('getSimilarSongs.view',
+          okResponse({'similarSongs': <String, Object>{}}));
+      server.json(
+          'getSong.view',
+          okResponse({
+            'song': {'id': 'tr-9', 'artistId': 'ar-3'}
+          }));
+      server.json(
+          'getSimilarSongs2.view',
+          okResponse({
+            'similarSongs2': {'song': fakeSongs(1, from: 5)}
+          }));
+      final tracks = await navidrome.similarSongs('tr-9');
+      expect(tracks.single.id, 'navidrome_tr-5');
+      expect(
+          server.to('getSimilarSongs2.view').single.url.queryParameters['id'],
+          'ar-3');
+    });
+
+    test('serveur sans agent ou en erreur : liste vide, pas de plantage',
+        () async {
+      await connect();
+      server.json('getSimilarSongs.view', fixture('error_wrong_credentials'));
+      expect(await navidrome.similarSongs('tr-9'), isEmpty);
+    });
+  });
+
   group('playlists', () {
     test(
         'une coupure pendant la lecture des playlists renvoie null, pour ne '

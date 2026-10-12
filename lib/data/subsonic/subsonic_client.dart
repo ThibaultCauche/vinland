@@ -265,6 +265,31 @@ class SubsonicClient {
     }
   }
 
+  /// Fiche d'un titre (cle `artistId` utile a [similarSongs2]).
+  Future<Map<String, dynamic>> song(String id) async {
+    final data = await get('getSong.view', params: {'id': id});
+    final song = data['song'];
+    if (song is! Map) throw const SubsonicException('titre absent');
+    return Map<String, dynamic>.from(song);
+  }
+
+  /// Titres proches d'un titre, d'un album ou d'un artiste. Navidrome les
+  /// tire de ses agents (Last.fm...) : liste vide si aucun n'est configure.
+  Future<List<Map<String, dynamic>>> similarSongs(String id,
+      {int count = 30}) async {
+    final data = await get('getSimilarSongs.view',
+        params: {'id': id, 'count': '$count'});
+    return listOf((data['similarSongs'] as Map?)?['song']);
+  }
+
+  /// Comme [similarSongs], a partir d'un artiste (version ID3).
+  Future<List<Map<String, dynamic>>> similarSongs2(String artistId,
+      {int count = 30}) async {
+    final data = await get('getSimilarSongs2.view',
+        params: {'id': artistId, 'count': '$count'});
+    return listOf((data['similarSongs2'] as Map?)?['song']);
+  }
+
   /// Titres et albums likes (cles `song` et `album`).
   Future<Map<String, List<Map<String, dynamic>>>> starred2() async {
     final data = await get('getStarred2.view');

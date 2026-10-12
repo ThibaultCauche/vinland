@@ -115,7 +115,7 @@ celui-ci répond `party_error` avec le code `version`.
 | `search` | membre | `requestId`, `query` (2 à 100 caractères) |
 | `suggest` | membre | `songId` ; sans catalogue côté relais, aussi `title`, `artist`, `album`, `durationMs`, `coverId` |
 | `vote` | membre | `itemId`, `value` (1, -1 ou 0 pour retirer son vote) |
-| `now_playing` | hôte | `itemId` (titre de la file) ou `songId` + infos (titre hors file), ou rien (arrêt) |
+| `now_playing` | hôte | `itemId` (titre de la file) ou `songId` + infos + `by?` (titre hors file, `by` = étiquette affichée, par exemple « Radio », 40 caractères max), ou rien (arrêt) |
 | `veto` | hôte | `itemId` |
 | `kick` | hôte | `memberId`, `ban` (bool) |
 | `party_rotate_code` | hôte | rien |
@@ -128,7 +128,7 @@ celui-ci répond `party_error` avec le code `version`.
 |---|---|---|
 | `party_joined` | celui qui entre | `v`, `partyId`, `memberId`, `role`, `token`, `name`, `rules`, `expiresAt` ; `code` pour l'hôte |
 | `queue_state` | tous, à chaque changement | `items` [{`id`, `songId`, `title`, `artist`, `album`, `durationMs`, `coverId`, `by` (pseudo), `byId`, `score`, `myVote`, `mine`}] dans l'ordre de passage, `guestCount`, `hostOnline` ; pour l'hôte aussi `members` [{`id`, `name`, `online`, `pending`}] |
-| `now_playing` | tous | `song` ({`songId`, `title`, ...} ou `null`), `itemId?` |
+| `now_playing` | tous | `song` ({`songId`, `title`, ...} ou `null`), `itemId?`, `by` (pseudo de l'invité qui l'a proposé, étiquette de l'hôte, ou vide) |
 | `suggested` | l'auteur | `itemId`, `songId` |
 | `search_results` | le demandeur | `requestId`, `songs` [{`id`, `title`, `artist`, `album`, `durationMs`, `coverId`}] |
 | `party_code` | hôte | `code` (après `party_rotate_code`) |

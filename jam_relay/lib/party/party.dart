@@ -123,6 +123,10 @@ class Party {
   /// songId des derniers titres joues, le plus recent en dernier.
   final List<String> _history = [];
   PartySong? nowPlaying;
+
+  /// Qui a propose le titre en cours : pseudo de l'invite, etiquette donnee
+  /// par l'hote pour un titre hors file (« Radio »), ou vide.
+  String nowPlayingBy = '';
   late final String hostId;
   int _seq = 0;
   int _ids = 0;
@@ -225,13 +229,16 @@ class Party {
 
   /// L'hote lance un titre : s'il vient de la file, il la quitte. Renvoie
   /// l'element de file joue, s'il y en avait un.
-  PartyItem? play({String? itemId, PartySong? song}) {
+  PartyItem? play({String? itemId, PartySong? song, String by = ''}) {
     PartyItem? played;
     if (itemId != null) {
       played = item(itemId);
       if (played != null) _items.remove(played);
     }
     nowPlaying = played?.song ?? song;
+    nowPlayingBy = played != null
+        ? members[played.memberId]?.name ?? ''
+        : (nowPlaying == null ? '' : by);
     final id = nowPlaying?.songId;
     if (id != null) {
       _history.add(id);

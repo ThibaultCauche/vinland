@@ -131,6 +131,19 @@ class DiscoveryService {
     return DiscoveredArtist.fromJson(data);
   }
 
+  /// Noms des artistes que Deezer juge proches de [artistId] (radio du
+  /// mode Soiree, quand Navidrome ne connait pas de titres similaires).
+  Future<List<String>> getRelatedArtistNames(int artistId,
+      {int limit = 10}) async {
+    final data = await _get('/artist/$artistId/related', {'limit': '$limit'});
+    final list = data['data'] as List? ?? [];
+    return list
+        .whereType<Map>()
+        .map((j) => j['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+  }
+
   Future<List<DiscoveredTrack>> getArtistTopTracks(int artistId,
       {int limit = 5}) async {
     final data = await _get('/artist/$artistId/top', {'limit': '$limit'});

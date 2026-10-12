@@ -477,7 +477,8 @@ class PartyHub {
         } else {
           final songId = _text(msg['songId'], 100);
           party.play(
-              song: songId.isEmpty ? null : _songFromMessage(msg, songId));
+              song: songId.isEmpty ? null : _songFromMessage(msg, songId),
+              by: _text(msg['by'], 40));
         }
         _broadcast(party, (_) => _nowPlayingMessage(party));
         _broadcastQueue(party);
@@ -533,6 +534,7 @@ class PartyHub {
   Map<String, dynamic> _nowPlayingMessage(Party party) => {
         'type': 'now_playing',
         'song': party.nowPlaying?.toJson(),
+        'by': party.nowPlayingBy,
       };
 
   void _broadcast(

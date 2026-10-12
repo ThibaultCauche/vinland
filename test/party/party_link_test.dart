@@ -76,4 +76,40 @@ void main() {
           PartyRules.fromJson({'maxPendingPerGuest': 2}).votesEnabled, isTrue);
     });
   });
+
+  group('recap', () {
+    test('la playlist porte la date du debut de soiree', () {
+      expect(partyRecapName(DateTime(2026, 10, 17, 21, 30)), 'Soirée du 17/10');
+    });
+
+    test('une soiree commencee apres minuit compte pour la veille', () {
+      expect(partyRecapName(DateTime(2026, 11, 1, 1, 15)), 'Soirée du 31/10');
+    });
+
+    test('description : les invites du plus au moins actif, puis hote et radio',
+        () {
+      PartyPlayed p(String by) => PartyPlayed(
+          song: const PartySong(songId: 's', title: 't'),
+          by: by,
+          at: DateTime(2026));
+      expect(
+          partyRecapComment([p('Tom'), p(''), p('Léa'), p('Radio'), p('Léa')]),
+          "Proposé par : Léa (2), Tom (1), l'hôte (1), la radio (1)");
+      expect(partyRecapComment([]), '');
+    });
+
+    test('un recap enregistre se relit tel quel', () {
+      final played = PartyPlayed(
+        song: const PartySong(
+            songId: 's1', title: 'One', artist: 'U2', coverId: 'al-1'),
+        by: 'Léa',
+        at: DateTime(2026, 10, 17, 22),
+      );
+      final back = PartyPlayed.fromJson(played.toJson())!;
+      expect(back.song.coverId, 'al-1');
+      expect(back.by, 'Léa');
+      expect(back.at, played.at);
+      expect(PartyPlayed.fromJson({'title': 'sans id'}), isNull);
+    });
+  });
 }

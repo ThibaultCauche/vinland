@@ -5,6 +5,8 @@ import '../../controllers/party_controller.dart';
 import '../../controllers/party_environment.dart';
 import '../../services/party/party_link.dart';
 import '../../services/party/party_models.dart';
+import 'party_ambiance_screen.dart';
+import 'party_offline_pack_screen.dart';
 import 'party_qr_screen.dart';
 import 'party_widgets.dart';
 
@@ -26,6 +28,7 @@ class PartyHostScreen extends StatelessWidget {
       );
     }
     final guests = party.queue.members;
+    final env = context.read<PartyEnvironment>();
     return PartyNoticeListener(
       party: party,
       child: DefaultTabController(
@@ -36,19 +39,38 @@ class PartyHostScreen extends StatelessWidget {
             party.partyName.isEmpty ? 'Soirée' : party.partyName,
             actions: [
               IconButton(
+                tooltip: "Écran d'ambiance",
+                icon: const Icon(Icons.tv),
+                onPressed: () => openPartyAmbiance(context),
+              ),
+              IconButton(
                 tooltip: 'Afficher le QR code',
                 icon: const Icon(Icons.qr_code_2),
                 onPressed: () => _showQr(context, party),
               ),
               PopupMenuButton<String>(
                 onSelected: (value) => switch (value) {
+                  'radio' => env.setRadioEnabled
+                      ?.call(!(env.radioEnabled?.call() ?? false)),
+                  'pack' => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const PartyOfflinePackScreen())),
                   'code' => _rotateCode(context, party),
                   'end' => _confirmEnd(context, party),
                   _ => null,
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'code', child: Text('Changer le code')),
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  if (env.setRadioEnabled != null)
+                    CheckedPopupMenuItem(
+                      value: 'radio',
+                      checked: env.radioEnabled?.call() ?? false,
+                      child: const Text('Radio quand la file est vide'),
+                    ),
+                  if (env.packPlaylists != null)
+                    const PopupMenuItem(
+                        value: 'pack', child: Text('Pack hors-ligne')),
+                  const PopupMenuItem(
+                      value: 'code', child: Text('Changer le code')),
+                  const PopupMenuItem(
                       value: 'end', child: Text('Terminer la soirée')),
                 ],
               ),

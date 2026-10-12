@@ -32,6 +32,7 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   PartyController({
     required PartySocketConnector connect,
     PartySeatStore? store,
+    PartyRecapStore? recapStore,
     this.retryDelays = const [
       Duration(seconds: 1),
       Duration(seconds: 2),
@@ -43,10 +44,12 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
     DateTime Function()? now,
   })  : _connect = connect,
         _store = store,
+        _recapStore = recapStore,
         _now = now ?? DateTime.now;
 
   final PartySocketConnector _connect;
   final PartySeatStore? _store;
+  final PartyRecapStore? _recapStore;
   final DateTime Function() _now;
 
   /// Attentes entre deux essais de reconnexion ; la derniere se repete tant
@@ -80,6 +83,15 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   PartyQueueState queue = const PartyQueueState();
   PartySong? nowPlaying;
 
+  /// Qui a propose le titre en cours (vide : l'hote, « Radio » : la radio).
+  String nowPlayingBy = '';
+
+  final List<PartyPlayed> _played = [];
+
+  /// Titres passes depuis le debut de la soiree, dans l'ordre : le recap.
+  /// Garde apres la fin de la soiree, jusqu'a [clear].
+  List<PartyPlayed> get played => List.unmodifiable(_played);
+
   List<PartySong> searchResults = const [];
   bool searching = false;
   int _requestId = 0;
@@ -97,6 +109,8 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   List<PartyQueueItem> get queueItems => queue.items;
   @override
   String? get nowPlayingSongId => nowPlaying?.songId;
+  @override
+  Iterable<String> get playedSongIds => _played.map((p) => p.song.songId);
   bool get isActive =>
       phase == PartyPhase.inParty || phase == PartyPhase.reconnecting;
 
@@ -148,7 +162,7 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   Future<bool> resume() async {
     final seat = await savedSeat();
     if (seat == null) return false;
-    return _enter(seat.relayUrl, _tokenJoin(seat.token));
+    return _enter(seat.relayUrl, _tokenJoin(seat.token), resuming: true);
   }
 
   Map<String, dynamic> _tokenJoin(String token) => {
@@ -157,9 +171,17 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
         'token': token,
       };
 
-  Future<bool> _enter(String url, Map<String, dynamic> first) async {
+  Future<bool> _enter(String url, Map<String, dynamic> first,
+      {bool resuming = false}) async {
     await _closeSocket();
     _reset();
+    // Meme soiree apres un redemarrage : on reprend le recap ; nouvelle
+    // soiree : on oublie celui de la precedente.
+    if (resuming) {
+      _played.addAll(await _recapStore?.load() ?? const []);
+    } else {
+      unawaited(_recapStore?.save(null));
+    }
     relayUrl = url;
     phase = PartyPhase.connecting;
     _notify();
@@ -212,10 +234,7 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
       case 'queue_state':
         queue = PartyQueueState.fromJson(msg);
       case 'now_playing':
-        final song = msg['song'];
-        nowPlaying = song is Map
-            ? PartySong.fromJson(song.cast<String, dynamic>())
-            : null;
+        _onNowPlaying(msg);
       case 'suggested':
         _notices.add('Titre proposé !');
       case 'search_results':
@@ -245,6 +264,30 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
         return;
     }
     _notify();
+  }
+
+  void _onNowPlaying(Map<String, dynamic> msg) {
+    final raw = msg['song'];
+    final song =
+        raw is Map ? PartySong.fromJson(raw.cast<String, dynamic>()) : null;
+    nowPlaying = song;
+    if (song == null) {
+      nowPlayingBy = '';
+      return;
+    }
+    // Relais recent : `by` dans le message. Sinon on le retrouve dans la
+    // file, que le relais n'a pas encore mise a jour a ce moment-la.
+    final by = msg['by'];
+    if (by is String) {
+      nowPlayingBy = by;
+    } else {
+      final item = queue.items.where((i) => i.song.songId == song.songId);
+      nowPlayingBy = item.isEmpty ? '' : item.first.by;
+    }
+    // Le meme titre annonce deux fois (reconnexion) ne compte qu'une fois.
+    if (_played.isNotEmpty && _played.last.song.songId == song.songId) return;
+    _played.add(PartyPlayed(song: song, by: nowPlayingBy, at: _now()));
+    unawaited(_recapStore?.save(_played));
   }
 
   void _onJoined(Map<String, dynamic> msg) {
@@ -373,10 +416,12 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   /// L'hote annonce ce qui joue : un titre de la file ([itemId], qui la
   /// quitte alors), un titre hors file ([song]), ou rien (arret).
   @override
-  void announceNowPlaying({String? itemId, PartySong? song}) => _send({
+  void announceNowPlaying({String? itemId, PartySong? song, String? by}) =>
+      _send({
         'type': 'now_playing',
         if (itemId != null) 'itemId': itemId,
         if (itemId == null && song != null) ...song.toJson(),
+        if (itemId == null && song != null && by != null) 'by': by,
       });
 
   /// Hote : termine la soiree pour tout le monde.
@@ -394,10 +439,11 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
     _notify();
   }
 
-  /// Retour a l'etat initial apres l'ecran de fin.
+  /// Retour a l'etat initial apres l'ecran de fin (le recap est oublie).
   void clear() {
     unawaited(_closeSocket());
     _reset();
+    unawaited(_recapStore?.save(null));
     _notify();
   }
 
@@ -414,6 +460,8 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
     expiresAt = null;
     queue = const PartyQueueState();
     nowPlaying = null;
+    nowPlayingBy = '';
+    _played.clear();
     searchResults = const [];
     searching = false;
   }

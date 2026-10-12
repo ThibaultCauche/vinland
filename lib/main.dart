@@ -187,11 +187,13 @@ Future<void> main() async {
     // memes instances, fournies par le MultiProvider de VinlandApp.
     final navidrome = NavidromeService();
     final music = MusicService(navidrome);
+    final discovery = DiscoveryService(music);
     final appState = AppState(
       audioHandler: audioHandler,
       music: music,
       navidrome: navidrome,
       jamService: WebSocketJamService(navidrome),
+      discovery: discovery,
     );
     appState.initialize();
     DeepLinkService(appState).init();
@@ -201,7 +203,7 @@ Future<void> main() async {
       appState: appState,
       music: music,
       navidrome: navidrome,
-      discovery: DiscoveryService(music),
+      discovery: discovery,
     ));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');

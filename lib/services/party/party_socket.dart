@@ -132,3 +132,39 @@ class PrefsPartySeatStore implements PartySeatStore {
     }
   }
 }
+
+/// Titres deja passes dans la soiree en cours, gardes pour que le recap
+/// survive a un redemarrage de l'app en pleine soiree.
+abstract class PartyRecapStore {
+  Future<List<PartyPlayed>> load();
+  Future<void> save(List<PartyPlayed>? played);
+}
+
+class PrefsPartyRecapStore implements PartyRecapStore {
+  static const _key = 'vinland_party_recap';
+
+  @override
+  Future<List<PartyPlayed>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null) return const [];
+    try {
+      final list = jsonDecode(raw);
+      if (list is! List) return const [];
+      return list.map(PartyPlayed.fromJson).whereType<PartyPlayed>().toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<void> save(List<PartyPlayed>? played) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (played == null || played.isEmpty) {
+      await prefs.remove(_key);
+    } else {
+      await prefs.setString(
+          _key, jsonEncode([for (final p in played) p.toJson()]));
+    }
+  }
+}
