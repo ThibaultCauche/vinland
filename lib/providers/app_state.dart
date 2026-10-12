@@ -640,9 +640,15 @@ class AppState extends ChangeNotifier
     }
   }
 
-  Future<void> checkForUpdate() async {
-    updateInfo = await UpdateCheckService().checkForUpdate();
+  /// Retourne false si GitHub a refuse la verification (limite de requetes
+  /// atteinte) : updateInfo vient alors du dernier resultat connu.
+  /// [force] : clic explicite de l'utilisateur, ignore l'intervalle d'une
+  /// heure entre deux verifications (voir UpdateCheckService).
+  Future<bool> checkForUpdate({bool force = false}) async {
+    final result = await UpdateCheckService().checkForUpdate(force: force);
+    updateInfo = result.info;
     if (updateInfo != null) _notify();
+    return !result.rateLimited;
   }
 
   bool _isDisposed = false;

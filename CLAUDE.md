@@ -37,10 +37,11 @@
    partie avant `+` de `version:`, prefixee de `v`).
 5. Le workflow `.github/workflows/release.yml` se declenche automatiquement sur
    ce tag : il build Windows + Android et publie une Release GitHub avec
-   `vinland-windows-vX.Y.Z.zip` et `vinland-android-vX.Y.Z.apk` en ~5-8 min.
+   `vinland-windows-vX.Y.Z.zip`, `vinland-android-vX.Y.Z.apk`, `SHA256SUMS`
+   et `SHA256SUMS.minisig` en ~5-8 min.
 6. Verifier : `gh run list -R ThibaultCauche/vinland -L 1` puis
    `gh run watch <run-id> -R ThibaultCauche/vinland --exit-status`, et enfin
-   `gh release view vX.Y.Z -R ThibaultCauche/vinland` pour confirmer les deux assets.
+   `gh release view vX.Y.Z -R ThibaultCauche/vinland` pour confirmer les quatre assets.
 
 Une fois publiee, l'app la propose toute seule aux utilisateurs (verif au
 lancement + au retour au premier plan) : auto-update complet sur Windows
@@ -71,7 +72,18 @@ Android l'exige). Rien d'autre a faire cote distribution.
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
   `DISCORD_FEEDBACK_WEBHOOK_URL`, `AVATAR_SERVICE_BASE_URL`,
   `AVATAR_SERVICE_API_KEY`, `DOWNLOAD_WORKER_BASE_URL`,
-  `DOWNLOAD_WORKER_API_KEY`.
+  `DOWNLOAD_WORKER_API_KEY`, `MINISIGN_SECRET_KEY`.
+- **Signature des releases (minisign)** : `release.yml` signe `SHA256SUMS`
+  avec le secret `MINISIGN_SECRET_KEY` et refuse de publier si la signature
+  ne se verifie pas avec `kReleasePublicKey`
+  (`lib/services/release_signature.dart`). L'app refuse toute mise a jour
+  dont l'empreinte n'est pas dans un `SHA256SUMS` signe par cette cle. Ne
+  pas changer la paire de cles a la legere : les apps deja installees ne
+  connaissent que l'ancienne cle publique et refuseraient toute release
+  signee par la nouvelle (il faudrait une release de transition signee par
+  l'ancienne cle qui embarque la nouvelle).
+- **Actions GitHub epinglees par SHA** (version en commentaire) ; Dependabot
+  les met a jour. Ne pas revenir a `@v4`.
 - **Cle de signature Android** : `C:\Users\thett\vinland-release-keystore\
   vinland-release.jks` (hors repo, gitignore, alias `vinland`). Ne JAMAIS la
   regenerer : une nouvelle cle casse la compatibilite de signature avec les
