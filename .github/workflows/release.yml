@@ -10,6 +10,8 @@ on:
     tags:
       - 'v*'
 
+# contents: write pour publier la Release ; le job ci (workflow_call) ne
+# fait que lire, ci.yml restreint lui-meme ses permissions.
 permissions:
   contents: write
 
@@ -17,7 +19,13 @@ env:
   FLUTTER_VERSION: '3.47.2'
 
 jobs:
+  # Rejoue toute la CI (format, analyse, tests app + relais) sur le commit
+  # tague : si elle est rouge, aucun build ne part et rien n'est publie.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-windows:
+    needs: ci
     # windows-2022 (pas windows-latest) : l'image la plus recente utilise un
     # "Dev Drive" (D:, ReFS) pour le checkout et une toolchain VS plus
     # agressive, qui declenchent respectivement le bug CMake "Cannot extract
@@ -108,6 +116,7 @@ jobs:
           path: vinland-windows-*.zip
 
   build-android:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

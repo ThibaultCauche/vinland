@@ -1,0 +1,81 @@
+name: CI
+
+# Verifie chaque PR et chaque push sur main : formatage, analyse et tests de
+# l'app Flutter, puis analyse et tests du relais Jam. release.yml l'appelle
+# aussi (workflow_call) avant de builder, pour qu'une release ne parte jamais
+# avec des tests rouges.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un nouveau push sur la meme PR annule le run precedent, devenu inutile.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Garder la meme version que dans release.yml : la CI doit tester avec le
+  # Flutter qui build les APK/zip publies.
+  FLUTTER_VERSION: '3.47.2'
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # lib/config/*.dart sont gitignores (secrets) : des versions vides
+      # suffisent pour analyser et tester, aucun test ne touche au NAS.
+      - name: Write stub config files
+        run: ./tool/write_stub_config.sh
+
+      - run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      # --no-fatal-infos : les ~90 remarques "info" historiques seront
+      # traitees en session 08 ; d'ici la, seuls les warnings et erreurs
+      # font echouer la CI.
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test --coverage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+
+  relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jam_relay
+    steps:
+      - uses: actions/checkout@v4
+
+      # Meme SDK Dart que l'app (celui embarque dans Flutter).
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - run: dart pub get
+      - run: dart analyze
+      - run: dart test
