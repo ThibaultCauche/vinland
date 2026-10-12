@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../navigation/overlay_navigator.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../models/album.dart';
@@ -34,10 +35,14 @@ class _ArtistCache {
       this.deepMatched = false});
 }
 
-class ArtistScreen extends StatefulWidget {
+class ArtistScreen extends StatefulWidget implements KeyedOverlay {
   final String artistName;
 
   const ArtistScreen({super.key, required this.artistName});
+
+  /// Taper deux fois de suite sur le meme artiste n'empile pas deux pages.
+  @override
+  Object get overlayKey => artistName;
 
   @override
   State<ArtistScreen> createState() => _ArtistScreenState();

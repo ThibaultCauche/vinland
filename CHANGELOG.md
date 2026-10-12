@@ -22,6 +22,11 @@ commit.
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.
+- Interne, sans changement visible : la lecture et la file d'attente
+  quittent `AppState` pour `PlayerController` et `domain/queue.dart`
+  (testés avec un faux moteur audio), les thèmes pour `ThemeController`
+  et la navigation plein écran pour `OverlayNavigator`. `AppState` ne
+  dépend plus d'aucun écran.
 - Tout le code Dart est formaté avec `dart format`.
 - Le jeton Subsonic n'est plus écrit sur le disque : le cache de
   bibliothèque, les albums, l'historique de recherche et la pochette

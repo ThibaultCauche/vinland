@@ -65,3 +65,19 @@ abstract class PlayerEngine {
   Future<void> setLoopMode(LoopMode mode);
   Future<void> dispose();
 }
+
+/// Ce que PlayerController pilote : le moteur (pour ses flux d'etat) et le
+/// chargement d'un titre avec sa fiche pour la notification/l'ecran
+/// verrouille. Implemente par VinlandAudioHandler, remplace par un faux
+/// dans les tests (voir test/fakes/fake_player_engine.dart).
+abstract class PlaybackOutput {
+  PlayerEngine get player;
+
+  /// Retourne false si le chargement echoue apres toutes les tentatives.
+  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex);
+
+  Future<void> play();
+  Future<void> pause();
+  Future<void> seek(Duration position);
+  Future<void> stop();
+}

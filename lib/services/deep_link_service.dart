@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:app_links/app_links.dart';
 import 'package:share_plus/share_plus.dart';
 import '../providers/app_state.dart';
+import '../navigation/shared_item_opener.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -296,8 +297,8 @@ class DeepLinkService {
 
     // Resolution + navigation partagees avec la boite de reception (un
     // partage recu s'ouvre exactement de la meme facon, voir
-    // AppState.openSharedItem).
-    final ok = await _state.openSharedItem(type: uri.host, id: id);
+    // openSharedItem, navigation/shared_item_opener.dart).
+    final ok = await openSharedItem(_state, type: uri.host, id: id);
     if (!ok) _notFound();
   }
 

@@ -53,15 +53,15 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
   void initState() {
     super.initState();
     final state = context.read<AppState>();
-    state.onDesktopOpenAlbum = _openAlbum;
-    state.onDesktopOpenPlaylist = _openPlaylist;
+    state.navigator.onDesktopOpenAlbum = _openAlbum;
+    state.navigator.onDesktopOpenPlaylist = _openPlaylist;
   }
 
   @override
   void dispose() {
     final state = context.read<AppState>();
-    state.onDesktopOpenAlbum = null;
-    state.onDesktopOpenPlaylist = null;
+    state.navigator.onDesktopOpenAlbum = null;
+    state.navigator.onDesktopOpenPlaylist = null;
     super.dispose();
   }
 

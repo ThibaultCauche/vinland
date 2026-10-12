@@ -63,3 +63,6 @@ assets/**/*.mp3
 assets/**/*.flac
 assets/**/*.m4a
 assets/**/*.wav
+
+# Rapport de couverture (flutter test --coverage)
+/coverage/

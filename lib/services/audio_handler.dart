@@ -3,8 +3,11 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'player_engine.dart';
 
-class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
+class VinlandAudioHandler extends BaseAudioHandler
+    with SeekHandler
+    implements PlaybackOutput {
   final PlayerEngine _engine;
+  @override
   PlayerEngine get player => _engine;
 
   final _customActionController = StreamController<String>.broadcast();
@@ -75,8 +78,8 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
 
   // Ne pilotent PAS _engine.seekToNext()/seekToPrevious() (ancien
   // comportement) : le moteur ne reçoit jamais qu'UN SEUL titre a la fois
-  // (voir AppState._playSingle), la file d'attente entiere vit cote Dart
-  // dans AppState.queue -- seekToNext/Previous du moteur natif n'avaient
+  // (voir PlayerController._playSingle), la file d'attente entiere vit cote Dart
+  // dans PlayQueue -- seekToNext/Previous du moteur natif n'avaient
   // donc litteralement rien a faire dans une file d'un seul element. Ca
   // rendait les boutons suivant/precedent inertes depuis la notification/
   // l'ecran verrouille et les gestes du casque Bluetooth (seul play/pause
@@ -107,8 +110,9 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Retourne false si le chargement echoue apres toutes les tentatives
-  /// (appelant responsable de reagir -- voir AppState._advanceQueue, qui
+  /// (appelant responsable de reagir -- voir PlayerController._advanceQueue, qui
   /// saute au titre suivant plutot que de rester bloque en silence).
+  @override
   Future<bool> loadAndPlay(List<MediaItem> items, int startIndex) async {
     queue.add(items);
     if (startIndex >= 0 && startIndex < items.length) {

@@ -55,7 +55,7 @@ Future<void> main() async {
     // Requis avant tout appel a MetadataGod.readMetadata (lecture des tags
     // ID3/Vorbis d'un fichier local) : sans cet appel, chaque lecture leve
     // "Bad state: MetadataGod not initialized" -- capture silencieuse par
-    // les try/catch appelants (MusicService.parseFile, AppState._readLocalTags
+    // les try/catch appelants (MusicService.parseFile, readLocalTags
     // pour la detection de doublon a l'import), donc le symptome n'etait
     // qu'un repli permanent sur le nom de fichier, jamais une erreur visible.
     MetadataGod.initialize();

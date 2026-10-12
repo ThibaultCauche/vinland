@@ -32,7 +32,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Les etageres viennent de AppState (pre-calculees, stables pendant une
-    // synchro -- voir AppState._refreshHomeShelves) plutot que recalculees
+    // synchro -- voir HomeShelves) plutot que recalculees
     // ici a partir de albums/allTracks, qui grossissent en continu pendant
     // le chargement.
     return Selector<
@@ -274,7 +274,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Albums presents sur le NAS mais pas encore likes (voir
-  /// AppState._refreshHomeShelves pour le calcul, stable tant qu'aucune
+  /// HomeShelves pour le calcul, stable tant qu'aucune
   /// synchro n'est en cours).
   Widget _buildDiscovery(AppState state, List<Album> picks) {
     if (picks.isEmpty) {

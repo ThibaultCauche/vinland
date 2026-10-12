@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../navigation/overlay_navigator.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../screens/album_screen.dart';
@@ -13,7 +14,7 @@ import 'player/player_slider.dart';
 import 'player/player_cover.dart';
 import 'player/player_options_sheet.dart';
 
-class PlayerScreen extends StatelessWidget {
+class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
   const PlayerScreen({super.key});
 
   @override

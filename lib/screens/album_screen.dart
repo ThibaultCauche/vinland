@@ -134,7 +134,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
     super.dispose();
   }
 
-  /// Meme algorithme que AppState._extractDominantColorIsolate : la swatch
+  /// Meme algorithme que ThemeController._extractDominantColor : la swatch
   /// "vibrant" de PaletteGenerator (deja une dependance du projet) plutot
   /// qu'une moyenne brute de quelques pixels, qui produisait une couleur
   /// "boueuse" ne representant pas vraiment la cover.

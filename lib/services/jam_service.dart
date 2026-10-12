@@ -46,7 +46,7 @@ class JamStateMessage {
 /// participant et recue uniquement par l'hote -- voir sendCommand. Un
 /// participant ne pilote jamais sa propre file d'attente ni son propre
 /// moteur audio (rien n'est charge localement tant qu'on suit un hote, voir
-/// AppState.playTrack/_advanceQueue) : ce canal est le seul moyen pour lui
+/// AppState.playTrack/PlayerController) : ce canal est le seul moyen pour lui
 /// d'influencer ce qui va vraiment jouer.
 class JamCommandMessage {
   final String action;

@@ -81,7 +81,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
   @override
   Widget build(BuildContext context) {
     // Les etageres viennent de AppState (pre-calculees, stables pendant une
-    // synchro -- voir AppState._refreshHomeShelves) plutot que recalculees
+    // synchro -- voir HomeShelves) plutot que recalculees
     // ici a partir de albums/allTracks, qui grossissent en continu pendant
     // le chargement.
     return Selector<
