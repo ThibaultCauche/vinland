@@ -104,8 +104,9 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
       album: dt.albumName == 'Inconnu' ? null : dt.albumName,
     );
     if (jobId == null) {
-      if (mounted)
+      if (mounted) {
         setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
+      }
       return;
     }
 
