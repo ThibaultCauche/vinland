@@ -19,6 +19,13 @@ commit.
 - Dependabot, modèles de PR et d'issue, ce journal.
 - Clé d'API OpenSubsonic optionnelle côté service Navidrome (à la place du
   jeton md5), pour les versions de Navidrome qui la gèrent.
+- Plus de blanc entre deux titres : le titre suivant est préchargé sur un
+  second lecteur pendant les 20 dernières secondes du titre en cours.
+- Fondu enchaîné réglable de 0 à 12 s (Paramètres > Lecture, désactivé par
+  défaut), jamais entre deux pistes qui se suivent sur un même album (live,
+  mix).
+- Volume égalisé (ReplayGain, par titre ou par album) à partir des tags
+  renvoyés par Navidrome (Paramètres > Lecture, désactivé par défaut).
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.

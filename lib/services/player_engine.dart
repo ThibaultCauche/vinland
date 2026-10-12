@@ -74,7 +74,27 @@ abstract class PlaybackOutput {
   PlayerEngine get player;
 
   /// Retourne false si le chargement echoue apres toutes les tentatives.
-  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex);
+  ///
+  /// Si le titre a ete precharge ([preload]), bascule simplement dessus,
+  /// en fondu de [crossfade] si > 0. [gain] : volume ReplayGain du titre
+  /// (0..1), multiplie par le volume choisi par l'utilisateur.
+  Future<bool> loadAndPlay(
+    List<MediaItem> items,
+    int startIndex, {
+    Duration crossfade = Duration.zero,
+    double gain = 1.0,
+  });
+
+  /// Prepare le titre suivant sans interrompre celui qui joue. Retourne
+  /// false si le moteur ne sait pas precharger ou si le chargement echoue :
+  /// le titre sera alors charge normalement par [loadAndPlay].
+  Future<bool> preload(MediaItem item, {double gain = 1.0});
+
+  /// Le titre precharge n'est plus le suivant (file modifiee).
+  void cancelPreload();
+
+  /// Change le gain ReplayGain du titre en cours (reglage modifie).
+  Future<void> setTrackGain(double gain);
 
   Future<void> play();
   Future<void> pause();

@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../controllers/jam_controller.dart';
+import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
 import '../domain/home_shelves.dart';
@@ -85,6 +86,9 @@ class AppState extends ChangeNotifier
   // Lecture locale et file d'attente : voir PlayerController. Accesseurs
   // gardes ici le temps de migrer les ecrans.
   late final PlayerController _player;
+
+  /// Fondu enchaine et normalisation (Parametres > Lecture).
+  final PlaybackSettings playbackSettings = PlaybackSettings();
   PlayerController get playerController => _player;
   Track? get currentTrack => _player.currentTrack;
   bool get isPlaying => _player.isPlaying;
@@ -226,7 +230,11 @@ class AppState extends ChangeNotifier
   })  : _audioHandler = audioHandler,
         _music = music,
         _navidrome = navidrome {
-    _player = PlayerController(output: audioHandler, tracks: _tracks)
+    _player = PlayerController(
+      output: audioHandler,
+      tracks: _tracks,
+      settings: playbackSettings,
+    )
       ..onTrackLoading = ((track) => _theme.updateCoverColor(track.coverPath))
       ..onPlayingChanged = _syncNowPlayingMirror
       ..onTrackStarted = _onTrackStarted;
@@ -238,6 +246,9 @@ class AppState extends ChangeNotifier
       deviceLabel: _deviceLabel,
     )..onHostingChanged = _syncNowPlayingMirror;
     _player.onEngineEvent = _jamCtl.broadcastState;
+    // Un participant qui suit un hote change de titre quand l'hote le dit,
+    // jamais en avance par un fondu (voir PlayerController.allowCrossfade).
+    _player.allowCrossfade = () => !_jamCtl.isActive || _jamCtl.isHost;
     _player.addListener(_notify);
     _jamCtl.addListener(_notify);
     _theme.addListener(_notify);
@@ -332,6 +343,7 @@ class AppState extends ChangeNotifier
       }
       await _music.initialize();
       _useNavidrome = _music.navidromeTracks.isNotEmpty;
+      await playbackSettings.load(prefs);
       await _player.restore(prefs);
 
       if (!kIsWeb && Platform.isAndroid) {

@@ -6,13 +6,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/track_repository.dart';
 import '../domain/queue.dart';
+import '../domain/replay_gain.dart';
 import '../models/track.dart';
 import '../services/player_engine.dart';
 import 'jam_playback.dart';
+import 'playback_settings.dart';
 
 /// Lecture locale : titre en cours, play/pause, seek, passage au suivant
 /// (fin de titre, titre injouable, filet de securite en fin de titre),
 /// lecture aleatoire/repetition et sauvegarde de l'etat de lecture.
+/// Prepare aussi le titre suivant pendant la fin du titre en cours
+/// (prechargement, fondu enchaine) et applique la normalisation ReplayGain.
 ///
 /// Ne connait ni le Jam ni la synchro perso : JamController le pilote a
 /// travers JamPlayback, AppState lui demande avant chaque action si le Jam
@@ -25,9 +29,12 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     required PlaybackOutput output,
     required TrackRepository tracks,
     PlayQueue? queue,
+    PlaybackSettings? settings,
   })  : _output = output,
         _tracks = tracks,
-        _queue = queue ?? PlayQueue() {
+        _queue = queue ?? PlayQueue(),
+        settings = settings ?? PlaybackSettings() {
+    this.settings.addListener(_onSettingsChanged);
     final engine = _output.player;
     // Position : mise a jour du champ SANS notifier. Rien dans l'UI ne lit
     // position (MiniPlayer/PlayerSlider pollent le player directement) :
@@ -36,6 +43,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     _subs.add(engine.positionStream.listen((pos) {
       position = pos;
       _checkStall(pos);
+      _checkUpcoming(pos);
     }));
     _subs.add(engine.durationStream.listen((dur) {
       if (dur != null && dur != duration) {
@@ -82,6 +90,15 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   final PlayQueue _queue;
   final List<StreamSubscription<Object?>> _subs = [];
   bool _disposed = false;
+
+  /// Fondu enchaine et normalisation (Parametres > Lecture).
+  final PlaybackSettings settings;
+
+  /// Le fondu avance la file avant la fin du titre : un participant de Jam
+  /// qui suit un hote ne doit pas le faire de son cote (il changerait de
+  /// titre avant l'hote, puis recevrait le meme titre de l'hote). Branche
+  /// par AppState sur l'etat du Jam.
+  bool Function() allowCrossfade = () => true;
 
   /// Un titre va etre charge (couleur d'ambiance de sa pochette).
   void Function(Track track)? onTrackLoading;
@@ -178,33 +195,30 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   /// togglePlayPause (reprise apres redemarrage de l'app). Retourne false si
   /// le moteur n'a pas reussi a charger le titre (voir _advanceQueue, qui
   /// saute au suivant plutot que de laisser la lecture bloquee en silence).
-  Future<bool> _playSingle(Track track) async {
+  Future<bool> _playSingle(
+    Track track, {
+    Duration crossfade = Duration.zero,
+  }) async {
     final seq = ++_playbackActionSeq;
     currentTrack = track;
-    final path = _tracks.offlinePath(track.id) ?? track.filePath!;
-    final isRemote = path.startsWith('http');
-
-    Uri? artUri;
-    if (track.coverPath != null) {
-      artUri = track.coverPath!.startsWith('http')
-          ? Uri.parse(track.coverPath!)
-          : Uri.file(track.coverPath!);
-    }
-
-    final item = MediaItem(
-      id: path,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      duration: track.duration,
-      artUri: artUri,
-      extras: {'isRemote': isRemote},
-    );
+    final item = _mediaItemFor(track);
+    // Le titre precharge est soit celui-ci (le moteur bascule dessus), soit
+    // perime (le moteur le libere en chargeant celui-ci).
+    _preloadedNext = null;
+    _preloadReady = false;
+    _crossfadeStarted = false;
 
     onTrackLoading?.call(track);
     _notify();
-    await Future<void>.delayed(Duration.zero);
-    final loaded = await _output.loadAndPlay([item], 0);
+    _loading++;
+    final bool loaded;
+    try {
+      await Future<void>.delayed(Duration.zero);
+      loaded = await _output
+          .loadAndPlay([item], 0, crossfade: crossfade, gain: _gainFor(track));
+    } finally {
+      _loading--;
+    }
     _setPlayingIntent(loaded, seq);
     if (!loaded) {
       _notify();
@@ -226,6 +240,38 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     onTrackStarted?.call(track);
     _notify();
     return true;
+  }
+
+  MediaItem _mediaItemFor(Track track) {
+    final path = _tracks.offlinePath(track.id) ?? track.filePath!;
+    final isRemote = path.startsWith('http');
+
+    Uri? artUri;
+    if (track.coverPath != null) {
+      artUri = track.coverPath!.startsWith('http')
+          ? Uri.parse(track.coverPath!)
+          : Uri.file(track.coverPath!);
+    }
+
+    return MediaItem(
+      id: path,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      duration: track.duration,
+      artUri: artUri,
+      extras: {'isRemote': isRemote},
+    );
+  }
+
+  double _gainFor(Track track) =>
+      replayGainVolume(track.replayGain, settings.replayGainMode);
+
+  void _onSettingsChanged() {
+    final track = currentTrack;
+    if (track != null && !_disposed) {
+      unawaited(_output.setTrackGain(_gainFor(track)));
+    }
   }
 
   /// Retourne false quand il a fallu recharger le titre (redemarrage de
@@ -332,7 +378,91 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     });
   }
 
-  Future<void> _continueQueueAutomatically() async {
+  // --- Titre suivant : prechargement et fondu ----------------------------
+
+  /// Le titre suivant est prepare pendant les 20 dernieres secondes : assez
+  /// pour remplir le tampon en 4G, assez tard pour que la file ne change
+  /// presque plus.
+  static const preloadWindow = Duration(seconds: 20);
+
+  /// Titre confie au moteur pour etre prepare (null : rien de prepare).
+  Track? _preloadedNext;
+  bool _preloadReady = false;
+  bool _crossfadeStarted = false;
+
+  /// > 0 pendant un chargement : la position recue vient encore du titre
+  /// precedent, alors que currentTrack est deja le nouveau.
+  int _loading = 0;
+
+  /// Titre qui sera joue a la fin de celui-ci, sans toucher a la file. Null
+  /// si on ne peut pas le savoir a l'avance : repetition d'un titre (il est
+  /// simplement recharge), ou file epuisee (regeneree, et melangee au
+  /// hasard en mode aleatoire, au moment d'avancer -- voir
+  /// PlayQueue.advance).
+  Track? _peekNext() {
+    if (loopMode == LoopMode.one || _queue.upcoming.isEmpty) return null;
+    final next = _queue.upcoming.first;
+    if (next.isPlaceholder && _tracks.offlinePath(next.id) == null) {
+      return null;
+    }
+    return next;
+  }
+
+  Duration _crossfadeFor(Track current, Track next) {
+    final fade = settings.crossfade;
+    if (fade <= Duration.zero || !allowCrossfade()) return Duration.zero;
+    if (continuesOnDisc(current, next)) return Duration.zero;
+    return fade;
+  }
+
+  void _checkUpcoming(Duration pos) {
+    final track = currentTrack;
+    if (track == null || !isPlaying || _loading > 0 || _disposed) return;
+    // Meme choix de duree que _checkStall (celle du moteur peut etre fausse
+    // en debut de flux).
+    final dur = track.duration.inMilliseconds > 0 ? track.duration : duration;
+    if (dur <= Duration.zero || pos < const Duration(seconds: 3)) return;
+    final remaining = dur - pos;
+    if (remaining > preloadWindow) return;
+    final next = _peekNext();
+    if (next == null) return;
+    if (_preloadedNext?.id != next.id) {
+      _startPreload(next);
+      return;
+    }
+    final fade = _crossfadeFor(track, next);
+    if (fade > Duration.zero &&
+        _preloadReady &&
+        !_crossfadeStarted &&
+        remaining <= fade) {
+      _crossfadeStarted = true;
+      final effective = remaining < fade ? remaining : fade;
+      unawaited(_continueQueueAutomatically(crossfade: effective));
+    }
+  }
+
+  void _startPreload(Track next) {
+    _preloadedNext = next;
+    _preloadReady = false;
+    unawaited(
+        _output.preload(_mediaItemFor(next), gain: _gainFor(next)).then((ok) {
+      if (_preloadedNext?.id == next.id) _preloadReady = ok;
+    }));
+  }
+
+  /// La file a change : si le titre prepare n'est plus le suivant, il est
+  /// oublie (le prochain evenement de position preparera le bon).
+  void _syncPreload() {
+    final planned = _preloadedNext;
+    if (planned == null || _peekNext()?.id == planned.id) return;
+    _preloadedNext = null;
+    _preloadReady = false;
+    _output.cancelPreload();
+  }
+
+  Future<void> _continueQueueAutomatically({
+    Duration crossfade = Duration.zero,
+  }) async {
     if (_autoContinuing || _disposed) return;
     _autoContinuing = true;
     try {
@@ -340,7 +470,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
         if (currentTrack != null) await _playSingle(currentTrack!);
         return;
       }
-      await _advanceQueue();
+      await _advanceQueue(crossfade: crossfade);
     } finally {
       _autoContinuing = false;
     }
@@ -356,10 +486,10 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
 
   /// Passe au titre suivant de la file (regeneree depuis le contexte lance
   /// si elle est vide, voir PlayQueue.advance).
-  Future<void> _advanceQueue() async {
+  Future<void> _advanceQueue({Duration crossfade = Duration.zero}) async {
     final next = _queue.advance(currentTrack, shuffled: isShuffled);
     if (next == null) return;
-    final loaded = await _playSingle(next);
+    final loaded = await _playSingle(next, crossfade: crossfade);
     if (!loaded) {
       // Titre injouable (reseau/fichier) : plutot que de rester bloque en
       // silence dessus (le bug remonte par un testeur en exterieur), on
@@ -403,6 +533,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   }
 
   void _queueChanged() {
+    _syncPreload();
     unawaited(_savePlaybackState());
     _notify();
   }
@@ -411,6 +542,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   @override
   void replaceQueue(List<Track> tracks) {
     _queue.replaceUpcoming(tracks);
+    _syncPreload();
     _notify();
   }
 
@@ -429,6 +561,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   Future<void> toggleShuffle() async {
     isShuffled = !isShuffled;
     _queue.reshuffle(shuffled: isShuffled, current: currentTrack);
+    _syncPreload();
     unawaited(_saveShuffleLoopState());
     _notify();
   }
@@ -439,6 +572,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
       LoopMode.all: LoopMode.one,
       LoopMode.one: LoopMode.off,
     }[loopMode]!;
+    _syncPreload();
     unawaited(_saveShuffleLoopState());
     _notify();
   }
@@ -518,6 +652,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     currentTrack = null;
     isPlaying = false;
     _queue.clear();
+    _syncPreload();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyLastTrackId);
     await prefs.remove(_keyLastQueueIds);
@@ -530,6 +665,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   @override
   void dispose() {
     _disposed = true;
+    settings.removeListener(_onSettingsChanged);
     _stallWatchdog?.cancel();
     for (final sub in _subs) {
       unawaited(sub.cancel());

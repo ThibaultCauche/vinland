@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
+import 'deck_player_engine.dart';
 import 'player_engine.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler
@@ -113,10 +114,31 @@ class VinlandAudioHandler extends BaseAudioHandler
   /// (appelant responsable de reagir -- voir PlayerController._advanceQueue, qui
   /// saute au titre suivant plutot que de rester bloque en silence).
   @override
-  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex) async {
+  Future<bool> loadAndPlay(
+    List<MediaItem> items,
+    int startIndex, {
+    Duration crossfade = Duration.zero,
+    double gain = 1.0,
+  }) async {
     queue.add(items);
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
+    }
+
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) {
+      if (items.length == 1 && engine.isPreloaded(items.first.id)) {
+        debugPrint('⏭️ Titre précharge : bascule'
+            '${crossfade > Duration.zero ? ' en fondu (${crossfade.inSeconds}s)' : ''}');
+        try {
+          await engine.playPreloaded(fade: crossfade, gain: gain);
+          return true;
+        } catch (e) {
+          // Platine prechargee dans un mauvais etat : chargement classique.
+          debugPrint('❌ ERREUR bascule préchargée: $e');
+        }
+      }
+      await engine.setTrackGain(gain);
     }
 
     final sources = items.map((item) {
@@ -155,6 +177,31 @@ class VinlandAudioHandler extends BaseAudioHandler
       }
     }
     return false;
+  }
+
+  @override
+  Future<bool> preload(MediaItem item, {double gain = 1.0}) async {
+    final engine = _engine;
+    // Moteur simple (reprise Bluetooth en arriere-plan) : pas de seconde
+    // platine, le titre suivant sera charge a la fin du titre en cours.
+    if (engine is! DeckPlayerEngine) return false;
+    debugPrint('⏳ Préchargement: ${item.title}');
+    return engine.preload(
+      PlayerQueueItem(path: item.id, isRemote: item.id.startsWith('http')),
+      gain: gain,
+    );
+  }
+
+  @override
+  void cancelPreload() {
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) engine.cancelPreload();
+  }
+
+  @override
+  Future<void> setTrackGain(double gain) async {
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) await engine.setTrackGain(gain);
   }
 
   PlaybackState _transformState() {

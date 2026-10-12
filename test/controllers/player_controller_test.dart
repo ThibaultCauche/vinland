@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vinland/controllers/playback_settings.dart';
 import 'package:vinland/controllers/player_controller.dart';
+import 'package:vinland/domain/replay_gain.dart';
 import 'package:vinland/models/track.dart';
 import 'package:vinland/services/player_engine.dart';
 
@@ -392,6 +394,180 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('vinland_last_track_id'), isNull);
       expect(prefs.getStringList('vinland_last_queue_ids'), isNull);
+    });
+  });
+
+  group('titre suivant prepare (prechargement, fondu)', () {
+    Duration at(int min, int sec) => Duration(minutes: min, seconds: sec);
+
+    PlayerController withSettings(PlaybackSettings settings) {
+      player.dispose();
+      return player =
+          PlayerController(output: output, tracks: repo, settings: settings);
+    }
+
+    test('prepare le suivant pendant les 20 dernieres secondes seulement',
+        () async {
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 30));
+      expect(output.preloaded, isEmpty, reason: 'encore 30 s');
+      engine.emitPosition(at(2, 41));
+      engine.emitPosition(at(2, 42));
+      expect(output.preloaded, ['b'], reason: 'une seule fois');
+
+      engine.emitCompleted();
+      await pumpEventQueue();
+      expect(output.loadedTitles, ['a', 'b']);
+      expect(output.crossfades.last, Duration.zero,
+          reason: 'sans fondu : enchaine a la fin, deja precharge');
+    });
+
+    test('fondu de 6 s : le suivant demarre 6 s avant la fin', () async {
+      withSettings(PlaybackSettings(crossfade: const Duration(seconds: 6)));
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      await pumpEventQueue(); // prechargement termine
+      engine.emitPosition(at(2, 53));
+      expect(output.loadedTitles, ['a'], reason: 'encore 7 s');
+      engine.emitPosition(at(2, 54));
+      await pumpEventQueue();
+      expect(output.loadedTitles, ['a', 'b']);
+      expect(output.crossfades.last, const Duration(seconds: 6));
+      expect(player.currentTrack, b);
+    });
+
+    test('fondu : pas de bascule anticipee tant que le suivant n\'est pas pret',
+        () async {
+      withSettings(PlaybackSettings(crossfade: const Duration(seconds: 6)));
+      output.preloadFails = true;
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      await pumpEventQueue();
+      engine.emitPosition(at(2, 57));
+      await pumpEventQueue();
+      expect(output.loadedTitles, ['a'],
+          reason: 'chargement classique a la fin, comme avant');
+    });
+
+    test('album qui s\'enchaine (live, mix) : jamais de fondu entre ses pistes',
+        () async {
+      Track piste(String id, int n) => Track(
+            id: id,
+            title: id,
+            artist: 'Artiste',
+            album: 'Live',
+            duration: const Duration(minutes: 3),
+            filePath: '/musique/$id.mp3',
+            albumId: 'live',
+            trackNumber: n,
+          );
+      final live = [piste('l1', 1), piste('l2', 2)];
+      repo = FakeTrackRepository(live);
+      withSettings(PlaybackSettings(crossfade: const Duration(seconds: 6)));
+      await player.playTrack(live[0], trackList: live);
+      engine.emitPosition(at(2, 45));
+      await pumpEventQueue();
+      engine.emitPosition(at(2, 57));
+      await pumpEventQueue();
+      expect(output.preloaded, ['l2'], reason: 'precharge quand meme');
+      expect(output.loadedTitles, ['l1'], reason: 'pas de fondu anticipe');
+    });
+
+    test('participant de Jam : ne change pas de titre avant l\'hote', () async {
+      withSettings(PlaybackSettings(crossfade: const Duration(seconds: 6)));
+      player.allowCrossfade = () => false;
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      await pumpEventQueue();
+      engine.emitPosition(at(2, 57));
+      await pumpEventQueue();
+      expect(output.loadedTitles, ['a']);
+    });
+
+    test('file modifiee apres le prechargement : annule et prepare le bon',
+        () async {
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      player.playNext(d);
+      expect(output.preloadCancels, 1);
+      engine.emitPosition(at(2, 46));
+      expect(output.preloaded, ['b', 'd']);
+
+      player.addToQueue(e); // ne change pas le suivant : rien a annuler
+      expect(output.preloadCancels, 1);
+
+      engine.emitCompleted();
+      await pumpEventQueue();
+      expect(player.currentTrack, d);
+    });
+
+    test(
+        'aleatoire active ou titre retire pendant la fin : prechargement annule',
+        () async {
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      player.removeFromQueue(0);
+      expect(output.preloadCancels, 1);
+      engine.emitPosition(at(2, 46));
+      expect(output.preloaded, ['b', 'c']);
+    });
+
+    test('repetition d\'un titre : rien a precharger', () async {
+      await player.toggleLoopMode(); // all
+      await player.toggleLoopMode(); // one
+      await player.playTrack(a, trackList: album);
+      engine.emitPosition(at(2, 45));
+      expect(output.preloaded, isEmpty);
+    });
+
+    test('pendant un chargement : la position de l\'ancien titre est ignoree',
+        () async {
+      final slow = Completer<bool>();
+      await player.playTrack(a, trackList: album);
+      output.pendingLoads.add(slow);
+      final loading = player.next();
+      await pumpEventQueue();
+      engine.emitPosition(at(2, 50)); // encore la position de a
+      expect(output.preloaded, isEmpty,
+          reason: 'sinon c, le suivant de b, serait precharge trop tot');
+      slow.complete(true);
+      await loading;
+    });
+
+    test(
+        'ReplayGain : gain du titre transmis, et applique si le reglage change',
+        () async {
+      final loud = Track(
+        id: 'fort',
+        title: 'fort',
+        artist: 'Artiste',
+        album: 'Album',
+        duration: const Duration(minutes: 3),
+        filePath: '/musique/fort.mp3',
+        replayGain: const ReplayGain(trackGain: -8),
+      );
+      final settings = PlaybackSettings();
+      withSettings(settings);
+      await player.playTrack(loud);
+      expect(output.gains.last, 1.0, reason: 'desactive par defaut');
+      await settings.setReplayGainMode(ReplayGainMode.track);
+      expect(output.trackGainChanges.single, closeTo(0.398, 0.001));
+      await player.playTrack(loud);
+      expect(output.gains.last, closeTo(0.398, 0.001));
+    });
+
+    test('reglages relus et bornes (0 a 12 s)', () async {
+      SharedPreferences.setMockInitialValues({
+        'vinland_crossfade_seconds': 40,
+        'vinland_replaygain_mode': 'album',
+      });
+      final settings = PlaybackSettings();
+      await settings.load(await SharedPreferences.getInstance());
+      expect(settings.crossfade, const Duration(seconds: 12));
+      expect(settings.replayGainMode, ReplayGainMode.album);
+      await settings.setCrossfade(const Duration(seconds: 3));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getInt('vinland_crossfade_seconds'), 3);
     });
   });
 }

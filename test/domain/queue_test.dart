@@ -19,6 +19,37 @@ void main() {
   late PlayQueue q;
   setUp(() => q = PlayQueue(random: Random(42)));
 
+  group('continuesOnDisc', () {
+    Track piste(String id, int? n, {String album = 'al-1', int? disc}) => Track(
+          id: id,
+          title: id,
+          artist: 'Artiste',
+          album: 'Live',
+          duration: const Duration(minutes: 3),
+          albumId: album,
+          trackNumber: n,
+          discNumber: disc,
+        );
+
+    test('piste suivante du meme album : enchainement voulu', () {
+      expect(continuesOnDisc(piste('1', 4), piste('2', 5)), isTrue);
+    });
+
+    test('premiere piste du disque suivant : enchainement voulu', () {
+      expect(continuesOnDisc(piste('1', 12, disc: 1), piste('2', 1, disc: 2)),
+          isTrue);
+    });
+
+    test('album lu dans le desordre, autre album ou numeros inconnus : non',
+        () {
+      expect(continuesOnDisc(piste('1', 4), piste('2', 7)), isFalse);
+      expect(continuesOnDisc(piste('1', 4), piste('2', 5, album: 'al-2')),
+          isFalse);
+      expect(continuesOnDisc(piste('1', null), piste('2', 5)), isFalse);
+      expect(continuesOnDisc(piste('1', 5), piste('2', 4)), isFalse);
+    });
+  });
+
   group('start', () {
     test('la file contient ce qui suit le titre lance, dans l\'ordre', () {
       q.start(b, album, shuffled: false);

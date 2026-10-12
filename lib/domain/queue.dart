@@ -155,3 +155,21 @@ class PlayQueue {
     _history.clear();
   }
 }
+
+/// Vrai si [next] suit directement [previous] sur le meme album (piste
+/// suivante, ou premiere piste du disque suivant). Ces titres ne sont jamais
+/// fondus l'un dans l'autre : sur un live, un mix ou un album concept, la
+/// fin d'un titre EST le debut du suivant, et un fondu y creuserait un trou
+/// de volume en plein morceau. Subsonic n'expose pas le tag « gapless »,
+/// l'ordre de l'album est le seul indice fiable.
+bool continuesOnDisc(Track previous, Track next) {
+  if (previous.albumId == null || previous.albumId != next.albumId) {
+    return false;
+  }
+  final a = previous.trackNumber;
+  final b = next.trackNumber;
+  if (a == null || b == null) return false;
+  final discA = previous.discNumber ?? 1;
+  final discB = next.discNumber ?? 1;
+  return (discA == discB && b == a + 1) || (discB == discA + 1 && b == 1);
+}

@@ -22,6 +22,7 @@ import 'screens/friends_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/log_redaction.dart';
 import 'services/player_engine.dart';
+import 'services/deck_player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
 import 'services/deep_link_service.dart';
@@ -133,12 +134,11 @@ Future<void> main() async {
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.linux);
 
-    final PlayerEngine engine;
-    if (useMediaKit) {
-      MediaKit.ensureInitialized();
-      engine = MediaKitPlayerEngine();
-    } else {
-      engine = JustAudioPlayerEngine(ja.AudioPlayer(
+    // Deux moteurs : pendant que l'un joue, l'autre precharge le titre
+    // suivant (voir DeckPlayerEngine) -- plus de blanc entre deux titres.
+    PlayerEngine createEngine() {
+      if (useMediaKit) return MediaKitPlayerEngine();
+      return JustAudioPlayerEngine(ja.AudioPlayer(
         // Buffers plus genereux : absorbe les micro-coupures dues a la
         // latence variable du lien Tailscale vers le NAS au lieu de couper
         // le son.
@@ -152,6 +152,10 @@ Future<void> main() async {
         ),
       ));
     }
+
+    if (useMediaKit) MediaKit.ensureInitialized();
+    final PlayerEngine engine =
+        DeckPlayerEngine(createEngine(), createEngine());
 
     final audioHandler = await AudioService.init(
       builder: () => VinlandAudioHandler(engine),

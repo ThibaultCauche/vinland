@@ -1,3 +1,4 @@
+import '../../domain/replay_gain.dart';
 import '../../models/track.dart';
 import '../../services/subsonic_refs.dart';
 
@@ -41,8 +42,14 @@ Track trackFromSubsonic(Map<String, dynamic> json,
         ? DateTime.tryParse(json['created'].toString())
         : null,
     genre: json['genre']?.toString(),
+    trackNumber: _intOrNull(json['track']),
+    discNumber: _intOrNull(json['discNumber']),
+    // Extension OpenSubsonic (Navidrome 0.53+) : absent sur un vieux serveur.
+    replayGain: ReplayGain.fromJson(json['replayGain']),
   );
 }
+
+int? _intOrNull(Object? v) => v is int ? v : int.tryParse(v?.toString() ?? '');
 
 /// Resume d'un album tel que l'utilise MusicService.
 Map<String, dynamic> albumSummaryFromSubsonic(Map<String, dynamic> album) => {

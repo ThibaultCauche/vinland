@@ -11,6 +11,7 @@ import '../widgets/app_background.dart';
 import '../widgets/app_bar_safe_area.dart';
 import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/download_progress_dialog.dart';
+import '../widgets/playback_settings_tiles.dart';
 import '../widgets/update_prompt.dart';
 import 'personalization_screen.dart';
 
@@ -135,6 +136,8 @@ class SettingsScreen extends StatelessWidget {
                         'sur tous les fichiers déjà présents',
                     onTap: () => _runLibraryTagScan(context, downloadWorker),
                   ),
+                _buildSection('Lecture'),
+                PlaybackSettingsTiles(settings: state.playbackSettings),
                 _buildSection('Amis'),
                 _buildSwitchTile(
                   icon: Icons.people_outline,

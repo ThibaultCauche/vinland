@@ -1321,6 +1321,9 @@ class MusicService {
                 year: track.year,
                 addedToServerAt: track.addedToServerAt,
                 genre: track.genre,
+                trackNumber: track.trackNumber,
+                discNumber: track.discNumber,
+                replayGain: track.replayGain,
               );
               updated++;
             }

@@ -1,3 +1,4 @@
+import '../domain/replay_gain.dart';
 import '../services/subsonic_refs.dart';
 
 class Track {
@@ -44,6 +45,15 @@ class Track {
   final DateTime? addedToServerAt;
   final String? genre;
 
+  /// Position dans l'album (tag `track`/`discNumber`) : sert a reconnaitre
+  /// deux titres qui s'enchainent sur le disque, pour ne pas les fondre
+  /// l'un dans l'autre (voir PlayerController, fondu enchaine).
+  final int? trackNumber;
+  final int? discNumber;
+
+  /// Null si le fichier n'a pas de tags ReplayGain (ou serveur trop ancien).
+  final ReplayGain? replayGain;
+
   /// Vrai pour un titre "fantome" affiche dans les Titres likes qui n'a pas
   /// ete retrouve dans la bibliotheque NAS lors d'un import CSV (voir
   /// AppState.likedTracksWithMissing) : jamais de fichier reel pour un titre
@@ -69,6 +79,9 @@ class Track {
     this.year,
     this.addedToServerAt,
     this.genre,
+    this.trackNumber,
+    this.discNumber,
+    this.replayGain,
   })  : _fileRef = SubsonicRefs.toStorable(filePath),
         _coverRef = SubsonicRefs.toStorable(coverPath);
 
@@ -93,6 +106,9 @@ class Track {
         'year': year,
         'addedToServerAt': addedToServerAt?.toIso8601String(),
         'genre': genre,
+        if (trackNumber != null) 'trackNumber': trackNumber,
+        if (discNumber != null) 'discNumber': discNumber,
+        if (replayGain != null) 'replayGain': replayGain!.toJson(),
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -160,6 +176,9 @@ class Track {
           ? DateTime.tryParse(json['addedToServerAt'].toString())
           : null,
       genre: json['genre']?.toString(),
+      trackNumber: (json['trackNumber'] as num?)?.toInt(),
+      discNumber: (json['discNumber'] as num?)?.toInt(),
+      replayGain: ReplayGain.fromJson(json['replayGain']),
     );
   }
 }

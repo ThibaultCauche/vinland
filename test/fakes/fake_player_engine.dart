@@ -62,7 +62,7 @@ class FakePlayerEngine implements PlayerEngine {
   @override
   double get speed => 1;
   @override
-  double get volume => 1;
+  double volume = 1;
   @override
   int? get currentIndex => hasSource ? 0 : null;
   @override
@@ -72,25 +72,52 @@ class FakePlayerEngine implements PlayerEngine {
   @override
   AudioProcessingState get processingState => AudioProcessingState.ready;
 
+  /// Journal des ordres recus (load:<chemin>, play, pause, stop), pour
+  /// verifier ce que fait DeckPlayerEngine de chaque platine.
+  final List<String> log = [];
+
+  /// Chargement a faire attendre (reseau lent) : complete par le test.
+  Completer<void>? pendingLoad;
+  bool loadThrows = false;
+
   @override
   Future<void> setAudioSources(List<PlayerQueueItem> items,
       {required int initialIndex}) async {
+    log.add('load:${items[initialIndex].path}');
+    final pending = pendingLoad;
+    if (pending != null) {
+      pendingLoad = null;
+      await pending.future;
+    }
+    if (loadThrows) throw StateError('flux injoignable');
     hasSource = true;
   }
 
   @override
-  Future<void> play() async {}
+  Future<void> play() async {
+    log.add('play');
+    emitPlaying(true);
+  }
+
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async {
+    log.add('pause');
+    emitPlaying(false);
+  }
+
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    log.add('stop');
+    if (playing) emitPlaying(false);
+  }
+
   @override
   Future<void> seek(Duration position) async {
     this.position = position;
   }
 
   @override
-  Future<void> setVolume(double volume) async {}
+  Future<void> setVolume(double volume) async => this.volume = volume;
   @override
   Future<void> seekToNext() async {}
   @override
@@ -125,10 +152,43 @@ class FakePlaybackOutput implements PlaybackOutput {
   @override
   PlayerEngine get player => engine;
 
+  /// Fondu demande a chaque chargement (dans l'ordre de loadedTitles).
+  final List<Duration> crossfades = [];
+
+  /// Gain ReplayGain demande a chaque chargement.
+  final List<double> gains = [];
+
+  /// Titres dont le prechargement a ete demande, et ceux annules.
+  final List<String> preloaded = [];
+  int preloadCancels = 0;
+  final List<double> trackGainChanges = [];
+
+  /// Prechargement qui echoue (moteur simple, flux injoignable).
+  bool preloadFails = false;
+
   @override
-  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex) async {
+  Future<bool> preload(MediaItem item, {double gain = 1.0}) async {
+    preloaded.add(item.title);
+    return !preloadFails;
+  }
+
+  @override
+  void cancelPreload() => preloadCancels++;
+
+  @override
+  Future<void> setTrackGain(double gain) async => trackGainChanges.add(gain);
+
+  @override
+  Future<bool> loadAndPlay(
+    List<MediaItem> items,
+    int startIndex, {
+    Duration crossfade = Duration.zero,
+    double gain = 1.0,
+  }) async {
     final title = items[startIndex].title;
     loadedTitles.add(title);
+    crossfades.add(crossfade);
+    gains.add(gain);
     if (pendingLoads.isNotEmpty) {
       final ok = await pendingLoads.removeFirst().future;
       if (ok) engine.hasSource = true;
