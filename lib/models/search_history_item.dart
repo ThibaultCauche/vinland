@@ -1,10 +1,15 @@
+import '../services/subsonic_refs.dart';
+
 class SearchHistoryItem {
   final String query;
   final String type; // 'artist' | 'album' | 'track'
   final String? id;
   final String? name;
   final String? subtitle;
-  final String? imageUrl;
+  // Reference sans jeton si l'image vient de Navidrome (voir SubsonicRefs) ;
+  // imageUrl rend l'URL de la session en cours.
+  final String? _imageRef;
+  String? get imageUrl => SubsonicRefs.resolve(_imageRef);
   final int timestamp;
 
   SearchHistoryItem({
@@ -13,9 +18,10 @@ class SearchHistoryItem {
     this.id,
     this.name,
     this.subtitle,
-    this.imageUrl,
+    String? imageUrl,
     int? timestamp,
-  }) : timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
+  })  : _imageRef = SubsonicRefs.toStorable(imageUrl),
+        timestamp = timestamp ?? DateTime.now().millisecondsSinceEpoch;
 
   factory SearchHistoryItem.artist(
     String name,
@@ -69,7 +75,7 @@ class SearchHistoryItem {
         'id': id,
         'name': name,
         'subtitle': subtitle,
-        'imageUrl': imageUrl,
+        'imageUrl': _imageRef,
         'timestamp': timestamp,
       };
 

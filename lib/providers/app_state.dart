@@ -12,6 +12,8 @@ import '../models/playlist.dart';
 import '../models/friend_profile.dart';
 import '../models/collab_playlist.dart';
 import '../models/pinned_item.dart';
+import '../widgets/cover_image.dart';
+import '../services/subsonic_refs.dart';
 import '../services/music_service.dart';
 import '../services/audio_handler.dart';
 import '../screens/artist_screen.dart';
@@ -690,8 +692,18 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       _mobileCoverBlurSigma = await MobileTheme.loadBlurSigma();
       _mobileSolidEffect = await MobileTheme.loadSolidEffect();
       _desktopSolidEffect = await DesktopTheme.loadSolidEffect();
-      _mobilePinnedCoverPath = await MobileTheme.loadPinnedCover();
-      _desktopPinnedCoverPath = await DesktopTheme.loadPinnedCover();
+      // Une pochette epinglee avant la 1.3 etait stockee en URL complete
+      // (avec jeton) : convertie en reference et reecrite une fois.
+      final mobilePinned = await MobileTheme.loadPinnedCover();
+      _mobilePinnedCoverPath = SubsonicRefs.toStorable(mobilePinned);
+      if (_mobilePinnedCoverPath != mobilePinned) {
+        await MobileTheme.savePinnedCover(_mobilePinnedCoverPath);
+      }
+      final desktopPinned = await DesktopTheme.loadPinnedCover();
+      _desktopPinnedCoverPath = SubsonicRefs.toStorable(desktopPinned);
+      if (_desktopPinnedCoverPath != desktopPinned) {
+        await DesktopTheme.savePinnedCover(_desktopPinnedCoverPath);
+      }
 
       // Pre-charge le dernier nom d'utilisateur Navidrome connu (lecture locale,
       // pas de reseau) pour scoper le cache musical AVANT l'authentification :
@@ -732,11 +744,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
     unawaited(_navidrome.authenticate().then((navidromeOk) {
       if (navidromeOk) {
-        // Rafraichit d'abord les URLs des titres deja en cache (pas de reseau,
-        // instantane) : sans ca, covers/lecture restent casses le temps que
-        // _performSync termine si l'URL de serveur a change depuis le dernier
-        // lancement (voir MusicService.refreshNavidromeTrackUrls).
-        _music.refreshNavidromeTrackUrls();
+        // Les URLs des titres en cache sont reconstruites a la demande avec
+        // l'URL de serveur courante (voir SubsonicRefs) : rien a rafraichir,
+        // un simple rebuild suffit.
         _notify();
         unawaited(_performSync());
         unawaited(loadPendingShares());
@@ -809,12 +819,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
+  // Reference sans jeton (voir SubsonicRefs) : c'est elle qui est
+  // persistee, l'URL complete n'est reconstruite qu'a la lecture.
   String? _desktopPinnedCoverPath;
-  String? get desktopPinnedCoverPath => _desktopPinnedCoverPath;
+  String? get desktopPinnedCoverPath =>
+      SubsonicRefs.resolve(_desktopPinnedCoverPath);
 
   Future<void> setDesktopPinnedCoverPath(String? path) async {
-    _desktopPinnedCoverPath = path;
-    await DesktopTheme.savePinnedCover(path);
+    _desktopPinnedCoverPath = SubsonicRefs.toStorable(path);
+    await DesktopTheme.savePinnedCover(_desktopPinnedCoverPath);
     _notify();
   }
 
@@ -856,12 +869,15 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
   }
 
+  // Reference sans jeton (voir SubsonicRefs) : c'est elle qui est
+  // persistee, l'URL complete n'est reconstruite qu'a la lecture.
   String? _mobilePinnedCoverPath;
-  String? get mobilePinnedCoverPath => _mobilePinnedCoverPath;
+  String? get mobilePinnedCoverPath =>
+      SubsonicRefs.resolve(_mobilePinnedCoverPath);
 
   Future<void> setMobilePinnedCoverPath(String? path) async {
-    _mobilePinnedCoverPath = path;
-    await MobileTheme.savePinnedCover(path);
+    _mobilePinnedCoverPath = SubsonicRefs.toStorable(path);
+    await MobileTheme.savePinnedCover(_mobilePinnedCoverPath);
     _notify();
   }
 
@@ -2169,9 +2185,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// coloré qui rend vraiment la cover reconnaissable.
   Future<Color?> _extractDominantColorIsolate(String coverPath) async {
     try {
-      final ImageProvider provider = coverPath.startsWith('http')
-          ? NetworkImage(coverPath) as ImageProvider
-          : FileImage(File(coverPath));
+      final ImageProvider provider = rawCoverImageProvider(coverPath);
       final palette = await PaletteGenerator.fromImageProvider(
         provider,
         size: const Size(100, 100),

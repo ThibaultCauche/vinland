@@ -6,19 +6,34 @@ import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import '../models/track.dart';
 import 'matching_service.dart';
+import 'cleartext_policy.dart';
 import 'secure_storage.dart';
+import 'subsonic_refs.dart';
 import '../config/credentials.dart';
 
 class NavidromeService {
   static final NavidromeService _instance = NavidromeService._internal();
   factory NavidromeService() => _instance;
-  NavidromeService._internal();
+  NavidromeService._internal() {
+    // Les modeles (Track, Album...) ne stockent que des references sans
+    // jeton : c'est ce service qui les transforme en URL a l'affichage.
+    SubsonicRefs.streamUrlBuilder = getStreamUrl;
+    SubsonicRefs.coverUrlBuilder = getCoverUrl;
+  }
 
   String? _baseUrl;
   String? _username;
   String? _password;
   String? _token;
   String? _salt;
+  // Jeton calcule localement des que les identifiants sont charges, AVANT
+  // la confirmation du serveur (_token) : sert a construire les URL de
+  // stream/pochette des le demarrage, comme le faisaient avant les URL
+  // figees dans le cache. Nouveau sel a chaque chargement (voir _newSession).
+  String? _sessionToken;
+  // Cle d'API OpenSubsonic optionnelle (voir setApiKey) : quand elle est
+  // definie, elle remplace u/t/s dans toutes les URL.
+  String? _apiKey;
 
   bool get isConnected => _token != null && _baseUrl != null;
 
@@ -69,6 +84,26 @@ class NavidromeService {
       // Corrige une URL deja sauvegardee avec un slash final.
       await SecureStorage.saveCredentials(_baseUrl!, _username!, _password!);
     }
+    _apiKey = await SecureStorage.getApiKey();
+    _newSession();
+    // Ancien sel fixe (<= 1.2.x) : plus utilise, on ne le laisse pas trainer.
+    await SecureStorage.deleteSalt();
+  }
+
+  /// Nouveau sel aleatoire et jeton md5(mdp + sel) correspondant. Avant, le
+  /// sel etait fixe a vie pour que les URL ecrites dans le cache restent
+  /// valides et que le cache d'images serve d'un lancement a l'autre ; les
+  /// caches ne contiennent plus que des ids (SubsonicRefs) et le cache
+  /// d'images utilise l'id de pochette comme cle (coverImageProvider), donc
+  /// un jeton intercepte ne vaut plus que pour la session en cours.
+  void _newSession() {
+    if (_password == null) {
+      _salt = null;
+      _sessionToken = null;
+      return;
+    }
+    _salt = _generateSalt();
+    _sessionToken = md5.convert(utf8.encode(_password! + _salt!)).toString();
   }
 
   /// Authentifie aupres du NAS avec les identifiants deja charges en
@@ -89,10 +124,16 @@ class NavidromeService {
   Future<bool> saveCredentials(
       String url, String username, String password) async {
     final cleanUrl = _sanitizeUrl(url);
+    // Un nouveau serveur en http:// doit etre sur Tailscale ou le reseau
+    // local : sinon le jeton (et la musique) circuleraient en clair sur
+    // Internet. Les identifiants deja enregistres ne sont pas re-verifies,
+    // pour ne bloquer personne a la mise a jour.
+    if (!isCleartextAllowed(cleanUrl)) return false;
     await SecureStorage.saveCredentials(cleanUrl, username, password);
     _baseUrl = cleanUrl;
     _username = username;
     _password = password;
+    _newSession();
     return await _authenticate();
   }
 
@@ -103,29 +144,76 @@ class NavidromeService {
     _password = null;
     _token = null;
     _salt = null;
+    _sessionToken = null;
+    _apiKey = null;
   }
+
+  /// Cle d'API OpenSubsonic (Navidrome recent : Parametres > Cles d'API).
+  /// Optionnelle : sans cle, l'app continue d'utiliser le jeton md5. Avec,
+  /// les URL ne contiennent plus rien de derive du mot de passe et la cle
+  /// peut etre revoquee cote serveur sans changer le mot de passe. null ou
+  /// vide = revenir au jeton.
+  Future<bool> setApiKey(String? apiKey) async {
+    final clean = apiKey?.trim();
+    _apiKey = (clean == null || clean.isEmpty) ? null : clean;
+    await SecureStorage.saveApiKey(_apiKey);
+    return await _authenticate();
+  }
+
+  bool get usesApiKey => _apiKey != null;
+
+  /// Vrai si le serveur annonce l'extension OpenSubsonic
+  /// "apiKeyAuthentication" (getOpenSubsonicExtensions, sans
+  /// authentification). Permet de ne proposer la cle d'API que quand la
+  /// version de Navidrome la gere.
+  Future<bool> supportsApiKeyAuth() async {
+    if (_baseUrl == null) return false;
+    try {
+      final response = await http
+          .get(Uri.parse(
+              '$_baseUrl/rest/getOpenSubsonicExtensions.view?v=1.16.1&c=vinland&f=json'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return false;
+      final data = jsonDecode(response.body);
+      final extensions =
+          data['subsonic-response']?['openSubsonicExtensions'] as List?;
+      return extensions
+              ?.any((e) => e is Map && e['name'] == 'apiKeyAuthentication') ??
+          false;
+    } catch (e) {
+      debugPrint('supportsApiKeyAuth error: $e');
+      return false;
+    }
+  }
+
+  /// Parametres d'authentification Subsonic de la session en cours.
+  Map<String, String> get _authParams => _apiKey != null
+      ? {'apiKey': _apiKey!}
+      : {'u': _username!, 't': _sessionToken!, 's': _salt!};
+
+  bool get _canBuildUrls =>
+      _baseUrl != null &&
+      (_apiKey != null ||
+          (_username != null && _sessionToken != null && _salt != null));
 
   Future<bool> _authenticate() async {
     if (_baseUrl == null || _username == null || _password == null)
       return false;
+    if (_sessionToken == null) _newSession();
 
-    // Reutilise le meme salt entre les sessions : sinon les URLs de
-    // stream/cover changent a chaque demarrage et le cache image de Flutter
-    // ne peut jamais servir (flash de toutes les pochettes a chaque sync).
-    _salt = await SecureStorage.getSalt();
-    if (_salt == null) {
-      _salt = _generateSalt();
-      await SecureStorage.saveSalt(_salt!);
-    }
-    // Calcule dans une variable locale d'abord : _token ne doit etre pose
-    // qu'apres confirmation du serveur, sinon isConnected (qui se base sur
-    // _token != null) reste vrai meme apres un refus explicite (identifiants
-    // invalides = reponse HTTP 200 avec status "failed", pas une exception).
-    final candidateToken =
-        md5.convert(utf8.encode(_password! + _salt!)).toString();
+    // _token ne doit etre pose qu'apres confirmation du serveur, sinon
+    // isConnected (qui se base sur _token != null) reste vrai meme apres un
+    // refus explicite (identifiants invalides = reponse HTTP 200 avec status
+    // "failed", pas une exception).
+    final candidateToken = _sessionToken!;
 
-    final url = Uri.parse(
-      '$_baseUrl/rest/ping.view?u=$_username&t=$candidateToken&s=$_salt&v=1.16.1&c=vinland&f=json',
+    final url = Uri.parse('$_baseUrl/rest/ping.view').replace(
+      queryParameters: {
+        ..._authParams,
+        'v': '1.16.1',
+        'c': 'vinland',
+        'f': 'json',
+      },
     );
 
     try {
@@ -152,9 +240,7 @@ class NavidromeService {
 
   Uri _buildUri(String endpoint, {Map<String, String>? extra}) {
     final params = {
-      'u': _username!,
-      't': _token!,
-      's': _salt!,
+      ..._authParams,
       'v': '1.16.1',
       'c': 'vinland',
       'f': 'json',
@@ -388,19 +474,33 @@ class NavidromeService {
   /// dessus.
   static const int streamMaxBitRateKbps = 192;
 
+  /// URL de lecture construite a la demande (jamais stockee : voir
+  /// SubsonicRefs). Disponible des que les identifiants sont charges, meme
+  /// avant la reponse du ping, pour que la bibliotheque en cache soit
+  /// jouable/affichable tout de suite au demarrage.
   String getStreamUrl(String id, {int? maxBitRateKbps, String? format}) {
-    if (!isConnected) return '';
+    if (!_canBuildUrls) return '';
     final effectiveBitRate = maxBitRateKbps ?? streamMaxBitRateKbps;
     final effectiveFormat = format ?? 'mp3';
-    var url =
-        '$_baseUrl/rest/stream.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland'
-        '&maxBitRate=$effectiveBitRate&format=$effectiveFormat';
-    return url;
+    return Uri.parse('$_baseUrl/rest/stream.view').replace(queryParameters: {
+      'id': id,
+      ..._authParams,
+      'v': '1.16.1',
+      'c': 'vinland',
+      'maxBitRate': '$effectiveBitRate',
+      'format': effectiveFormat,
+    }).toString();
   }
 
   String getCoverUrl(String id) {
-    if (!isConnected) return '';
-    return '$_baseUrl/rest/getCoverArt.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland';
+    if (!_canBuildUrls) return '';
+    return Uri.parse('$_baseUrl/rest/getCoverArt.view')
+        .replace(queryParameters: {
+      'id': id,
+      ..._authParams,
+      'v': '1.16.1',
+      'c': 'vinland',
+    }).toString();
   }
 
   Track _mapSubsonicTrack(dynamic json,
@@ -416,8 +516,12 @@ class NavidromeService {
           seconds: durationSec is int
               ? durationSec
               : int.tryParse(durationSec.toString()) ?? 180),
-      filePath: getStreamUrl(id),
-      coverPath: getCoverUrl(id),
+      // References sans jeton : l'URL est construite a la demande (voir
+      // SubsonicRefs). La pochette suit l'id coverArt du serveur quand il
+      // est fourni (partage entre les titres d'un album), sinon l'id du
+      // titre comme avant.
+      filePath: SubsonicRefs.stream(id),
+      coverPath: SubsonicRefs.cover(json['coverArt']?.toString() ?? id),
       isLiked: json['starred'] != null,
       // json['parent'] est l'ID du dossier physique sur le NAS, pas l'ID
       // d'album ID3 -- ne correspond pas forcement a l'ID attendu par

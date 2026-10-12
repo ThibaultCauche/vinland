@@ -16,6 +16,7 @@ import 'screens/home_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/friends_screen.dart';
 import 'services/audio_handler.dart';
+import 'services/log_redaction.dart';
 import 'services/player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
@@ -45,6 +46,10 @@ bool _isDesktopLayout(double width) =>
 Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Avant tout log : debugPrint reste actif en release, et les erreurs
+    // reseau recopient l'URL complete (jeton Subsonic compris).
+    installRedactingDebugPrint();
 
     // Requis avant tout appel a MetadataGod.readMetadata (lecture des tags
     // ID3/Vorbis d'un fichier local) : sans cet appel, chaque lecture leve

@@ -13,6 +13,7 @@ import '../models/friend_profile.dart';
 import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
+import 'legacy_file_migration.dart';
 import 'navidrome_service.dart';
 import 'package:http/http.dart' as http;
 
@@ -1053,11 +1054,33 @@ class MusicService {
     _syncRecentPlaysMirror();
   }
 
-  Future _getCacheFile() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final cacheDir = Directory(p.join(appDir.path, 'cache'));
+  /// Le cache de bibliotheque vit dans le dossier support de l'app
+  /// (AppData\Roaming sous Windows, dossier prive sous Android) et plus dans
+  /// Documents, que Windows synchronise souvent avec OneDrive : ce fichier
+  /// n'a rien a faire dans le cloud de l'utilisateur.
+  Future<File> _getCacheFile() async {
+    final supportDir = await getApplicationSupportDirectory();
+    final cacheDir = Directory(p.join(supportDir.path, 'cache'));
     await cacheDir.create(recursive: true);
-    return File(p.join(cacheDir.path, _cacheFileName));
+    final file = File(p.join(cacheDir.path, _cacheFileName));
+    await _migrateLegacyCacheFile(file);
+    return file;
+  }
+
+  /// Migration unique depuis Documents/cache (<= 1.2.x) : deplace l'ancien
+  /// fichier s'il n'existe pas encore de cache au nouvel endroit, puis
+  /// supprime l'ancien dans tous les cas (il contenait des URL avec jeton,
+  /// voir SubsonicRefs). Le contenu est assaini au premier chargement
+  /// (Track.fromJson) puis reecrit sans URL a la sauvegarde suivante.
+  Future<void> _migrateLegacyCacheFile(File target) async {
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final legacy =
+          File(p.join(documentsDir.path, 'cache', p.basename(target.path)));
+      await migrateLegacyFile(legacy: legacy, target: target);
+    } catch (e) {
+      debugPrint('MIGRATION CACHE: $e');
+    }
   }
 
   Future _saveToCache() async {
@@ -1096,7 +1119,8 @@ class MusicService {
     final file = await _getCacheFile();
     if (await file.exists()) {
       try {
-        final data = jsonDecode(await file.readAsString());
+        final raw = await file.readAsString();
+        final data = jsonDecode(raw);
 
         _navidromeTracks = (data['navidromeTracks'] as List?)
                 ?.map((json) => Track.fromJson(json))
@@ -1143,46 +1167,26 @@ class MusicService {
         if (_albums.isEmpty) {
           rebuildAlbums();
         }
+
+        // Cache ecrit avant la 1.3 : les modeles l'ont deja converti en
+        // references sans jeton (voir SubsonicRefs) a la lecture ; on le
+        // reecrit tout de suite plutot qu'a la prochaine synchro, pour que
+        // les URL avec jeton disparaissent du disque des le premier lancement.
+        if (raw.contains('/rest/stream') || raw.contains('/rest/getCoverArt')) {
+          await _saveToCache();
+        }
       } catch (e) {
         debugPrint('ERREUR CHARGEMENT CACHE: $e');
       }
     }
   }
 
-  /// Reconstruit filePath/coverArt des titres Navidrome deja en cache avec
-  /// l'URL de serveur courante. Ces champs sont figes au moment du sync
-  /// (NavidromeService._mapSubsonicTrack construit une URL absolue avec le
-  /// _baseUrl du moment), donc un cache charge au demarrage garde les URLs
-  /// de la DERNIERE synchro meme si l'utilisateur a change d'URL de serveur
-  /// depuis (ex: bascule VPN Tailscale <-> Funnel) -- l'authentification vit
-  /// deja avec la nouvelle URL, mais pas ces titres en cache tant qu'un vrai
-  /// resync (reseau) n'a pas eu lieu. Appelee juste apres une authentification
-  /// reussie (voir AppState.initialize) pour que covers/lecture marchent
-  /// immediatement, cache local uniquement, sans appel reseau.
-  void refreshNavidromeTrackUrls() {
-    if (!_navidrome.isConnected) return;
-    var changed = false;
-    for (final track in _navidromeTracks) {
-      if (!track.id.startsWith('navidrome_')) continue;
-      final rawId = track.id.substring('navidrome_'.length);
-      final freshFilePath = _navidrome.getStreamUrl(rawId);
-      final freshCoverPath = _navidrome.getCoverUrl(rawId);
-      if (track.filePath != freshFilePath ||
-          track.coverPath != freshCoverPath) {
-        track.filePath = freshFilePath;
-        track.coverPath = freshCoverPath;
-        changed = true;
-      }
-    }
-    if (changed) {
-      _navidromeTracksView = null;
-      _allTracks = List.from(_navidromeTracks);
-      rebuildAlbums();
-    }
-  }
-
   Future<void> rescanCoversForExistingTracks() async {
-    final localTracks = _allTracks.where((t) => t.filePath != null).toList();
+    // Fichiers locaux uniquement : un titre Navidrome n'a pas de tags a
+    // relire ici (et son "chemin" est une URL avec jeton).
+    final localTracks = _allTracks
+        .where((t) => t.subsonicId == null && t.filePath != null)
+        .toList();
 
     int updated = 0;
     for (final track in localTracks) {
@@ -1221,7 +1225,8 @@ class MusicService {
           }
         }
       } catch (e) {
-        debugPrint('ERREUR COVER ${track.filePath}: $e');
+        // L'id plutot que le chemin : jamais d'URL (jeton) dans les logs.
+        debugPrint('ERREUR COVER ${track.id}: $e');
       }
     }
 

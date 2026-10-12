@@ -1,10 +1,15 @@
+import '../services/subsonic_refs.dart';
+
 class Album {
   final String id;
   final String title;
   final String artist;
   final List<String> trackIds;
   bool isSaved;
-  final String? coverPath;
+  // Reference sans jeton pour une pochette Navidrome (voir SubsonicRefs),
+  // chemin local sinon ; coverPath rend l'URL de la session en cours.
+  final String? _coverRef;
+  String? get coverPath => SubsonicRefs.resolve(_coverRef);
   final int? year;
   final DateTime? addedToServerAt;
 
@@ -14,10 +19,10 @@ class Album {
     required this.artist,
     required this.trackIds,
     this.isSaved = false,
-    this.coverPath,
+    String? coverPath,
     this.year,
     this.addedToServerAt,
-  });
+  }) : _coverRef = SubsonicRefs.toStorable(coverPath);
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -25,7 +30,7 @@ class Album {
         'artist': artist,
         'trackIds': trackIds,
         'isSaved': isSaved,
-        'coverPath': coverPath,
+        'coverPath': _coverRef,
         'year': year,
         'addedToServerAt': addedToServerAt?.toIso8601String(),
       };

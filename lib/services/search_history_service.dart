@@ -42,12 +42,18 @@ class SearchHistoryService {
       return;
     }
     try {
-      final data = jsonDecode(await file.readAsString()) as List;
+      final raw = await file.readAsString();
+      final data = jsonDecode(raw) as List;
       _history = data
           .map((e) => SearchHistoryItem.fromJson(e as Map<String, dynamic>))
           .where(
               (item) => item.type != 'query') // ignore anciennes entrées texte
           .toList();
+      // Historique ecrit avant la 1.3 : les pochettes Navidrome y etaient
+      // des URL avec jeton. fromJson les a converties en references (voir
+      // SubsonicRefs) ; on reecrit le fichier tout de suite pour ne pas
+      // attendre la prochaine recherche.
+      if (raw.contains('/rest/getCoverArt')) await _save();
     } catch (e) {
       _history = [];
     }

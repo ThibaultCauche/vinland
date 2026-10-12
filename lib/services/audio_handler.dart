@@ -118,7 +118,8 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     final sources = items.map((item) {
       final isRemote = item.id.startsWith('http');
       debugPrint(
-          '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isRemote=$isRemote');
+          // Le titre, pas item.id : pour un stream c'est l'URL avec jeton.
+          '🎵 AUDIO SOURCE: ${item.title} isRemote=$isRemote');
       return PlayerQueueItem(path: item.id, isRemote: isRemote);
     }).toList();
 

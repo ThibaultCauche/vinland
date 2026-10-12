@@ -1,5 +1,51 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../services/subsonic_refs.dart';
+
+/// ImageProvider de base pour une cover (URL ou fichier local). Une pochette
+/// Navidrome est cle'e sur son id de pochette plutot que sur son URL : l'URL
+/// contient le jeton de session, qui change maintenant a chaque demarrage
+/// (et l'URL de serveur peut basculer VPN <-> Funnel) ; avec l'URL comme
+/// cle, chaque changement rechargerait toutes les pochettes deja en memoire.
+ImageProvider rawCoverImageProvider(String path) {
+  if (!path.startsWith('http')) return FileImage(File(path));
+  final coverId = SubsonicRefs.coverIdOf(path);
+  if (coverId == null) return NetworkImage(path);
+  return StableNetworkImage(path, cacheKey: SubsonicRefs.cover(coverId));
+}
+
+/// NetworkImage dont l'identite dans le cache d'images de Flutter est
+/// [cacheKey] et non l'URL (voir rawCoverImageProvider).
+@immutable
+class StableNetworkImage extends ImageProvider<StableNetworkImage> {
+  const StableNetworkImage(this.url, {required this.cacheKey});
+
+  final String url;
+  final String cacheKey;
+
+  @override
+  Future<StableNetworkImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<StableNetworkImage>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+      StableNetworkImage key, ImageDecoderCallback decode) {
+    final inner = NetworkImage(key.url);
+    return inner.loadImage(inner, decode);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is StableNetworkImage && other.cacheKey == cacheKey;
+
+  @override
+  int get hashCode => cacheKey.hashCode;
+
+  // Pas l'URL : elle finirait dans les messages d'erreur d'image.
+  @override
+  String toString() => 'StableNetworkImage($cacheKey)';
+}
 
 /// Fournit une cover (fichier local ou URL) decodee directement a la taille
 /// d'affichage demandee plutot qu'a la resolution native du fichier puis
@@ -26,9 +72,7 @@ ImageProvider coverImageProvider(
   required double height,
 }) {
   final double dpr = MediaQuery.devicePixelRatioOf(context);
-  final ImageProvider base = path.startsWith('http')
-      ? NetworkImage(path) as ImageProvider
-      : FileImage(File(path));
+  final ImageProvider base = rawCoverImageProvider(path);
   return ResizeImage(
     base,
     width: (width * dpr).round().clamp(1, 1 << 20),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/cleartext_policy.dart';
 import '../providers/app_state.dart';
 
 /// Ecran de connexion : se connecter a Vinland EST se connecter a Navidrome.
@@ -160,6 +161,13 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       setState(() => _error = 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (!isCleartextAllowed(_urlController.text)) {
+      setState(() => _error =
+          'Adresse non sécurisée : utilisez https://, ou http:// seulement '
+              'avec une adresse Tailscale (100.x.x.x) ou du réseau local');
       return;
     }
 

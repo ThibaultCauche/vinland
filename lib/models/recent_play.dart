@@ -1,3 +1,5 @@
+import '../services/subsonic_refs.dart';
+
 enum RecentPlayType { album, playlist, artist, friend }
 
 /// Id virtuel utilise pour representer la collection "Titres likes" en tant
@@ -11,24 +13,26 @@ class RecentPlay {
   final String id;
   final String title;
   final String subtitle;
-  final String? coverPath;
+  // Meme principe que Album : jamais d'URL avec jeton en memoire durable.
+  final String? _coverRef;
+  String? get coverPath => SubsonicRefs.resolve(_coverRef);
   final DateTime playedAt;
 
-  const RecentPlay({
+  RecentPlay({
     required this.type,
     required this.id,
     required this.title,
     required this.subtitle,
     required this.playedAt,
-    this.coverPath,
-  });
+    String? coverPath,
+  }) : _coverRef = SubsonicRefs.toStorable(coverPath);
 
   Map<String, dynamic> toJson() => {
         'type': type.name,
         'id': id,
         'title': title,
         'subtitle': subtitle,
-        'coverPath': coverPath,
+        'coverPath': _coverRef,
         'playedAt': playedAt.toIso8601String(),
       };
 

@@ -17,10 +17,24 @@ commit.
   vides et lancer l'analyse et les tests sans les secrets.
 - Premier test du relais Jam (un hôte crée la session, un ami la rejoint).
 - Dependabot, modèles de PR et d'issue, ce journal.
+- Clé d'API OpenSubsonic optionnelle côté service Navidrome (à la place du
+  jeton md5), pour les versions de Navidrome qui la gèrent.
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.
 - Tout le code Dart est formaté avec `dart format`.
+- Le jeton Subsonic n'est plus écrit sur le disque : le cache de
+  bibliothèque, les albums, l'historique de recherche et la pochette
+  épinglée ne gardent que des ids, et les URL sont reconstruites à la
+  demande. Le sel change à chaque démarrage. Les anciens caches sont
+  convertis au premier lancement.
+- Le cache de bibliothèque quitte `Documents` (souvent synchronisé
+  OneDrive) pour le dossier support de l'app.
+- Les logs masquent les paramètres secrets des URL (`t=`, `s=`, `p=`,
+  `apiKey=`...).
+- Un nouveau serveur en `http://` n'est accepté que sur Tailscale ou le
+  réseau local ; ailleurs, `https://` est exigé. Android passe par un
+  `network_security_config.xml` explicite.
 
 ### Supprimé
 - Variante « compacte » des cartes d'album de la page artiste, qui n'était
