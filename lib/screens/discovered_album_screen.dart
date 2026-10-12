@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../widgets/download_button.dart';
 import '../features/discovered_album/discovered_album_model.dart';
 import '../features/shared/download_waiters.dart';
 import '../services/download_worker_service.dart' show DownloadUiState;
@@ -324,34 +325,12 @@ class _DiscoveredTrackTile extends StatelessWidget {
                 onPressed: () => showPlayerOptions(context, localTrack!),
                 splashRadius: 18,
               ),
-            ] else if (downloadState == DownloadUiState.downloading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white38,
-                ),
-              )
-            else if (showDownloadButton)
-              InkWell(
-                onTap: onDownloadTap,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(
-                    downloadState == DownloadUiState.failed
-                        ? Icons.error_outline
-                        : Icons.download_rounded,
-                    color: downloadState == DownloadUiState.failed
-                        ? Colors.redAccent
-                        : Colors.white54,
-                    size: 18,
-                  ),
-                ),
-              )
-            else
-              const Icon(Icons.cloud_off, color: Colors.white24, size: 16),
+            ] else
+              DownloadStateIcon(
+                state: downloadState,
+                showDownloadButton: showDownloadButton,
+                onDownloadTap: onDownloadTap,
+              ),
           ],
         ),
       ),

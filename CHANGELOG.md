@@ -32,6 +32,10 @@ commit.
   teste à deux appareils avec un faux relais. `MusicService`,
   `NavidromeService`, `JamService` et `DiscoveryService` ne sont plus des
   singletons : ils sont créés une fois dans `main.dart` et injectés.
+- Interne : les pages artiste, album, album Deezer, recherche,
+  discographie et profil d'ami partagent leur logique entre mobile et
+  Windows (`lib/features/`, testée sans NAS ni Deezer) ; les deux versions
+  ne gardent que leur mise en page.
 - Tout le code Dart est formaté avec `dart format`.
 - Le jeton Subsonic n'est plus écrit sur le disque : le cache de
   bibliothèque, les albums, l'historique de recherche et la pochette
@@ -59,6 +63,10 @@ commit.
   plus utilisée nulle part.
 
 ### Corrigé
+- Sur Windows, la page d'un album au titre court (« 99 ») n'affiche plus
+  les titres d'un autre album dont le nom le contient (« 99 Nights »).
+- Sur Windows, une playlist partagée par un ami s'ouvre même quand aucun
+  de ses titres n'est sur votre NAS, comme sur mobile.
 - Un like, un renommage ou une suppression de playlist refusé par le
   serveur n'est plus affiché comme réussi (Subsonic répond « 200 » même en
   cas d'erreur).
