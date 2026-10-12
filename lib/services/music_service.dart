@@ -14,6 +14,7 @@ import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
 import 'navidrome_service.dart';
+import 'sharing_consent.dart';
 import 'package:http/http.dart' as http;
 
 /// Fusionne un titre fraichement recu du serveur (Navidrome) avec l'etat
@@ -165,12 +166,21 @@ class MusicService {
   /// seuil.
   static const Duration _nowPlayingStaleAfter = Duration(minutes: 2);
 
-  bool _shareLikesWithFriends = true;
+  // Rien n'est partagé tant que l'utilisateur n'a pas répondu à l'écran de
+  // consentement (voir SharingConsent) ; un cache 1.2.x garde ses choix.
+  bool _shareLikesWithFriends = false;
   bool get shareLikesWithFriends => _shareLikesWithFriends;
-  bool _shareRecentPlaysWithFriends = true;
+  bool _shareRecentPlaysWithFriends = false;
   bool get shareRecentPlaysWithFriends => _shareRecentPlaysWithFriends;
-  bool _shareNowPlayingWithFriends = true;
+  bool _shareNowPlayingWithFriends = false;
   bool get shareNowPlayingWithFriends => _shareNowPlayingWithFriends;
+  bool _sharingConsentAsked = false;
+
+  /// true quand le compte courant est chargé mais n'a encore jamais validé
+  /// ses choix de partage : l'interface doit alors poser la question.
+  /// Attend _initialized pour ne pas la poser avant d'avoir lu le cache (on
+  /// pré-remplirait alors « rien de partagé » à un ancien utilisateur).
+  bool get needsSharingConsent => _initialized && !_sharingConsentAsked;
   final Map<String, Timer> _playlistSyncDebounce = {};
 
   // Cache en memoire des covers existantes pour eviter les existsSync()
@@ -373,12 +383,13 @@ class MusicService {
     _existingCovers.clear();
     _tracksNeedingOrderRecovery.clear();
 
-    _shareLikesWithFriends = true;
+    _shareLikesWithFriends = false;
     _likesMirrorServerId = null;
-    _shareRecentPlaysWithFriends = true;
+    _shareRecentPlaysWithFriends = false;
     _recentPlaysMirrorServerId = null;
-    _shareNowPlayingWithFriends = true;
+    _shareNowPlayingWithFriends = false;
     _nowPlayingMirrorServerId = null;
+    _sharingConsentAsked = false;
     _pinnedMirrorServerId = null;
   }
 
@@ -725,6 +736,20 @@ class MusicService {
   /// de l'ordre reel (fiable, lui) de la playlist miroir des likes des
   /// qu'elle est recuperee -- voir le commentaire complet la-bas.
   final Set<String> _tracksNeedingOrderRecovery = {};
+
+  /// Enregistre la réponse à l'écran de consentement et applique chaque
+  /// choix (visibilité des playlists miroirs sur le serveur).
+  Future<void> confirmSharingConsent({
+    required bool likes,
+    required bool recentPlays,
+    required bool nowPlaying,
+  }) async {
+    _sharingConsentAsked = true;
+    await setShareLikesWithFriends(likes);
+    await setShareRecentPlaysWithFriends(recentPlays);
+    await setShareNowPlayingWithFriends(nowPlaying);
+    await saveToCache();
+  }
 
   Future<void> setShareLikesWithFriends(bool value) async {
     _shareLikesWithFriends = value;
@@ -1075,6 +1100,7 @@ class MusicService {
       'recentPlaysMirrorServerId': _recentPlaysMirrorServerId,
       'shareNowPlayingWithFriends': _shareNowPlayingWithFriends,
       'nowPlayingMirrorServerId': _nowPlayingMirrorServerId,
+      'sharingConsentAsked': _sharingConsentAsked,
       'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
       'pinnedMirrorServerId': _pinnedMirrorServerId,
     };
@@ -1111,13 +1137,14 @@ class MusicService {
                 ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
                 .toList() ??
             [];
-        _shareLikesWithFriends = data['shareLikesWithFriends'] ?? true;
+        final consent =
+            SharingConsent.fromCache(Map<String, dynamic>.from(data));
+        _shareLikesWithFriends = consent.likes;
         _likesMirrorServerId = data['likesMirrorServerId'];
-        _shareRecentPlaysWithFriends =
-            data['shareRecentPlaysWithFriends'] ?? true;
+        _shareRecentPlaysWithFriends = consent.recentPlays;
         _recentPlaysMirrorServerId = data['recentPlaysMirrorServerId'];
-        _shareNowPlayingWithFriends =
-            data['shareNowPlayingWithFriends'] ?? true;
+        _shareNowPlayingWithFriends = consent.nowPlaying;
+        _sharingConsentAsked = consent.asked;
         _nowPlayingMirrorServerId = data['nowPlayingMirrorServerId'];
         _missingTracks = (data['missingTracks'] as List?)
                 ?.map((m) => Map<String, dynamic>.from(m))

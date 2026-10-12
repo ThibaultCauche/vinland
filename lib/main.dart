@@ -20,6 +20,7 @@ import 'services/player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
 import 'services/deep_link_service.dart';
+import 'widgets/sharing_consent_dialog.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
@@ -256,17 +257,19 @@ class AppShell extends StatelessWidget {
         // Récupère state ICI, avant de l'utiliser
         final state = context.read<AppState>();
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            if (_isDesktopLayout(constraints.maxWidth)) {
-              return const DesktopAppShell();
-            }
-            return _MobileAppShell(
-              currentTab: currentTab,
-              currentOverlay: currentOverlay,
-              state: state,
-            );
-          },
+        return SharingConsentGate(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (_isDesktopLayout(constraints.maxWidth)) {
+                return const DesktopAppShell();
+              }
+              return _MobileAppShell(
+                currentTab: currentTab,
+                currentOverlay: currentOverlay,
+                state: state,
+              );
+            },
+          ),
         );
       },
     );

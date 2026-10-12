@@ -2066,6 +2066,21 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get shareLikesWithFriends => _music.shareLikesWithFriends;
 
+  bool get needsSharingConsent => _music.needsSharingConsent;
+
+  Future<void> confirmSharingConsent({
+    required bool likes,
+    required bool recentPlays,
+    required bool nowPlaying,
+  }) async {
+    await _music.confirmSharingConsent(
+      likes: likes,
+      recentPlays: recentPlays,
+      nowPlaying: nowPlaying,
+    );
+    _notify();
+  }
+
   Future<void> setShareLikesWithFriends(bool value) async {
     await _music.setShareLikesWithFriends(value);
     _notify();
