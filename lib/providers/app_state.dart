@@ -1286,8 +1286,10 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
   /// Reordonnancement par glisser-deposer (voir QueueScreen) : `newIndex`
   /// suit la convention de ReorderableListView.onReorder (index cible avant
   /// le retrait de l'element deplace).
+  /// [newIndex] est la position finale du titre (convention de
+  /// ReorderableListView.onReorderItem, qui a deja retire l'element deplace
+  /// du calcul) : pas de "newIndex -= 1" a faire ici.
   void reorderQueue(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) newIndex -= 1;
     final item = queue.removeAt(oldIndex);
     queue.insert(newIndex, item);
     unawaited(_savePlaybackState());
@@ -1374,9 +1376,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     _personalSyncMode = false;
     final ok = await _jam.join(sessionId);
     if (!ok) return false;
-    _jamStateSub?.cancel();
+    unawaited(_jamStateSub?.cancel());
     _jamStateSub = _jam.stateStream.listen(_applyJamState);
-    _jamHostLeftSub?.cancel();
+    unawaited(_jamHostLeftSub?.cancel());
     _jamHostLeftSub = _jam.hostLeftStream.listen((_) {
       leaveJamSession();
     });
@@ -1573,9 +1575,9 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
     final ok = await _jam.join(id);
     if (!ok) return;
     _personalSyncMode = true;
-    _jamStateSub?.cancel();
+    unawaited(_jamStateSub?.cancel());
     _jamStateSub = _jam.stateStream.listen(_applyPersonalSyncState);
-    _jamHostLeftSub?.cancel();
+    unawaited(_jamHostLeftSub?.cancel());
     _jamHostLeftSub = _jam.hostLeftStream.listen((_) => _leavePersonalSync());
     _announceDeviceToHost();
     _notify();
@@ -2501,7 +2503,7 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
       ..._history.map((t) => t.id),
       if (currentTrack != null) currentTrack!.id,
     };
-    var contextRemainder =
+    final contextRemainder =
         _sourceOrder.where((t) => !playedIds.contains(t.id)).toList();
     if (isShuffled) contextRemainder.shuffle();
     final manuallyQueued =

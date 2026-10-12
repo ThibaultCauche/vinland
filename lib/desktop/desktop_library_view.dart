@@ -164,8 +164,8 @@ class _SegmentButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: active
-          ? Colors.white.withOpacity(0.16)
-          : Colors.white.withOpacity(0.05),
+          ? Colors.white.withValues(alpha: 0.16)
+          : Colors.white.withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),

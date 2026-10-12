@@ -86,7 +86,7 @@ class QueueScreen extends StatelessWidget {
                                   padding: EdgeInsets.only(
                                       bottom: bottomBarReserve(context)),
                                   itemCount: queue.length,
-                                  onReorder: state.reorderQueue,
+                                  onReorderItem: state.reorderQueue,
                                   itemBuilder: (context, i) => _QueueTile(
                                     key: ValueKey('queue-$i-${queue[i].id}'),
                                     index: i,
@@ -116,9 +116,10 @@ class _CurrentTrackTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1DB954).withOpacity(0.12),
+        color: const Color(0xFF1DB954).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF1DB954).withOpacity(0.3)),
+        border:
+            Border.all(color: const Color(0xFF1DB954).withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [

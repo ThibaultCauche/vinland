@@ -142,8 +142,9 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             margin: const EdgeInsets.symmetric(vertical: 2),
             decoration: BoxDecoration(
-              color:
-                  _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
+              color: _hover
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
             ),
             child: Row(

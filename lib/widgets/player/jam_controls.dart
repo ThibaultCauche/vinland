@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
@@ -167,7 +169,7 @@ Future<void> _startJam(BuildContext context) async {
     return;
   }
   if (!context.mounted) return;
-  showDialog(
+  unawaited(showDialog(
     context: context,
     builder: (context) => AlertDialog(
       backgroundColor: const Color(0xFF1E1E1E),
@@ -203,7 +205,7 @@ Future<void> _startJam(BuildContext context) async {
         ),
       ],
     ),
-  );
+  ));
 }
 
 void _showJoinJamDialog(BuildContext context) {

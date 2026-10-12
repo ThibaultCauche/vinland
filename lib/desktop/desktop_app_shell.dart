@@ -495,7 +495,7 @@ class _TopBar extends StatelessWidget {
                         child: GlassPanel(
                           borderRadius: BorderRadius.circular(20),
                           blurSigma: 0,
-                          tint: Colors.white.withOpacity(0.06),
+                          tint: Colors.white.withValues(alpha: 0.06),
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           child: const SizedBox(
                             height: 36,

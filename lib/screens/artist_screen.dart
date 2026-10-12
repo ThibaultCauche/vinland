@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -158,18 +160,19 @@ class _ArtistScreenState extends State<ArtistScreen> {
     _discoveredAlbums = data.albums;
     _topTracks = data.topTracks;
 
-    if (mounted)
+    if (mounted) {
       setState(() {
         _loadingDeezer = false;
         _loadingTopTracks = false; // ← ici, APRÈS le Future.wait
       });
+    }
     _deezerCache[MatchingService.normalize(widget.artistName)] = _ArtistCache(
       artist: _discoveredArtist,
       albums: _discoveredAlbums,
       topTracks: _topTracks,
     );
-    _deepMatchAlbums();
-    _loadTrueTrackCounts();
+    unawaited(_deepMatchAlbums());
+    unawaited(_loadTrueTrackCounts());
   }
 
   /// Demande le telechargement automatique d'un titre populaire absent du

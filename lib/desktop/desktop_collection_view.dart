@@ -294,7 +294,7 @@ class _GenreChipState extends State<_GenreChip> {
           decoration: BoxDecoration(
             color: selected
                 ? Colors.white
-                : Colors.white.withOpacity(_hover ? 0.16 : 0.08),
+                : Colors.white.withValues(alpha: _hover ? 0.16 : 0.08),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
@@ -387,7 +387,7 @@ class _CollapsingHeroDelegate extends SliverPersistentHeaderDelegate {
               ),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(color: Colors.black.withOpacity(0.12)),
+                child: Container(color: Colors.black.withValues(alpha: 0.12)),
               ),
             ),
           ),

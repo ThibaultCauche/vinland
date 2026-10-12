@@ -493,10 +493,12 @@ class _SearchScreenState extends State<SearchScreen>
                         ? localTrack.coverPath
                         : null,
                   );
-                  if (!mounted) return;
+                  // context est celui de la ligne (itemBuilder), pas du State :
+                  // c'est lui qu'il faut verifier apres l'await.
+                  if (!context.mounted) return;
                   FocusScope.of(context).unfocus();
                   state.popOverlay();
-                  state.playTrack(localTrack);
+                  unawaited(state.playTrack(localTrack));
                 },
         );
       },

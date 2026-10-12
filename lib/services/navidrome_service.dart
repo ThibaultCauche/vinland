@@ -106,8 +106,9 @@ class NavidromeService {
   }
 
   Future<bool> _authenticate() async {
-    if (_baseUrl == null || _username == null || _password == null)
+    if (_baseUrl == null || _username == null || _password == null) {
       return false;
+    }
 
     // Reutilise le meme salt entre les sessions : sinon les URLs de
     // stream/cover changent a chaque demarrage et le cache image de Flutter
@@ -392,7 +393,7 @@ class NavidromeService {
     if (!isConnected) return '';
     final effectiveBitRate = maxBitRateKbps ?? streamMaxBitRateKbps;
     final effectiveFormat = format ?? 'mp3';
-    var url =
+    final url =
         '$_baseUrl/rest/stream.view?id=$id&u=$_username&t=$_token&s=$_salt&v=1.16.1&c=vinland'
         '&maxBitRate=$effectiveBitRate&format=$effectiveFormat';
     return url;

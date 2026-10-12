@@ -186,7 +186,7 @@ class DesktopHeroCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
             tint: Colors.transparent,
             blurSigma: 0,
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -240,9 +240,9 @@ class DesktopHeroCard extends StatelessWidget {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        Colors.black.withOpacity(0.75),
-                        Colors.black.withOpacity(0.55),
-                        Colors.black.withOpacity(0.05),
+                        Colors.black.withValues(alpha: 0.75),
+                        Colors.black.withValues(alpha: 0.55),
+                        Colors.black.withValues(alpha: 0.05),
                       ],
                       stops: const [0.0, 0.45, 1.0],
                     ),
@@ -469,7 +469,7 @@ class _ShufflePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withOpacity(0.18),
+      color: Colors.white.withValues(alpha: 0.18),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),

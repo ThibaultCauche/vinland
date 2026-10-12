@@ -108,7 +108,7 @@ class _QueuePanelOverlay extends StatelessWidget {
                                   shrinkWrap: true,
                                   buildDefaultDragHandles: false,
                                   itemCount: queue.length,
-                                  onReorder: state.reorderQueue,
+                                  onReorderItem: state.reorderQueue,
                                   itemBuilder: (context, i) => _QueueRow(
                                     key: ValueKey('dq-$i-${queue[i].id}'),
                                     track: queue[i],
@@ -147,8 +147,8 @@ class _QueueRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: isCurrent
-            ? DesktopGlass.accent.withOpacity(0.12)
-            : Colors.white.withOpacity(0.04),
+            ? DesktopGlass.accent.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
       ),
       child: InkWell(

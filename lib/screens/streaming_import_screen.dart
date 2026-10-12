@@ -15,7 +15,7 @@ class StreamingImportScreen extends StatefulWidget {
 }
 
 class _StreamingImportScreenState extends State<StreamingImportScreen> {
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +189,8 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: (color ?? const Color(0xFF1DB954)).withOpacity(0.1),
+                  color:
+                      (color ?? const Color(0xFF1DB954)).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -248,6 +249,9 @@ class _StreamingImportScreenState extends State<StreamingImportScreen> {
       allowedExtensions: ['json', 'csv', 'txt'],
     );
 
+    // L'utilisateur a pu quitter l'écran pendant que le sélecteur de
+    // fichier était ouvert.
+    if (!mounted) return;
     if (result != null && result.files.isNotEmpty) {
       final path = result.files.first.path!;
 
@@ -397,11 +401,11 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
                   child: const Text('Retour'),
                 ),
               ] else ...[
-                SizedBox(
+                const SizedBox(
                   width: 120,
                   height: 120,
                   child: CircularProgressIndicator(
-                    color: const Color(0xFF1DB954),
+                    color: Color(0xFF1DB954),
                     strokeWidth: 8,
                   ),
                 ),
@@ -415,9 +419,9 @@ class _ImportProgressScreenState extends State<ImportProgressScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Text(
+                const Text(
                   'titres analysés',
-                  style: const TextStyle(color: Colors.white54, fontSize: 16),
+                  style: TextStyle(color: Colors.white54, fontSize: 16),
                 ),
                 if (_isDone) ...[
                   const SizedBox(height: 24),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -169,8 +171,8 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
       albums: _discoveredAlbums,
       topTracks: _topTracks,
     );
-    _deepMatchAlbums();
-    _loadTrueTrackCounts();
+    unawaited(_deepMatchAlbums());
+    unawaited(_loadTrueTrackCounts());
   }
 
   /// Demande le telechargement automatique d'un titre populaire absent du

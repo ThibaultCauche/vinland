@@ -185,7 +185,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
       for (final t in _tracks)
         if (t.local != null) t.local!
     ];
-    context.read<AppState>().playTrack(track, trackList: playable);
+    unawaited(context.read<AppState>().playTrack(track, trackList: playable));
   }
 
   /// Demande le telechargement automatique d'un titre trouve via Deezer mais
@@ -280,7 +280,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
               child: GlassPanel(
                 borderRadius: BorderRadius.circular(20),
                 blurSigma: 0,
-                tint: Colors.white.withOpacity(0.06),
+                tint: Colors.white.withValues(alpha: 0.06),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: SizedBox(
                   height: 36,
@@ -742,7 +742,9 @@ class _HistoryRowState extends State<_HistoryRow> {
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
+            color: _hover
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
           ),
           child: Row(

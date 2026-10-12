@@ -43,7 +43,7 @@ bool _isDesktopLayout(double width) =>
     (kIsWeb && width >= 900);
 
 Future<void> main() async {
-  runZonedGuarded(() async {
+  unawaited(runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     // Requis avant tout appel a MetadataGod.readMetadata (lecture des tags
@@ -65,7 +65,7 @@ Future<void> main() async {
       return true;
     };
 
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
@@ -168,13 +168,13 @@ Future<void> main() async {
     );
 
     final appState = AppState(audioHandler: audioHandler);
-    appState.initialize();
-    DeepLinkService(appState).init();
+    unawaited(appState.initialize());
+    unawaited(DeepLinkService(appState).init());
 
     runApp(VinlandApp(audioHandler: audioHandler, appState: appState));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');
-  });
+  }));
 }
 
 class VinlandApp extends StatelessWidget {
@@ -376,9 +376,9 @@ class _MobileAppShell extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.0),
-                            Colors.black.withOpacity(0.85),
-                            Colors.black.withOpacity(1.0),
+                            Colors.black.withValues(alpha: 0.0),
+                            Colors.black.withValues(alpha: 0.85),
+                            Colors.black.withValues(alpha: 1.0),
                           ],
                           stops: const [0.0, 0.3, 1.0],
                         ),

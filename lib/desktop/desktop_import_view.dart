@@ -56,13 +56,15 @@ class DesktopImportView extends StatelessWidget {
                       borderRadius:
                           BorderRadius.circular(DesktopGlass.radiusLg),
                       border: Border.all(
-                          color: Colors.white.withOpacity(0.18), width: 1.5),
+                          color: Colors.white.withValues(alpha: 0.18),
+                          width: 1.5),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.upload_file_rounded,
-                            size: 48, color: Colors.white.withOpacity(0.7)),
+                            size: 48,
+                            color: Colors.white.withValues(alpha: 0.7)),
                         const SizedBox(height: 16),
                         const Text('Choisir des fichiers',
                             style: TextStyle(
