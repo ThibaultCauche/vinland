@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../config/share_inbox_config.dart';
 
 /// Un partage recu, tel que renvoye par GET /shares/<username> (voir
-/// share-inbox/server.py).
+/// services/share-inbox/server.py).
 class ReceivedShare {
   final String id;
   final String from;
@@ -34,8 +34,8 @@ class ReceivedShare {
       );
 }
 
-/// Client du petit service "boite de reception" maison (voir share-inbox/ a
-/// la racine du repo) : permet d'envoyer un partage titre/album/playlist
+/// Client du petit service "boite de reception" maison (voir
+/// services/share-inbox/ dans le repo) : permet d'envoyer un partage titre/album/playlist
 /// CIBLE a un ami precis (contrairement au partage externe de
 /// deep_link_service.dart, qui compte sur un outil tiers -- SMS/WhatsApp --
 /// pour faire passer le lien). Meme principe que AvatarService/

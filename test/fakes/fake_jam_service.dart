@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:vinland/domain/jam_sync.dart';
 import 'package:vinland/services/jam_service.dart';
 
-/// Relais Jam en memoire, qui rejoue les regles de jam_relay/bin/server.dart
+/// Relais Jam en memoire, qui rejoue les regles de services/jam-relay/bin/server.dart
 /// (prise de controle d'une session par un nouvel hote, depart de l'hote,
 /// transfert d'hebergement...) pour faire discuter plusieurs
 /// [FakeJamService] -- un par appareil simule -- sans reseau.

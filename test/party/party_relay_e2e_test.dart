@@ -1,4 +1,4 @@
-// Soiree complete contre la vraie logique du relais (jam_relay/lib/party/,
+// Soiree complete contre la vraie logique du relais (services/jam-relay/lib/party/,
 // branchee en memoire, voir fakes/hub_party_socket.dart) : un hote et trois
 // telephones invites, comme le critere de fin de la session 17.
 import 'package:flutter_test/flutter_test.dart';

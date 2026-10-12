@@ -2,7 +2,7 @@
 
 > Version du protocole : **1** (champ `v`). Session 16 (M4). L'interface de
 > l'app arrive en session 17 ; ce document fait foi pour le relais
-> (`jam_relay/lib/party/`) et pour le futur client de l'app.
+> (`services/jam-relay/lib/party/`) et pour le futur client de l'app.
 
 ## Idée générale
 
@@ -190,14 +190,14 @@ relais → (à tous) {"type":"now_playing","song":{"songId":"s42", …}}
   connexion pour un invité sans compte. Un code tapé sans QR vise le relais
   du serveur de l'invité.
 - Tests : `test/party/` branche la vraie logique du relais
-  (`jam_relay/lib/party/`) en mémoire, sans réseau.
+  (`services/jam-relay/lib/party/`) en mémoire, sans réseau.
 
 ## Tester sans l'app
 
-`jam_relay/bin/party_cli.dart` est un petit client en ligne de commande :
+`services/jam-relay/bin/party_cli.dart` est un petit client en ligne de commande :
 
 ```bash
-cd jam_relay
+cd services/jam-relay
 PARTY_ALLOW_ANON_HOST=1 dart run bin/server.dart       # terminal 1
 dart run bin/party_cli.dart host ws://127.0.0.1:8765/jam  # terminal 2, affiche le code
 dart run bin/party_cli.dart suggest ws://127.0.0.1:8765/jam <CODE> Léa <songId>

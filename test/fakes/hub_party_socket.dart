@@ -1,4 +1,4 @@
-// Le vrai relais de soiree (jam_relay/lib/party/), branche en memoire sur
+// Le vrai relais de soiree (services/jam-relay/lib/party/), branche en memoire sur
 // le client de l'app : les tests de l'app passent par les memes regles de
 // file, de jetons et de droits que le NAS, sans reseau. jam_relay est un
 // paquet a part (sa propre CI) ; on importe ses sources directement, elles
@@ -8,13 +8,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 // ignore: avoid_relative_lib_imports
-import '../../jam_relay/lib/party/catalog.dart';
+import '../../services/jam-relay/lib/party/catalog.dart';
 // ignore: avoid_relative_lib_imports
-import '../../jam_relay/lib/party/party.dart' as relay;
+import '../../services/jam-relay/lib/party/party.dart' as relay;
 // ignore: avoid_relative_lib_imports
-import '../../jam_relay/lib/party/party_hub.dart';
+import '../../services/jam-relay/lib/party/party_hub.dart';
 // ignore: avoid_relative_lib_imports
-import '../../jam_relay/lib/party/party_token.dart';
+import '../../services/jam-relay/lib/party/party_token.dart';
 import 'package:vinland/services/party/party_socket.dart';
 
 /// Catalogue Navidrome factice : 's1'..'s20' = « Titre 1 »..« Titre 20 ».

@@ -20,7 +20,8 @@
   dart format lib test
   flutter analyze               # aucune nouvelle remarque
   flutter test
-  (cd jam_relay && dart analyze && dart test)
+  (cd services/jam-relay && dart analyze && dart test)
+  ruff check services && ruff format --check services
   ```
   `tool/write_stub_config.sh` n'ecrase jamais un fichier de config existant.
 - **Releases** : `release.yml` rejoue toute la CI sur le commit tague avant

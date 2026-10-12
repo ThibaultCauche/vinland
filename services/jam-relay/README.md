@@ -1,4 +1,4 @@
-# jam_relay
+# jam-relay
 
 Relais WebSocket pour l'ecoute synchronisee ("Jam") de Vinland. Service
 independant de l'app Flutter et de Navidrome : il ne fait que rediffuser
@@ -13,22 +13,12 @@ dans Navidrome pour les invites (code dans `lib/party/`).
 
 ## Deployer sur le NAS (a cote de Navidrome)
 
-1. Construire et lancer le conteneur. Exemple a ajouter dans le
-   `docker-compose.yml` existant du NAS, a cote du service Navidrome :
-
-   ```yaml
-   jam_relay:
-     build: ./jam_relay   # ou une image que tu push sur un registre
-     restart: unless-stopped
-     ports:
-       - "8765:8765"
-   ```
-
-   Ou en une commande, sans compose :
+1. Le relais est decrit dans `services/docker-compose.yml` avec les autres
+   services (voir `services/README.md`) :
 
    ```bash
-   docker build -t vinland-jam-relay ./jam_relay
-   docker run -d --name vinland-jam-relay --restart unless-stopped -p 8765:8765 vinland-jam-relay
+   cd services
+   docker compose up -d --build jam-relay
    ```
 
    Pour le mode Soiree, donner au relais un compte Navidrome **dedie, sans

@@ -138,7 +138,7 @@ class JamController extends ChangeNotifier {
   /// Nom de l'appareil participant actuellement connecte a NOTRE synchro
   /// perso (voir isPersonalSyncHost) -- annonce par lui via la commande
   /// 'announce_device' (voir _announceDeviceToHost/_applyCommand), pas
-  /// connu du relais (voir jam_relay/, qui ne suit que des pseudos, memes
+  /// connu du relais (voir services/jam-relay/, qui ne suit que des pseudos, memes
   /// pour tous les appareils du meme compte). Sert uniquement a afficher
   /// "Connecte : <appareil>" dans showDeviceMenu -- le controle a distance
   /// marche deja sans ca, c'est juste pour que l'hote voie que l'autre
@@ -218,7 +218,7 @@ class JamController extends ChangeNotifier {
 
   /// Demarre une session Jam en tant qu'hote : pilote la lecture normalement,
   /// diffuse son etat (titre/position/lecture-pause) aux participants via le
-  /// relais (voir jam_relay/) a chaque changement et a chaque battement pour
+  /// relais (voir services/jam-relay/) a chaque changement et a chaque battement pour
   /// rattraper la derive. Renvoie le sessionId a partager, ou null en cas
   /// d'echec (relais injoignable).
   Future<String?> startSession() async {
@@ -328,7 +328,7 @@ class JamController extends ChangeNotifier {
     } else {
       // Ce callback est partage par deux cas bien distincts qui envoient
       // tous les deux un 'host_transferred' cote relais (voir le cas 'host'
-      // dans jam_relay/bin/server.dart, "prise de controle" y compris) :
+      // dans services/jam-relay/bin/server.dart, "prise de controle" y compris) :
       // 1. un vrai transfert d'hebergement Jam entre amis (voir
       //    transferHost) -- celui qui le recoit doit redevenir un vrai
       //    suiveur Jam (isFriendJamActive, actions locales ignorees).

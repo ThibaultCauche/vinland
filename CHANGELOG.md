@@ -60,8 +60,15 @@ commit.
   voir l'écart mesuré avec l'hôte.
 - Chaque release publie `SHA256SUMS` et sa signature minisign
   `SHA256SUMS.minisig`.
+- Dossier `services/` pour les services du NAS : `docker-compose.yml`
+  (ports liés à `127.0.0.1`, volumes nommés), modèle `.env.example`,
+  `README.md` (déploiement, routes Tailscale), Dockerfile générique pour les
+  services Python.
+- Job CI `services` : `ruff`, `pytest` quand un service a des tests, et
+  validation du `docker compose`.
 
 ### Modifié
+- Le relais Jam passe de `jam_relay/` à `services/jam-relay/`.
 - Une release ne part plus si la CI est rouge sur le commit tagué.
 - Interne, sans changement visible : la lecture et la file d'attente
   quittent `AppState` pour `PlayerController` et `domain/queue.dart`

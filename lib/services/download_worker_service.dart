@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config/download_worker_config.dart';
 
 /// Statut d'un job de telechargement, tel que renvoye par
-/// GET /downloads/<job_id> (voir download-worker/server.py).
+/// GET /downloads/<job_id> (voir services/download-worker/server.py).
 enum DownloadJobState { queued, running, done, failed, unknown }
 
 /// Etat d'affichage d'une ligne de titre non possede (album/artiste,
@@ -89,7 +89,7 @@ String downloadStageLabel(String? stage) {
 }
 
 /// Statut d'un fichier au sein d'un import local (voir POST /imports dans
-/// download-worker/server.py) : song_id est l'id Subsonic retrouve apres
+/// services/download-worker/server.py) : song_id est l'id Subsonic retrouve apres
 /// scan (prefixe 'navidrome_' pour matcher Track.id cote app), ou null si le
 /// worker n'a pas reussi a le retrouver (tags illisibles, non trouve...).
 class ImportedFile {
@@ -159,8 +159,8 @@ class LocalImportResult {
   });
 }
 
-/// Client du service de telechargement automatique (voir download-worker/ a
-/// la racine du repo) : recoit "artiste - titre" pour un morceau trouve via
+/// Client du service de telechargement automatique (voir
+/// services/download-worker/ dans le repo) : recoit "artiste - titre" pour un morceau trouve via
 /// DiscoveryService (Deezer) mais absent du NAS, le telecharge et le range
 /// dans la bibliotheque Navidrome partagee. Meme principe que AvatarService :
 /// cle partagee cote config gitignoree, service maison fait le reste.

@@ -128,9 +128,9 @@ abstract class JamService {
   Future<void> leave();
 }
 
-/// Client du relais Jam (voir jam_relay/) : connexion WebSocket a un service
+/// Client du relais Jam (voir services/jam-relay/) : connexion WebSocket a un service
 /// separe de Navidrome, expose sur le meme hostname Funnel sous /jam (voir
-/// jam_relay/README.md). Modele hote-autoritaire : l'hote envoie son etat de
+/// services/jam-relay/README.md). Modele hote-autoritaire : l'hote envoie son etat de
 /// lecture via sendState(), les participants le recoivent via stateStream et
 /// n'envoient jamais d'etat eux-memes.
 class WebSocketJamService implements JamService {

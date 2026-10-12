@@ -1,0 +1,12 @@
+# Secrets et donnees des services : jamais dans le depot (le depot est
+# public). Les valeurs vivent dans services/.env sur le NAS uniquement.
+.env
+*.env
+!.env.example
+data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
