@@ -15,13 +15,13 @@ import '../services/update_check_service.dart';
 /// Android l'exige). Sinon (asset manquant) : ouvre juste la page de release
 /// dans le navigateur.
 void triggerUpdate(BuildContext context, UpdateInfo update) {
-  final (canAutoUpdate, autoUpdateUrl, isWindows) = _resolveUpdate(update);
+  final (canAutoUpdate, isWindows) = _resolveUpdate(update);
   if (!canAutoUpdate) {
     launchUrl(Uri.parse(update.releaseUrl),
         mode: LaunchMode.externalApplication);
     return;
   }
-  _runAutoUpdate(context, autoUpdateUrl!, isWindows);
+  _runAutoUpdate(context, update, isWindows);
 }
 
 /// Meme chose, mais en demandant d'abord confirmation via une boite de
@@ -29,27 +29,25 @@ void triggerUpdate(BuildContext context, UpdateInfo update) {
 /// automatiquement a l'ouverture de l'app (contrairement aux endroits
 /// ci-dessus, l'utilisateur n'a encore rien clique).
 void showUpdateDialog(BuildContext context, UpdateInfo update) {
-  final (canAutoUpdate, autoUpdateUrl, isWindows) = _resolveUpdate(update);
+  final (canAutoUpdate, isWindows) = _resolveUpdate(update);
   if (!canAutoUpdate) {
     launchUrl(Uri.parse(update.releaseUrl),
         mode: LaunchMode.externalApplication);
     return;
   }
-  _confirmAutoUpdate(context, autoUpdateUrl!, isWindows);
+  _confirmAutoUpdate(context, update, isWindows);
 }
 
-(bool, String?, bool) _resolveUpdate(UpdateInfo update) {
+(bool, bool) _resolveUpdate(UpdateInfo update) {
   final isWindows = defaultTargetPlatform == TargetPlatform.windows;
   final isAndroid = defaultTargetPlatform == TargetPlatform.android;
   final canAutoUpdate = (isWindows && update.windowsDownloadUrl != null) ||
       (isAndroid && update.androidDownloadUrl != null);
-  final autoUpdateUrl =
-      isWindows ? update.windowsDownloadUrl : update.androidDownloadUrl;
-  return (canAutoUpdate, autoUpdateUrl, isWindows);
+  return (canAutoUpdate, isWindows);
 }
 
 void _confirmAutoUpdate(
-    BuildContext context, String downloadUrl, bool isWindows) {
+    BuildContext context, UpdateInfo update, bool isWindows) {
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -72,7 +70,7 @@ void _confirmAutoUpdate(
         TextButton(
           onPressed: () {
             Navigator.pop(ctx);
-            _runAutoUpdate(context, downloadUrl, isWindows);
+            _runAutoUpdate(context, update, isWindows);
           },
           child: const Text('Mettre à jour',
               style: TextStyle(color: Color(0xFF1DB954))),
@@ -82,7 +80,7 @@ void _confirmAutoUpdate(
   );
 }
 
-void _runAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
+void _runAutoUpdate(BuildContext context, UpdateInfo update, bool isWindows) {
   showDialog(
     context: context,
     barrierDismissible: false,
@@ -102,23 +100,31 @@ void _runAutoUpdate(BuildContext context, String downloadUrl, bool isWindows) {
   );
 
   final future = isWindows
-      ? SelfUpdaterService().downloadAndApply(downloadUrl)
-      : AndroidUpdaterService().downloadAndInstall(downloadUrl);
+      ? SelfUpdaterService().downloadAndApply(update)
+      : AndroidUpdaterService().downloadAndInstall(update);
 
-  future.then((ok) {
-    // Sur Windows, ok == true signifie que downloadAndApply() a deja appele
+  future.then((error) {
+    // Sur Windows, un succes signifie que downloadAndApply() a deja appele
     // exit(0) : on n'arrive ici que dans le cas d'un echec. Sur Android,
-    // ok == true signifie juste que l'installeur systeme a bien ete lance
+    // error == null signifie juste que l'installeur systeme a bien ete lance
     // (l'app continue de tourner en-dessous) -- on ferme le dialogue de
     // chargement dans les deux cas de succes/echec puisqu'il n'y a plus
     // rien a attendre.
     if (context.mounted) {
       Navigator.pop(context);
-      if (!ok) {
+      // Le message dit pourquoi (signature refusee, reseau...) : un refus
+      // de signature ne doit pas passer pour une panne passagere.
+      if (error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  "Échec de la mise à jour automatique -- réessaie plus tard.")),
+          SnackBar(
+            content: Text(error),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Page de release',
+              onPressed: () => launchUrl(Uri.parse(update.releaseUrl),
+                  mode: LaunchMode.externalApplication),
+            ),
+          ),
         );
       }
     }

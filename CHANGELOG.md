@@ -17,10 +17,22 @@ commit.
   vides et lancer l'analyse et les tests sans les secrets.
 - Premier test du relais Jam (un hôte crée la session, un ami la rejoint).
 - Dependabot, modèles de PR et d'issue, ce journal.
+- Chaque release publie `SHA256SUMS` et sa signature minisign
+  `SHA256SUMS.minisig`.
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.
 - Tout le code Dart est formaté avec `dart format`.
+- La mise à jour automatique (Windows et Android) vérifie la signature de
+  la release et l'empreinte du fichier téléchargé, et refuse avec un
+  message clair un fichier modifié ou une release non signée.
+- Sur Windows, la mise à jour extrait d'abord dans un dossier temporaire
+  puis remplace toute l'installation (plus de fichiers orphelins d'une
+  ancienne version) et revient à l'ancienne version si la copie échoue.
+- Une vérification de mise à jour par heure au plus, et l'app attend la fin
+  du blocage quand GitHub limite les requêtes (soirées derrière une même
+  box).
+- Les actions GitHub sont épinglées par SHA.
 
 ### Supprimé
 - Variante « compacte » des cartes d'album de la page artiste, qui n'était

@@ -212,8 +212,14 @@ class SettingsScreen extends StatelessWidget {
                           return;
                         }
                         final messenger = ScaffoldMessenger.of(context);
-                        await state.checkForUpdate();
-                        if (state.updateInfo == null) {
+                        final checked = await state.checkForUpdate(force: true);
+                        if (!checked && state.updateInfo == null) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'GitHub limite les vérifications depuis ce réseau, réessaie dans une heure')),
+                          );
+                        } else if (state.updateInfo == null) {
                           messenger.showSnackBar(
                             const SnackBar(
                                 content:
