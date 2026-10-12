@@ -60,7 +60,14 @@ class FakePlayerEngine implements PlayerEngine {
   @override
   Duration get bufferedPosition => Duration.zero;
   @override
-  double get speed => 1;
+  double speed = 1;
+
+  @override
+  Future<void> setSpeed(double speed) async {
+    log.add('speed:$speed');
+    this.speed = speed;
+  }
+
   @override
   double volume = 1;
   @override
@@ -204,7 +211,11 @@ class FakePlaybackOutput implements PlaybackOutput {
   @override
   Future<void> pause() async => calls.add('pause');
   @override
-  Future<void> seek(Duration position) async => calls.add('seek:$position');
+  Future<void> seek(Duration position) async {
+    calls.add('seek:$position');
+    engine.position = position;
+  }
+
   @override
   Future<void> stop() async {
     calls.add('stop');

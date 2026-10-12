@@ -556,6 +556,12 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     }
   }
 
+  @override
+  Duration get livePosition => _output.player.position;
+
+  @override
+  Future<void> setSpeed(double speed) => _output.player.setSpeed(speed);
+
   /// Bascule le mode aleatoire (voir PlayQueue.reshuffle : les titres
   /// ajoutes a la main restent en tete, inchanges).
   Future<void> toggleShuffle() async {

@@ -26,6 +26,13 @@ commit.
   mix).
 - Volume égalisé (ReplayGain, par titre ou par album) à partir des tags
   renvoyés par Navidrome (Paramètres > Lecture, désactivé par défaut).
+- Jam : les appareils restent alignés sans micro-coupures. Horloge commune
+  mesurée avec le relais (ping/pong), petits écarts rattrapés en accélérant
+  ou ralentissant la lecture de 3 % au plus, seek seulement au-delà d'une
+  seconde.
+- Jam : réglage « Décalage audio » par appareil (casque ou enceinte
+  Bluetooth en retard), réglable pendant l'écoute ; appui long dessus pour
+  voir l'écart mesuré avec l'hôte.
 
 ### Modifié
 - Une release ne part plus si la CI est rouge sur le commit tagué.

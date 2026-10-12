@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../controllers/jam_controller.dart';
+import '../controllers/jam_sync_settings.dart';
 import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
@@ -89,6 +90,9 @@ class AppState extends ChangeNotifier
 
   /// Fondu enchaine et normalisation (Parametres > Lecture).
   final PlaybackSettings playbackSettings = PlaybackSettings();
+
+  /// Decalage audio de cet appareil en Jam (menu Jam).
+  final JamSyncSettings jamSyncSettings = JamSyncSettings();
   PlayerController get playerController => _player;
   Track? get currentTrack => _player.currentTrack;
   bool get isPlaying => _player.isPlaying;
@@ -244,6 +248,7 @@ class AppState extends ChangeNotifier
       tracks: _tracks,
       username: () => _navidrome.username,
       deviceLabel: _deviceLabel,
+      syncSettings: jamSyncSettings,
     )..onHostingChanged = _syncNowPlayingMirror;
     _player.onEngineEvent = _jamCtl.broadcastState;
     // Un participant qui suit un hote change de titre quand l'hote le dit,
@@ -344,6 +349,7 @@ class AppState extends ChangeNotifier
       await _music.initialize();
       _useNavidrome = _music.navidromeTracks.isNotEmpty;
       await playbackSettings.load(prefs);
+      await jamSyncSettings.load(prefs);
       await _player.restore(prefs);
 
       if (!kIsWeb && Platform.isAndroid) {

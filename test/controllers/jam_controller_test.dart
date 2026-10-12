@@ -315,7 +315,7 @@ void main() {
         '"Reprendre ici" joue le titre sur cet appareil au lieu de le '
         'redemander a l\'hote', () async {
       final (pc, phone) = await personalSync();
-      pc.player.position = const Duration(seconds: 30);
+      pc.engine.position = const Duration(seconds: 30);
       pc.jam.broadcastState();
 
       await phone.jam.takeOverPersonalSync();
@@ -361,5 +361,133 @@ void main() {
     alice.jamService.unreachable = true;
     expect(await alice.jam.startSession(), isNull);
     expect(alice.jam.isActive, isFalse);
+  });
+
+  group('rattrapage de l\'hote', () {
+    const t0 = 1000000;
+
+    /// alice joue `a` a 60 s, bob la suit et joue aussi.
+    Future<(Device, Device)> listening() async {
+      relay.nowMs = t0;
+      final (alice, bob) = await friendJam();
+      await alice.play(a, list: library);
+      await pumpEventQueue();
+      alice.engine.emitPlaying(true);
+      bob.engine.emitPlaying(true);
+      await pumpEventQueue();
+      alice.engine.position = const Duration(seconds: 60);
+      bob.engine.position = const Duration(seconds: 60);
+      bob.output.calls.clear();
+      bob.engine.log.clear();
+      return (alice, bob);
+    }
+
+    test(
+        'un retard de 200 ms ne coupe plus le son : la lecture accelere au '
+        'lieu de faire un seek', () async {
+      final (alice, bob) = await listening();
+      bob.engine.position = const Duration(milliseconds: 59800);
+
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      expect(bob.output.calls.where((c) => c.startsWith('seek')), isEmpty);
+      expect(bob.engine.speed, closeTo(1.03, 1e-9));
+      expect(bob.jam.syncLog.entries.last.driftMs, 200);
+    });
+
+    test('une fois rattrape, la vitesse redevient normale', () async {
+      final (alice, bob) = await listening();
+      bob.engine.position = const Duration(milliseconds: 59800);
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      bob.engine.position = const Duration(seconds: 60);
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      expect(bob.engine.speed, 1);
+      expect(bob.output.calls.where((c) => c.startsWith('seek')), isEmpty);
+    });
+
+    test('plus d\'une seconde de retard : seek a la position de l\'hote',
+        () async {
+      final (alice, bob) = await listening();
+      bob.engine.position = const Duration(seconds: 50);
+
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      expect(bob.output.calls, contains('seek:0:01:00.000000'));
+      expect(bob.engine.speed, 1);
+    });
+
+    test(
+        'le temps de transit est compte en heure du relais : un participant '
+        'deja a l\'heure ne ralentit pas', () async {
+      final (alice, bob) = await listening();
+      // L'etat met 500 ms a arriver : bob, qui joue deja 500 ms plus loin
+      // que la position envoyee, est exactement aligne sur alice.
+      relay.transitMs = 500;
+      bob.engine.position = const Duration(milliseconds: 60500);
+
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      expect(bob.engine.log, isNot(contains(startsWith('speed'))));
+      expect(bob.output.calls.where((c) => c.startsWith('seek')), isEmpty);
+      expect(bob.jam.syncLog.entries.last.driftMs, 0);
+    });
+
+    test(
+        'decalage Bluetooth regle pendant l\'ecoute : l\'appareil se cale '
+        'tout de suite en avance d\'autant', () async {
+      final (alice, bob) = await listening();
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+      bob.output.calls.clear();
+
+      await bob.jam.syncSettings.setOffset(const Duration(milliseconds: 200));
+      await pumpEventQueue();
+
+      expect(bob.output.calls, contains('seek:0:01:00.200000'));
+    });
+
+    test('l\'hote en Bluetooth annonce ce qu\'on entend vraiment chez lui',
+        () async {
+      final (alice, _) = await listening();
+      await alice.jam.syncSettings.setOffset(const Duration(milliseconds: 150));
+
+      alice.jam.broadcastState();
+
+      expect(relay.relayedStates.last.positionMs, 59850);
+    });
+
+    test('quitter en plein rattrapage remet la vitesse normale', () async {
+      final (alice, bob) = await listening();
+      bob.engine.position = const Duration(milliseconds: 59800);
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+      expect(bob.engine.speed, isNot(1));
+
+      await bob.jam.leaveSession();
+
+      expect(bob.engine.speed, 1);
+    });
+
+    test('pas de rattrapage ni de journal quand l\'hote est en pause',
+        () async {
+      final (alice, bob) = await listening();
+      alice.toggle();
+      await pumpEventQueue();
+      bob.engine.position = const Duration(milliseconds: 59800);
+      bob.jam.syncLog.clear();
+
+      alice.jam.broadcastState();
+      await pumpEventQueue();
+
+      expect(bob.engine.speed, 1);
+      expect(bob.jam.syncLog.entries, isEmpty);
+    });
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:vinland/domain/jam_sync.dart';
 import 'package:vinland/services/jam_service.dart';
 
 /// Relais Jam en memoire, qui rejoue les regles de jam_relay/bin/server.dart
@@ -14,6 +15,16 @@ class FakeJamRelay {
 
   /// Messages 'state' relayes, dans l'ordre (pour les assertions).
   final List<JamStateMessage> relayedStates = [];
+
+  /// Heure du relais, fixee par le test pour simuler un temps de transit
+  /// (null : heure reelle). Les faux appareils sont supposes deja caler
+  /// leur horloge dessus (le calcul lui-meme est teste dans
+  /// test/domain/jam_sync_test.dart).
+  int? nowMs;
+
+  /// Temps de transit hote -> participants ajoute a [nowMs] a chaque etat
+  /// relaye.
+  int transitMs = 0;
 
   bool _host(FakeJamService peer, String id) {
     final session = _sessions.putIfAbsent(id, () => _FakeSession());
@@ -42,6 +53,8 @@ class FakeJamRelay {
     final session = _sessions[from.sessionId];
     if (session == null || session.host != from) return;
     relayedStates.add(msg);
+    final now = nowMs;
+    if (now != null) nowMs = now + transitMs;
     for (final p in session.participants) {
       p._state.add(msg);
     }
@@ -143,6 +156,12 @@ class FakeJamService implements JamService {
   Stream<bool> get hostTransferredStream => _transferred.stream;
 
   @override
+  ClockEstimate get clock => const ClockEstimate(offsetMs: 0, roundTripMs: 0);
+
+  @override
+  int relayNowMs() => relay.nowMs ?? DateTime.now().millisecondsSinceEpoch;
+
+  @override
   String generateSessionId() => '$username-jam-${_nextSessionId++}';
 
   @override
@@ -197,7 +216,7 @@ class FakeJamService implements JamService {
         trackId: trackId,
         positionMs: positionMs,
         isPlaying: isPlaying,
-        ts: DateTime.now().millisecondsSinceEpoch,
+        ts: relayNowMs(),
         deviceName: deviceName,
         queueIds: queueIds,
       ),

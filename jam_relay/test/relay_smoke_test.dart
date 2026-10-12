@@ -111,4 +111,16 @@ void main() {
         containsPair('message', 'session introuvable'));
     await friend.close();
   });
+
+  test('un ping recoit l\'heure du relais pour caler les horloges',
+      () async {
+    final client = await _Client.connect(port);
+    final before = DateTime.now().millisecondsSinceEpoch;
+    client.send({'type': 'ping', 'id': 7, 't0': 123});
+    final pong = await client.next('pong');
+    expect(pong['id'], 7);
+    expect(pong['t0'], 123, reason: 'renvoye tel quel pour le calcul NTP');
+    expect(pong['relayTs'], greaterThanOrEqualTo(before));
+    await client.close();
+  });
 }

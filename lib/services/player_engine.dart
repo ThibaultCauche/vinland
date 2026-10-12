@@ -59,6 +59,11 @@ abstract class PlayerEngine {
   Future<void> stop();
   Future<void> seek(Duration position);
   Future<void> setVolume(double volume);
+
+  /// Vitesse de lecture (1 = normale), sans changer la hauteur du son.
+  /// Utilise seulement par le Jam pour rattraper l'hote en douceur (voir
+  /// JamController._applyJamState), de +/-3 % au plus.
+  Future<void> setSpeed(double speed);
   Future<void> seekToNext();
   Future<void> seekToPrevious();
   Future<void> setShuffleModeEnabled(bool enabled);

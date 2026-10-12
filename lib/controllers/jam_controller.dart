@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
 import '../data/track_repository.dart';
+import '../domain/jam_sync.dart';
 import '../models/track.dart';
 import '../services/jam_service.dart';
 import 'jam_playback.dart';
+import 'jam_sync_settings.dart';
 
 /// Jam entre amis et synchro perso multi-appareils : hebergement,
 /// participation, application de l'etat de l'hote, battement, commandes a
@@ -23,13 +26,18 @@ class JamController extends ChangeNotifier {
     required TrackRepository tracks,
     required String? Function() username,
     required String deviceLabel,
+    JamSyncSettings? syncSettings,
+    this.syncPolicy = const SyncPolicy(),
     this.heartbeatInterval = const Duration(seconds: 2),
     this.personalSyncPollInterval = const Duration(seconds: 20),
   })  : _jam = jam,
         _playback = playback,
         _tracks = tracks,
         _username = username,
-        _deviceLabel = deviceLabel;
+        _deviceLabel = deviceLabel,
+        syncSettings = syncSettings ?? JamSyncSettings() {
+    this.syncSettings.addListener(_onOffsetChanged);
+  }
 
   final JamService _jam;
   final JamPlayback _playback;
@@ -37,15 +45,33 @@ class JamController extends ChangeNotifier {
   final String? Function() _username;
   final String _deviceLabel;
 
-  /// Cadence de rattrapage de derive entre l'hote et les participants (voir
-  /// broadcastState/_applyJamState). Descendu de 5s a 2s (retour
-  /// utilisateur : leger decalage constant percu entre deux appareils) --
-  /// ponytail: une partie de ce decalage vient probablement de la latence
-  /// audio propre a chaque appareil (pilote/materiel), que ce recalage ne
-  /// peut pas corriger ; si quelques dizaines de ms restent perceptibles
-  /// apres ce changement, la prochaine etape serait un ajustement fin de la
-  /// vitesse de lecture plutot qu'un seek periodique.
+  /// Cadence a laquelle l'hote rediffuse son etat (voir broadcastState) et
+  /// donc a laquelle chaque participant mesure son ecart (voir
+  /// _applyJamState). Descendu de 5s a 2s (retour utilisateur : leger
+  /// decalage constant percu entre deux appareils).
   final Duration heartbeatInterval;
+
+  /// Decalage audio de cet appareil (latence Bluetooth), voir
+  /// JamSyncSettings.
+  final JamSyncSettings syncSettings;
+
+  /// Seuils seek / vitesse / rien, voir decideSync.
+  final SyncPolicy syncPolicy;
+
+  /// Ecart mesure a chaque etat recu de l'hote, pour l'ecran cache
+  /// JamSyncDebugScreen.
+  final SyncLog syncLog = SyncLog();
+
+  /// Ecart d'horloge avec le relais (journal).
+  ClockEstimate get clock => _jam.clock;
+
+  /// Vitesse demandee au lecteur en dernier (1 hors rattrapage) : evite
+  /// de lui renvoyer la meme valeur a chaque battement.
+  double currentSpeed = 1;
+
+  /// Dernier etat recu de l'hote : rejoue tout de suite quand le decalage
+  /// manuel change, pour qu'on entende l'effet du reglage sans attendre.
+  JamStateMessage? _lastHostState;
 
   /// Voir startPersonalSyncPolling.
   final Duration personalSyncPollInterval;
@@ -289,6 +315,9 @@ class JamController extends ChangeNotifier {
   /// simplement a le piloter au lieu de le suivre.
   void _applyHostTransfer(bool becameHost) {
     if (becameHost) {
+      _lastHostState = null;
+      // Le nouvel hote est la reference : il ne rattrape plus personne.
+      unawaited(_setSpeed(1));
       _stateSub?.cancel();
       _stateSub = null;
       _hostLeftSub?.cancel();
@@ -359,6 +388,10 @@ class JamController extends ChangeNotifier {
 
   Future<void> _closeSession() async {
     _personalSyncMode = false;
+    _lastHostState = null;
+    // Sans ca, un participant qui quittait en plein rattrapage gardait sa
+    // lecture a 103 % pour la suite de la soiree.
+    await _setSpeed(1);
     _clearRemote();
     _unwireHost();
     await _stateSub?.cancel();
@@ -384,9 +417,14 @@ class JamController extends ChangeNotifier {
     final currentQueueIds = _playback.queue.map((t) => t.id).toList();
     final queueChanged = !listEquals(_lastBroadcastQueueIds, currentQueueIds);
     if (queueChanged) _lastBroadcastQueueIds = currentQueueIds;
+    // Position reellement entendue : celle du lecteur moins la latence de
+    // la sortie audio de l'hote (voir JamSyncSettings). Chaque participant
+    // ajoute ensuite la sienne (voir _applyJamState).
+    final heardMs = _playback.livePosition.inMilliseconds -
+        syncSettings.offset.inMilliseconds;
     _jam.sendState(
       trackId: track.id,
-      positionMs: _playback.position.inMilliseconds,
+      positionMs: math.max(0, heardMs),
       isPlaying: _playback.isPlaying,
       deviceName: _deviceLabel,
       queueIds: queueChanged ? currentQueueIds : null,
@@ -394,25 +432,57 @@ class JamController extends ChangeNotifier {
   }
 
   /// Applique l'etat recu de l'hote (voir joinSession) : change de titre
-  /// si besoin, rattrape la position (compensee du delai de transit reseau
-  /// via le timestamp d'envoi), aligne play/pause, et reflete la vraie file
+  /// si besoin, mesure l'ecart avec la position de l'hote et le corrige
+  /// (voir decideSync : seek si > 1 s, vitesse +/-3 % entre 40 ms et 1 s,
+  /// rien en dessous), aligne play/pause, et reflete la vraie file
   /// d'attente de l'hote (voir msg.queueIds) -- sans ca, chaque participant
   /// gardait sa propre file locale, jamais reliee a ce qui joue vraiment
   /// (retour utilisateur : "chacun a sa file d'attente"). _applyingJamState
   /// laisse passer ces appels a travers les gardes intercept*, qui bloquent
   /// sinon toute action de lecture locale pendant une session suivie.
-  Future<void> _applyJamState(JamStateMessage msg) async {
+  ///
+  /// Avant la session 15, chaque battement faisait un seek : sur un flux
+  /// distant ca relancait une requete et coupait le son, et le temps de
+  /// transit etait calcule avec deux horloges jamais reglees pareil.
+  Future<void> _applyJamState(JamStateMessage msg,
+      {bool forceSeek = false}) async {
+    _lastHostState = msg;
     _applyingJamState = true;
     try {
+      var trackChanged = false;
       if (_playback.currentTrack?.id != msg.trackId) {
         final track = _tracks.findById(msg.trackId);
         if (track != null) {
           await _playback.playTrack(track, trackList: [track]);
+          trackChanged = true;
         }
       }
-      final latencyMs =
-          (DateTime.now().millisecondsSinceEpoch - msg.ts).clamp(0, 5000);
-      _playback.seek(Duration(milliseconds: msg.positionMs + latencyMs));
+      final wasPlaying = _playback.isPlaying;
+      // Transit et chargement depuis l'envoi, en heure du relais des deux
+      // cotes (voir JamService.relayNowMs). Borne : un etat vieux de plus
+      // de 5 s (appareil en veille) ne doit pas faire sauter loin devant.
+      final elapsedMs = msg.isPlaying
+          ? (_jam.relayNowMs() - msg.ts).clamp(0, 5000).toInt()
+          : 0;
+      final offsetMs = msg.isPlaying ? syncSettings.offset.inMilliseconds : 0;
+      final expected = Duration(
+          milliseconds: math.max(0, msg.positionMs + elapsedMs + offsetMs));
+      final drift = expected - _playback.livePosition;
+      // A l'arret, au demarrage ou sur un nouveau titre, un seek ne
+      // s'entend pas : on se cale directement, sans passer par la vitesse.
+      final silent = forceSeek || trackChanged || !msg.isPlaying || !wasPlaying;
+      var action = decideSync(drift, expected: expected, policy: syncPolicy);
+      if (silent && action is SyncNudge) action = SyncSeek(expected);
+      switch (action) {
+        case SyncSeek(:final target):
+          await _setSpeed(1);
+          _playback.seek(target);
+        case SyncNudge(:final speed):
+          await _setSpeed(speed);
+        case SyncHold():
+          await _setSpeed(1);
+      }
+      if (msg.isPlaying) _logDrift(drift, action);
       await _playback.setPlaying(msg.isPlaying);
       if (msg.queueIds != null) {
         _playback.replaceQueue(
@@ -421,6 +491,42 @@ class JamController extends ChangeNotifier {
     } finally {
       _applyingJamState = false;
     }
+  }
+
+  Future<void> _setSpeed(double speed) async {
+    if (speed == currentSpeed) return;
+    currentSpeed = speed;
+    await _playback.setSpeed(speed);
+  }
+
+  void _logDrift(Duration drift, SyncAction action) {
+    final clock = _jam.clock;
+    syncLog.add(SyncLogEntry(
+      at: DateTime.now(),
+      driftMs: drift.inMilliseconds,
+      action: action,
+      clockOffsetMs: clock.offsetMs,
+      roundTripMs: clock.roundTripMs,
+    ));
+    _notify();
+  }
+
+  void clearSyncLog() {
+    syncLog.clear();
+    _notify();
+  }
+
+  /// Le decalage manuel vient de changer (curseur du menu Jam) : on se
+  /// recale tout de suite sur le dernier etat de l'hote, plutot que de
+  /// laisser la vitesse rattraper en plusieurs secondes -- celui qui regle
+  /// doit entendre l'effet pour trouver la bonne valeur.
+  void _onOffsetChanged() {
+    final last = _lastHostState;
+    if (last == null || !isActive || isHost || _personalSyncMode) {
+      _notify();
+      return;
+    }
+    unawaited(_applyJamState(last, forceSeek: true));
   }
 
   // --- Synchro perso multi-appareils ------------------------------------
@@ -651,6 +757,7 @@ class JamController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    syncSettings.removeListener(_onOffsetChanged);
     _personalSyncPoll?.cancel();
     unawaited(_closeSession());
     super.dispose();

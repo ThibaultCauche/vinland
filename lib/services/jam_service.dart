@@ -3,12 +3,19 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../domain/jam_sync.dart';
 import 'navidrome_service.dart';
 
 class JamStateMessage {
   final String trackId;
   final int positionMs;
   final bool isPlaying;
+
+  /// Instant ou l'hote a lu [positionMs], en heure du relais (voir
+  /// JamService.relayNowMs) : les horloges des deux appareils ne sont
+  /// jamais reglees pareil, seule celle du relais leur est commune. Un hote
+  /// d'avant la session 15 envoie son heure locale : on retombe alors sur
+  /// l'ancienne approximation.
   final int ts;
   final String? deviceName;
 
@@ -89,6 +96,13 @@ abstract class JamService {
   /// le nouvel hote sans rien remarquer.
   Stream<bool> get hostTransferredStream;
 
+  /// Ecart mesure entre l'horloge locale et celle du relais (voir
+  /// ClockEstimate), mis a jour apres chaque connexion puis regulierement.
+  ClockEstimate get clock;
+
+  /// Heure du relais estimee maintenant, en ms depuis l'epoch.
+  int relayNowMs();
+
   String generateSessionId();
 
   /// SessionId stable de la synchro perso du compte (voir
@@ -123,6 +137,24 @@ class WebSocketJamService implements JamService {
   WebSocketJamService(this._navidrome);
 
   final NavidromeService _navidrome;
+
+  /// Mesures par synchro d'horloge (voir _syncClock).
+  static const clockSamples = 5;
+
+  /// Les horloges derivent de quelques ms par minute, et le chemin reseau
+  /// change (Wi-Fi -> 4G) : on remesure regulierement.
+  static const clockRefresh = Duration(minutes: 1);
+
+  ClockEstimate _clock = ClockEstimate.unknown;
+  @override
+  ClockEstimate get clock => _clock;
+
+  @override
+  int relayNowMs() => DateTime.now().millisecondsSinceEpoch + _clock.offsetMs;
+
+  Timer? _clockTimer;
+  int _nextPingId = 0;
+  final Map<int, Completer<ClockSample?>> _pendingPings = {};
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
@@ -243,6 +275,19 @@ class WebSocketJamService implements JamService {
         _sessionId = msg['sessionId'] as String?;
         _isHost = msg['role'] == 'host';
         if (!joinCompleter.isCompleted) joinCompleter.complete(true);
+        _startClockSync();
+        break;
+      case 'pong':
+        final pending = _pendingPings.remove(msg['id']);
+        final sent = msg['t0'];
+        final relay = msg['relayTs'];
+        if (pending != null && sent is int && relay is int) {
+          pending.complete(ClockSample(
+            sentMs: sent,
+            relayMs: relay,
+            receivedMs: DateTime.now().millisecondsSinceEpoch,
+          ));
+        }
         break;
       case 'error':
         _errorController.add(msg['message']?.toString() ?? 'Erreur inconnue');
@@ -299,7 +344,7 @@ class WebSocketJamService implements JamService {
       'trackId': trackId,
       'positionMs': positionMs,
       'isPlaying': isPlaying,
-      'ts': DateTime.now().millisecondsSinceEpoch,
+      'ts': relayNowMs(),
       'deviceName': deviceName,
       if (queueIds != null) 'queueIds': queueIds,
     }));
@@ -333,8 +378,53 @@ class WebSocketJamService implements JamService {
     }));
   }
 
+  // --- Horloge commune -------------------------------------------------
+
+  void _startClockSync() {
+    _clockTimer?.cancel();
+    _clockTimer = Timer.periodic(clockRefresh, (_) => unawaited(_syncClock()));
+    unawaited(_syncClock());
+  }
+
+  /// Echange [clockSamples] ping/pong avec le relais, l'un apres l'autre
+  /// (des pings simultanes se gêneraient dans la meme file d'envoi). Un
+  /// relais d'avant la session 15 ne repond pas : l'estimation reste
+  /// inconnue (ecart 0), comme avant.
+  Future<void> _syncClock() async {
+    final samples = <ClockSample>[];
+    for (var i = 0; i < clockSamples; i++) {
+      final channel = _channel;
+      if (channel == null) return;
+      final id = _nextPingId++;
+      final pending = Completer<ClockSample?>();
+      _pendingPings[id] = pending;
+      channel.sink.add(jsonEncode({
+        'type': 'ping',
+        'id': id,
+        't0': DateTime.now().millisecondsSinceEpoch,
+      }));
+      final sample = await pending.future.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => null,
+      );
+      _pendingPings.remove(id);
+      if (sample == null) break;
+      samples.add(sample);
+    }
+    if (samples.isNotEmpty && _channel != null) {
+      _clock = ClockEstimate.fromSamples(samples);
+    }
+  }
+
   @override
   Future<void> leave() async {
+    _clockTimer?.cancel();
+    _clockTimer = null;
+    for (final pending in _pendingPings.values) {
+      if (!pending.isCompleted) pending.complete(null);
+    }
+    _pendingPings.clear();
+    _clock = ClockEstimate.unknown;
     await _sub?.cancel();
     _sub = null;
     await _channel?.sink.close();

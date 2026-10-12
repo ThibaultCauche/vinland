@@ -8,6 +8,11 @@ abstract class JamPlayback {
   bool get isPlaying;
   Duration get position;
 
+  /// Position lue a l'instant sur le moteur audio, plus fraiche que
+  /// [position] (mise a jour par le flux du moteur, toutes les ~200 ms) :
+  /// c'est elle qui sert a mesurer l'ecart avec l'hote.
+  Duration get livePosition;
+
   /// Titres a venir, diffuses aux participants par l'hote.
   List<Track> get queue;
 
@@ -27,4 +32,8 @@ abstract class JamPlayback {
   /// Aligne lecture/pause sur l'hote suivi, sans compter comme une action
   /// manuelle (contrairement a togglePlayPause).
   Future<void> setPlaying(bool playing);
+
+  /// Accelere/ralentit legerement la lecture pour rattraper l'hote (voir
+  /// decideSync), 1 = vitesse normale.
+  Future<void> setSpeed(double speed);
 }

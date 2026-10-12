@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
+import '../../controllers/jam_sync_settings.dart';
 import '../../providers/app_state.dart';
+import '../../screens/jam_sync_debug_screen.dart';
 
 /// Menu Jam partage entre mobile (player_options_sheet.dart) et desktop
 /// (desktop_player_bar.dart) : demarrer/rejoindre/quitter une session
@@ -34,6 +36,16 @@ void showJamMenu(BuildContext context) {
                 minLeadingWidth: 24,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               ),
+          if (state.isFriendJamActive)
+            _JamOffsetTile(
+              settings: state.jamSyncSettings,
+              onOpenDebug: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => JamSyncDebugScreen(jam: state.jam),
+                ));
+              },
+            ),
           if (state.isFriendJamActive)
             ListTile(
               leading: const Icon(Icons.close, color: Colors.white, size: 26),
@@ -80,6 +92,88 @@ void showJamMenu(BuildContext context) {
       ),
     ),
   );
+}
+
+/// Decalage audio de cet appareil pendant un Jam (casque ou enceinte
+/// Bluetooth en retard sur les autres, voir JamSyncSettings), reglable a
+/// l'oreille pendant l'ecoute : l'appareil se recale des qu'on lache le
+/// curseur. Appui long : ecran cache de mesure (JamSyncDebugScreen).
+class _JamOffsetTile extends StatelessWidget {
+  const _JamOffsetTile({required this.settings, required this.onOpenDebug});
+
+  final JamSyncSettings settings;
+  final VoidCallback onOpenDebug;
+
+  static String label(Duration offset) {
+    final ms = offset.inMilliseconds;
+    if (ms == 0) return 'Aucun';
+    return ms > 0 ? '$ms ms en avance' : '${-ms} ms en retard';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final max = JamSyncSettings.maxOffset.inMilliseconds;
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.bluetooth_audio,
+                color: Colors.white, size: 26),
+            title: const Text('Décalage audio',
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+            subtitle: const Text(
+                'Si ce téléphone sonne après les autres (Bluetooth), '
+                'fais-le jouer en avance',
+                style: TextStyle(color: Colors.white54, fontSize: 13)),
+            trailing: Text(label(settings.offset),
+                style: const TextStyle(color: Colors.white)),
+            onLongPress: onOpenDebug,
+            minLeadingWidth: 24,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          ),
+          _OffsetSlider(settings: settings, max: max),
+        ],
+      ),
+    );
+  }
+}
+
+/// Curseur qui ne sauvegarde (et donc ne recale la lecture) qu'au
+/// relachement : un recalage a chaque pixel ferait des dizaines de seeks.
+class _OffsetSlider extends StatefulWidget {
+  const _OffsetSlider({required this.settings, required this.max});
+
+  final JamSyncSettings settings;
+  final int max;
+
+  @override
+  State<_OffsetSlider> createState() => _OffsetSliderState();
+}
+
+class _OffsetSliderState extends State<_OffsetSlider> {
+  double? _dragging;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.settings.offset.inMilliseconds.toDouble();
+    final value = _dragging ?? current;
+    final step = JamSyncSettings.step.inMilliseconds;
+    return Slider(
+      value: value,
+      min: -widget.max.toDouble(),
+      max: widget.max.toDouble(),
+      divisions: 2 * widget.max ~/ step,
+      label: _JamOffsetTile.label(Duration(milliseconds: value.round())),
+      activeColor: const Color(0xFF1DB954),
+      onChanged: (v) => setState(() => _dragging = v),
+      onChangeEnd: (v) {
+        setState(() => _dragging = null);
+        widget.settings.setOffset(Duration(milliseconds: v.round()));
+      },
+    );
+  }
 }
 
 /// Menu "Peripheriques" (Spotify Connect-like), partage mobile/desktop :

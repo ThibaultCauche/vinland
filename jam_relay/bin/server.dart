@@ -194,6 +194,19 @@ void _handleConnection(WebSocketChannel channel) {
             break;
           }
 
+        case 'ping':
+          // Synchro d'horloge facon NTP (voir lib/domain/jam_sync.dart cote
+          // app) : renvoie tout de suite l'heure du relais, seule horloge
+          // commune a tous les appareils d'une session. Hors session aussi :
+          // ne revele rien, et ne coute qu'un message.
+          _send(channel, {
+            'type': 'pong',
+            'id': msg['id'],
+            't0': msg['t0'],
+            'relayTs': DateTime.now().millisecondsSinceEpoch,
+          });
+          break;
+
         case 'leave':
           channel.sink.close();
           break;

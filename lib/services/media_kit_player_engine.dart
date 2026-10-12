@@ -138,6 +138,11 @@ class MediaKitPlayerEngine implements PlayerEngine {
   Future<void> stop() => _player.stop();
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+
+  // mpv garde la hauteur du son a l'identique (audio-pitch-correction,
+  // actif par defaut).
+  @override
+  Future<void> setSpeed(double speed) => _player.setRate(speed);
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume * 100.0);
   @override

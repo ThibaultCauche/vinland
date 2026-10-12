@@ -314,6 +314,14 @@ class DeckPlayerEngine implements PlayerEngine {
     await Future.wait([_applyVolume(0), _applyVolume(1)]);
   }
 
+  /// Les deux platines : le titre precharge doit demarrer a la meme
+  /// vitesse que celui qu'il remplace.
+  @override
+  Future<void> setSpeed(double speed) => Future.wait([
+        _decks[0].setSpeed(speed),
+        _decks[1].setSpeed(speed),
+      ]);
+
   @override
   Future<void> seekToNext() => _current.seekToNext();
   @override
