@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:metadata_god/metadata_god.dart';
+import '../data/subsonic/subsonic_exception.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -257,7 +258,9 @@ class MusicService {
           jsonEncode(_pinnedItems.map((p) => p.toJson()).toList());
       var mirrorId = _pinnedMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final match = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -747,7 +750,9 @@ class MusicService {
     _likesMirrorDebounce = Timer(const Duration(seconds: 3), () async {
       var mirrorId = _likesMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -792,7 +797,9 @@ class MusicService {
     _recentPlaysMirrorDebounce = Timer(const Duration(seconds: 3), () async {
       var mirrorId = _recentPlaysMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -845,7 +852,9 @@ class MusicService {
       final name = jamSessionId != null ? 'Jam:$jamSessionId' : 'Now playing';
       var mirrorId = _nowPlayingMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -1244,12 +1253,16 @@ class MusicService {
     });
   }
 
-  /// [onProgress] est appele a chaque lot d'albums recu pendant la synchro
-  /// (voir NavidromeService.fetchAllTracks) : la bibliotheque affichee
-  /// (allTracks/albums) se remplit donc progressivement au lieu de rester
-  /// figee sur l'ancien cache jusqu'a la toute fin d'une resynchro complete,
-  /// qui peut prendre du temps sur une grosse bibliotheque.
-  Future<void> syncWithNavidrome({void Function()? onProgress}) async {
+  /// [onProgress] est appele a chaque page de titres recue pendant la
+  /// synchro (voir NavidromeService.fetchAllTracks) : la bibliotheque
+  /// affichee (allTracks/albums) se remplit donc progressivement au lieu de
+  /// rester figee sur l'ancien cache jusqu'a la toute fin d'une resynchro
+  /// complete, qui peut prendre du temps sur une grosse bibliotheque.
+  ///
+  /// Renvoie false si la synchro a echoue en cours de route : la
+  /// bibliotheque d'avant est alors remise en place, au lieu d'enregistrer
+  /// une bibliotheque tronquee a la premiere page en erreur.
+  Future<bool> syncWithNavidrome({void Function()? onProgress}) async {
     debugPrint('SYNC NAVIDROME...');
     _tracksNeedingOrderRecovery.clear();
     // Recuperes avant les titres (requetes uniques, rapides) pour pouvoir
@@ -1283,19 +1296,32 @@ class MusicService {
       }
     }
 
+    final previousTracks = _navidromeTracks;
     final merged = <Track>[];
-    final fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
-      for (final t in batch) {
-        reconcile(t);
-      }
-      merged.addAll(batch);
-      _navidromeTracks = List.of(merged);
+    final List<Track> fresh;
+    try {
+      fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
+        for (final t in batch) {
+          reconcile(t);
+        }
+        merged.addAll(batch);
+        _navidromeTracks = List.of(merged);
+        _navidromeTracksView = null;
+        _allTracks = List.from(_navidromeTracks);
+        rebuildAlbums();
+        applyAlbumStarred();
+        onProgress?.call();
+      });
+    } on SubsonicException catch (e) {
+      debugPrint('SYNC NAVIDROME interrompue, bibliotheque conservee: $e');
+      _navidromeTracks = previousTracks;
       _navidromeTracksView = null;
       _allTracks = List.from(_navidromeTracks);
       rebuildAlbums();
       applyAlbumStarred();
       onProgress?.call();
-    });
+      return false;
+    }
 
     _navidromeTracks = fresh;
     _navidromeTracksView = null;
@@ -1307,6 +1333,7 @@ class MusicService {
     debugPrint('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
 
     await _syncPlaylistsFromServer();
+    return true;
   }
 
   /// Recupere juste les quelques albums les plus recents (un aller-retour
@@ -1445,7 +1472,10 @@ class MusicService {
     final username = _navidrome.username;
     if (username == null) return;
 
-    final raw = await _navidrome.fetchPlaylists();
+    // null = serveur injoignable : sans la liste du serveur, on republierait
+    // en double les playlists locales.
+    final raw = await _navidrome.fetchPlaylistsOrNull();
+    if (raw == null) return;
     final mine = raw.where((pl) => pl['owner'] == username).toList();
 
     // Playlists creees en local avant d'avoir jamais synchronise : on les

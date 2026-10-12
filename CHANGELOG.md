@@ -35,10 +35,29 @@ commit.
 - Un nouveau serveur en `http://` n'est accepté que sur Tailscale ou le
   réseau local ; ailleurs, `https://` est exigé. Android passe par un
   `network_security_config.xml` explicite.
+- La synchro de la bibliothèque récupère les titres par pages de 500
+  (`search3`) au lieu d'un appel par album : quelques dizaines de requêtes
+  au lieu de plus de mille. Si elle est interrompue, la bibliothèque
+  précédente est gardée (au lieu d'une bibliothèque tronquée) et la synchro
+  est retentée au lancement suivant.
+- Les appels au serveur passent par un client Subsonic testé
+  (`lib/data/subsonic/`) qui distingue les refus du serveur des coupures
+  réseau, et ne réessaie que ces dernières.
 
 ### Supprimé
 - Variante « compacte » des cartes d'album de la page artiste, qui n'était
   plus utilisée nulle part.
+
+### Corrigé
+- Un like, un renommage ou une suppression de playlist refusé par le
+  serveur n'est plus affiché comme réussi (Subsonic répond « 200 » même en
+  cas d'erreur).
+- Les grosses playlists (plusieurs centaines de titres) se mettent à jour :
+  la liste part dans le corps d'une requête POST, plus dans une URL trop
+  longue.
+- Une coupure réseau ne crée plus de playlist miroir en double (likes,
+  écoutes récentes, épingles, « en cours ») ni de titres en double dans une
+  playlist.
 
 ## [1.2.2] - 2026-10-08
 

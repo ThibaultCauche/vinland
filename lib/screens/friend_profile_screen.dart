@@ -31,9 +31,9 @@ class _FriendProfileScreenState extends State<FriendProfileScreen> {
       state.pushOverlay(PlaylistScreen(playlist: playlist, readOnly: true));
       return;
     }
+    final navidrome = context.read<NavidromeService>();
     setState(() => _loadingPlaylistId = true);
-    final trackIds =
-        await NavidromeService().fetchPlaylistSongIds(playlist.serverId!);
+    final trackIds = await navidrome.fetchPlaylistSongIds(playlist.serverId!);
     setState(() => _loadingPlaylistId = false);
     if (!mounted) return;
     final refreshed = Playlist(

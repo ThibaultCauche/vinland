@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'providers/app_state.dart';
+import 'services/navidrome_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_screen.dart';
@@ -201,6 +202,7 @@ class VinlandApp extends StatelessWidget {
         providers: [
           ChangeNotifierProvider<AppState>.value(value: appState),
           Provider<MusicService>.value(value: MusicService()),
+          Provider<NavidromeService>.value(value: NavidromeService()),
           Provider<VinlandAudioHandler>.value(value: audioHandler),
         ],
         child: MaterialApp(

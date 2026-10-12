@@ -47,8 +47,9 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
           .whereType<Track>()
           .toList();
     }
-    final trackIds =
-        await NavidromeService().fetchPlaylistSongIds(playlist.serverId!);
+    final trackIds = await context
+        .read<NavidromeService>()
+        .fetchPlaylistSongIds(playlist.serverId!);
     return trackIds.map((id) => byId[id]).whereType<Track>().toList();
   }
 

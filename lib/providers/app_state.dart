@@ -935,9 +935,13 @@ class AppState extends ChangeNotifier with WidgetsBindingObserver {
         // lot pendant la synchro -- _notify() est deja debounce (50ms), donc
         // ca ne fait pas plus de rebuilds qu'une barre de progression normale.
         // likedTracks reste fige (_frozenLikedTracks) tant que ca tourne.
-        await _music.syncWithNavidrome(onProgress: _notify);
-        await prefs.setInt(
-            _keyLastFullSyncAt, DateTime.now().millisecondsSinceEpoch);
+        // Synchro ratee (NAS coupe en cours de route) : on ne note pas la
+        // date, pour retenter au prochain lancement au lieu d'attendre 6h.
+        final ok = await _music.syncWithNavidrome(onProgress: _notify);
+        if (ok) {
+          await prefs.setInt(
+              _keyLastFullSyncAt, DateTime.now().millisecondsSinceEpoch);
+        }
       } else {
         await _music.lightSync();
       }
