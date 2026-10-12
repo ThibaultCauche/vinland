@@ -839,7 +839,6 @@ class _LocalAlbumCard extends StatelessWidget {
   final Album album;
   final AppState state;
   final String artistName;
-  final bool compact;
   // Nombre de titres reel de l'album cote Deezer, quand connu -- affiche a
   // la place du nombre de titres deja telecharges pour un album seulement
   // partiellement possede.
@@ -849,7 +848,6 @@ class _LocalAlbumCard extends StatelessWidget {
     required this.album,
     required this.state,
     required this.artistName,
-    this.compact = false,
     this.totalTrackCount,
   });
 
@@ -861,20 +859,14 @@ class _LocalAlbumCard extends StatelessWidget {
     // nom.
     final trackCount = totalTrackCount ?? album.trackIds.length;
 
-    final cover = compact
-        ? SizedBox(
-            width: 120,
-            height: 120,
-            child: _AlbumCover(coverPath: album.coverPath),
-          )
-        : Expanded(child: _AlbumCover(coverPath: album.coverPath));
+    final cover = Expanded(child: _AlbumCover(coverPath: album.coverPath));
 
     final card = GestureDetector(
       onTap: () => state
           .pushOverlay(AlbumScreen(album: album, filterArtist: artistName)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+        mainAxisSize: MainAxisSize.max,
         children: [
           cover,
           const SizedBox(height: 8),
@@ -889,14 +881,14 @@ class _LocalAlbumCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            compact ? 'Single' : '$trackCount titres',
+            '$trackCount titres',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
       ),
     );
 
-    return compact ? SizedBox(width: 120, child: card) : card;
+    return card;
   }
 }
 
@@ -905,18 +897,16 @@ class _DiscoveredAlbumCard extends StatelessWidget {
   final DiscoveredAlbum album;
   final AppState state;
   final String artistName;
-  final bool compact;
 
   const _DiscoveredAlbumCard({
     required this.album,
     required this.state,
     required this.artistName,
-    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final coverSide = compact ? 120.0 : 150.0;
+    const coverSide = 150.0;
     final coverBox = Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
@@ -935,9 +925,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               child: Icon(Icons.album, color: Colors.white54, size: 48))
           : null,
     );
-    final cover = compact
-        ? SizedBox(width: 120, height: 120, child: coverBox)
-        : Expanded(child: coverBox);
+    final cover = Expanded(child: coverBox);
 
     final card = GestureDetector(
       onTap: () => state.pushOverlay(
@@ -946,7 +934,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
         opacity: 0.45,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          mainAxisSize: MainAxisSize.max,
           children: [
             cover,
             const SizedBox(height: 8),
@@ -961,7 +949,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              compact ? 'Single' : (album.releaseDate ?? ''),
+              album.releaseDate ?? '',
               style: const TextStyle(color: Colors.white38, fontSize: 11),
             ),
             const Padding(
@@ -980,7 +968,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
       ),
     );
 
-    return compact ? SizedBox(width: 120, child: card) : card;
+    return card;
   }
 }
 

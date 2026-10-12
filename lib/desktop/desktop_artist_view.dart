@@ -802,7 +802,6 @@ class _SkeletonPopularRow extends StatelessWidget {
 class _LocalAlbumCard extends StatelessWidget {
   final Album album;
   final String artistName;
-  final bool compact;
   final VoidCallback onTap;
   // Nombre de titres reel de l'album cote Deezer, quand connu -- affiche a
   // la place du nombre de titres deja telecharges pour un album seulement
@@ -814,7 +813,6 @@ class _LocalAlbumCard extends StatelessWidget {
     required this.album,
     required this.artistName,
     required this.onTap,
-    this.compact = false,
     this.totalTrackCount,
   });
 
@@ -822,12 +820,7 @@ class _LocalAlbumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final trackCount = totalTrackCount ?? album.trackIds.length;
 
-    final cover = compact
-        ? SizedBox(
-            width: 130,
-            height: 130,
-            child: _AlbumCover(coverPath: album.coverPath))
-        : Expanded(child: _AlbumCover(coverPath: album.coverPath));
+    final cover = Expanded(child: _AlbumCover(coverPath: album.coverPath));
 
     final card = DesktopHoverable(
       onTap: onTap,
@@ -842,7 +835,7 @@ class _LocalAlbumCard extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          mainAxisSize: MainAxisSize.max,
           children: [
             cover,
             const SizedBox(height: 8),
@@ -853,31 +846,29 @@ class _LocalAlbumCard extends StatelessWidget {
                     fontWeight: FontWeight.w500),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
-            Text(compact ? 'Single' : '$trackCount titres',
+            Text('$trackCount titres',
                 style: const TextStyle(color: Colors.white54, fontSize: 12)),
           ],
         ),
       ),
     );
 
-    return compact ? SizedBox(width: 130, child: card) : card;
+    return card;
   }
 }
 
 class _DiscoveredAlbumCard extends StatelessWidget {
   final DiscoveredAlbum album;
-  final bool compact;
   final VoidCallback onTap;
 
   const _DiscoveredAlbumCard({
     required this.album,
     required this.onTap,
-    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final double coverSize = compact ? 130 : 180;
+    const double coverSize = 180;
     final coverBox = Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
@@ -895,9 +886,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               child: Icon(Icons.album, color: Colors.white54, size: 40))
           : null,
     );
-    final cover = compact
-        ? SizedBox(width: 130, height: 130, child: coverBox)
-        : Expanded(child: coverBox);
+    final cover = Expanded(child: coverBox);
 
     final card = DesktopHoverable(
       onTap: onTap,
@@ -908,7 +897,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
           opacity: 0.45,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+            mainAxisSize: MainAxisSize.max,
             children: [
               cover,
               const SizedBox(height: 8),
@@ -919,7 +908,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
                       fontWeight: FontWeight.w500),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
-              Text(compact ? 'Single' : (album.releaseDate ?? ''),
+              Text(album.releaseDate ?? '',
                   style: const TextStyle(color: Colors.white38, fontSize: 11)),
               const Padding(
                 padding: EdgeInsets.only(top: 2),
@@ -938,7 +927,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
       ),
     );
 
-    return compact ? SizedBox(width: 130, child: card) : card;
+    return card;
   }
 }
 
