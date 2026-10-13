@@ -30,6 +30,7 @@ import '../models/recent_play.dart';
 import '../services/search_history_service.dart';
 import '../services/update_check_service.dart';
 import '../services/jam_service.dart';
+import '../services/personal_sync_secret.dart';
 import '../services/deep_link_service.dart';
 import '../services/discovery_service.dart';
 import '../services/matching_service.dart';
@@ -61,6 +62,15 @@ class AppState extends ChangeNotifier
 
   // Jam entre amis et synchro perso : voir JamController. Accesseurs gardes
   // ici le temps de migrer les ecrans.
+  /// Secret de synchro perso du compte (voir PersonalSyncSecretStore).
+  late final PersonalSyncSecretStore _personalSecrets =
+      PersonalSyncSecretStore(_navidrome);
+
+  Future<PersonalSyncIds?> _personalSyncIds(String username) async {
+    final secret = await _personalSecrets.secretFor(username);
+    return secret == null ? null : PersonalSyncIds.fromAccountSecret(secret);
+  }
+
   late final JamController _jamCtl;
   JamController get jam => _jamCtl;
   bool get isJamActive => _jamCtl.isActive;
@@ -290,6 +300,7 @@ class AppState extends ChangeNotifier
       tracks: _tracks,
       username: () => _navidrome.username,
       deviceLabel: _deviceLabel,
+      personalSyncIds: _personalSyncIds,
       syncSettings: jamSyncSettings,
     )..onHostingChanged = _syncNowPlayingMirror;
     _player.onEngineEvent = _jamCtl.broadcastState;
@@ -522,6 +533,11 @@ class AppState extends ChangeNotifier
     if (state == AppLifecycleState.resumed) {
       unawaited(checkForUpdate());
       unawaited(loadPendingShares());
+      // Retour au premier plan : un autre appareil du compte joue peut-etre
+      // deja, on reprend un sondage rapproche (voir startPersonalSyncPolling).
+      if (!isJamActive && _navidrome.username != null) {
+        _jamCtl.startPersonalSyncPolling();
+      }
     }
   }
 

@@ -7,6 +7,7 @@ import '../data/track_repository.dart';
 import '../domain/jam_sync.dart';
 import '../models/track.dart';
 import '../services/jam_service.dart';
+import '../services/personal_sync_secret.dart';
 import 'jam_playback.dart';
 import 'jam_sync_settings.dart';
 
@@ -26,6 +27,7 @@ class JamController extends ChangeNotifier {
     required TrackRepository tracks,
     required String? Function() username,
     required String deviceLabel,
+    required Future<PersonalSyncIds?> Function(String username) personalSyncIds,
     JamSyncSettings? syncSettings,
     this.syncPolicy = const SyncPolicy(),
     this.heartbeatInterval = const Duration(seconds: 2),
@@ -35,6 +37,7 @@ class JamController extends ChangeNotifier {
         _tracks = tracks,
         _username = username,
         _deviceLabel = deviceLabel,
+        _personalSyncIdsFor = personalSyncIds,
         syncSettings = syncSettings ?? JamSyncSettings() {
     this.syncSettings.addListener(_onOffsetChanged);
   }
@@ -44,6 +47,10 @@ class JamController extends ChangeNotifier {
   final TrackRepository _tracks;
   final String? Function() _username;
   final String _deviceLabel;
+
+  /// Ids de la synchro perso d'un compte (voir PersonalSyncIds), ou null
+  /// si le secret du compte n'est pas encore disponible (hors ligne).
+  final Future<PersonalSyncIds?> Function(String username) _personalSyncIdsFor;
 
   /// Cadence a laquelle l'hote rediffuse son etat (voir broadcastState) et
   /// donc a laquelle chaque participant mesure son ecart (voir
@@ -73,7 +80,8 @@ class JamController extends ChangeNotifier {
   /// manuel change, pour qu'on entende l'effet du reglage sans attendre.
   JamStateMessage? _lastHostState;
 
-  /// Voir startPersonalSyncPolling.
+  /// Premier delai du sondage de synchro perso (voir
+  /// startPersonalSyncPolling), double a chaque echec.
   final Duration personalSyncPollInterval;
 
   /// Le role d'hote vient de changer (demarrage, depart, transfert) : AppState
@@ -531,30 +539,47 @@ class JamController extends ChangeNotifier {
 
   // --- Synchro perso multi-appareils ------------------------------------
 
-  /// Sondage periodique (voir AppState.initialize) : tant qu'aucune session
-  /// Jam n'est active, tente de rejoindre la synchro perso de ce compte --
-  /// si un autre appareil est deja hote, on le retrouve automatiquement sans
+  /// Sondage (voir AppState.initialize) : tant qu'aucune session Jam n'est
+  /// active, tente de rejoindre la synchro perso de ce compte -- si un
+  /// autre appareil est deja hote, on le retrouve automatiquement sans
   /// action utilisateur, meme si cet appareil-ci n'etait pas ouvert quand
-  /// l'autre a demarre sa lecture.
-  // ponytail: sondage simple (toutes les 20s) plutot qu'un mecanisme de
-  // presence -- suffisant a l'echelle d'un usage personnel multi-appareils,
-  // a revoir si ca devient sensible a la latence/batterie.
+  /// l'autre a demarre sa lecture. Delai croissant a chaque echec (voir
+  /// personalSyncRetryDelay) au lieu d'une connexion au relais toutes les
+  /// 20s pour toujours, meme quand aucun autre appareil n'est allume ;
+  /// remis a zero au retour au premier plan (AppState) et quand la synchro
+  /// en cours s'arrete, les deux moments ou un autre appareil a le plus de
+  /// chances d'etre actif.
   void startPersonalSyncPolling() {
+    _personalSyncFailures = 0;
     _personalSyncPoll?.cancel();
-    _personalSyncPoll = Timer.periodic(
-        personalSyncPollInterval, (_) => unawaited(_tryJoinPersonalSync()));
-    unawaited(_tryJoinPersonalSync());
+    unawaited(_pollPersonalSync());
   }
 
-  Future<void> _tryJoinPersonalSync() async {
-    if (isActive) return;
+  int _personalSyncFailures = 0;
+
+  Future<void> _pollPersonalSync() async {
+    final joined = await _tryJoinPersonalSync();
+    if (_disposed) return;
+    _personalSyncFailures = joined ? 0 : _personalSyncFailures + 1;
+    _personalSyncPoll?.cancel();
+    _personalSyncPoll = Timer(
+        personalSyncRetryDelay(_personalSyncFailures,
+            base: personalSyncPollInterval),
+        () => unawaited(_pollPersonalSync()));
+  }
+
+  /// Vrai si cet appareil suit (ou heberge deja) une session apres l'appel.
+  Future<bool> _tryJoinPersonalSync() async {
+    if (isActive) return true;
     final username = _username();
-    if (username == null) return;
-    final id = _jam.personalSessionId(username);
-    final ok = await _jam.join(id);
-    if (!ok) return;
+    if (username == null) return false;
+    final ids = await _personalSyncIdsFor(username);
+    if (ids == null || isActive) return isActive;
+    final ok = await _jam.join(ids.sessionId);
+    if (!ok) return false;
     _followPersonalHost();
     _notify();
+    return true;
   }
 
   void _followPersonalHost() {
@@ -595,6 +620,9 @@ class JamController extends ChangeNotifier {
     _hostLeftSub = null;
     await _jam.leave();
     _notify();
+    // L'hote vient de partir : un autre appareil du compte va sans doute
+    // reprendre la main bientot, on revient a un sondage rapproche.
+    if (!_disposed) startPersonalSyncPolling();
   }
 
   /// "Reprendre ici" depuis le menu Peripheriques (voir showDeviceMenu) :
@@ -622,7 +650,7 @@ class JamController extends ChangeNotifier {
   /// pendant une session Jam entre amis manuelle. C'est ce qui fait
   /// qu'appuyer sur play sur n'importe quel appareil du compte le rend
   /// autoritaire, exactement comme changer d'appareil actif dans Spotify
-  /// Connect. Cette session (id prive, voir JamService.personalSessionId)
+  /// Connect. Cette session (id prive, voir PersonalSyncIds)
   /// est republiee dans le mirroir "now playing" (voir onHostingChanged) des
   /// qu'elle est active : c'est ce qui rend n'importe quelle ecoute en cours
   /// rejoignable par un ami depuis la page Amis (bouton "Rejoindre") sans
@@ -638,14 +666,21 @@ class JamController extends ChangeNotifier {
     if (isActive && !_personalSyncMode) return;
     final username = _username();
     if (username == null) return;
+    final ids = await _personalSyncIdsFor(username);
+    if (ids == null) return;
+    // Le secret a pu demander un aller-retour serveur : une session Jam
+    // entre amis a pu demarrer entre-temps.
+    if (isActive && !_personalSyncMode) return;
     await _stateSub?.cancel();
     _stateSub = null;
     await _hostLeftSub?.cancel();
     _hostLeftSub = null;
     _clearRemote();
 
-    final id = _jam.personalSessionId(username);
-    final ok = await _jam.host(id);
+    // Le hostSecret derive du secret du compte permet de reprendre la main
+    // sur un autre appareil du compte deja hote ("Reprendre ici") ; un ami
+    // qui a rejoint via le mirroir "now playing" ne connait que sessionId.
+    final ok = await _jam.host(ids.sessionId, hostSecret: ids.hostSecret);
     if (!ok) return;
     _personalSyncMode = true;
     _wireAsHost();

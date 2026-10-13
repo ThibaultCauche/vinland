@@ -26,8 +26,20 @@ class FakeJamRelay {
   /// relaye.
   int transitMs = 0;
 
-  bool _host(FakeJamService peer, String id) {
-    final session = _sessions.putIfAbsent(id, () => _FakeSession());
+  /// Refus de reprise d'hebergement (pour les assertions).
+  int refusedTakeovers = 0;
+
+  bool _host(FakeJamService peer, String id, String? hostSecret) {
+    var session = _sessions[id];
+    if (session == null) {
+      session = _FakeSession(hostSecret ?? '$id-secret');
+      _sessions[id] = session;
+    } else if (session.host != peer && hostSecret != session.hostSecret) {
+      // Comme le relais v2 : une session existante ne change d'hote que si
+      // l'on prouve qu'on en partage le secret.
+      refusedTakeovers++;
+      return false;
+    }
     final previous = session.host;
     session.participants.remove(peer);
     session.host = peer;
@@ -75,6 +87,8 @@ class FakeJamRelay {
       ..remove(target)
       ..add(from);
     session.host = target;
+    session.hostSecret = '${session.hostSecret}+';
+    target._hostSecret = session.hostSecret;
     target._roleChanged(host: true);
     from._roleChanged(host: false);
     _notifyHost(session);
@@ -104,6 +118,8 @@ class FakeJamRelay {
 }
 
 class _FakeSession {
+  _FakeSession(this.hostSecret);
+  String hostSecret;
   FakeJamService? host;
   final Set<FakeJamService> participants = {};
 }
@@ -127,6 +143,10 @@ class FakeJamService implements JamService {
   String? _sessionId;
   bool _isHost = false;
   bool _active = false;
+  String? _hostSecret;
+
+  @override
+  String? get hostSecret => _hostSecret;
 
   final _state = StreamController<JamStateMessage>.broadcast(sync: true);
   final _hostLeftCtl = StreamController<void>.broadcast(sync: true);
@@ -165,14 +185,18 @@ class FakeJamService implements JamService {
   String generateSessionId() => '$username-jam-${_nextSessionId++}';
 
   @override
-  String personalSessionId(String username) => 'perso-$username';
-
-  @override
-  Future<bool> host(String sessionId) async {
+  Future<bool> host(String sessionId, {String? hostSecret}) async {
     await leave();
     if (unreachable) return false;
     _active = true;
-    return relay._host(this, sessionId);
+    final ok = relay._host(this, sessionId, hostSecret);
+    // Comme WebSocketJamService : une erreur du relais ferme la connexion.
+    if (!ok) {
+      await leave();
+      return false;
+    }
+    _hostSecret = relay._sessions[sessionId]!.hostSecret;
+    return true;
   }
 
   @override
@@ -193,6 +217,7 @@ class FakeJamService implements JamService {
 
   void _roleChanged({required bool host}) {
     _isHost = host;
+    if (!host) _hostSecret = null;
     _transferred.add(host);
   }
 
@@ -252,5 +277,6 @@ class FakeJamService implements JamService {
     _active = false;
     _sessionId = null;
     _isHost = false;
+    _hostSecret = null;
   }
 }

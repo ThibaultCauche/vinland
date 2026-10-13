@@ -60,9 +60,8 @@ class PartyRules {
       maxPendingPerGuest: pick('maxPendingPerGuest', 3, 1, 10),
       maxGuests: pick('maxGuests', 50, 1, 200),
       recentHistory: pick('recentHistory', 20, 0, 200),
-      votesEnabled: json['votesEnabled'] is bool
-          ? json['votesEnabled'] as bool
-          : true,
+      votesEnabled:
+          json['votesEnabled'] is bool ? json['votesEnabled'] as bool : true,
     );
   }
 

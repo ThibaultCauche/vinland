@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vinland/controllers/jam_controller.dart';
 import 'package:vinland/controllers/player_controller.dart';
 import 'package:vinland/models/track.dart';
+import 'package:vinland/services/personal_sync_secret.dart';
 
 import '../fakes/fake_jam_service.dart';
 import '../fakes/fake_player_engine.dart';
@@ -26,6 +27,10 @@ class Device {
       tracks: repo,
       username: () => username,
       deviceLabel: label,
+      // Meme compte = memes ids (voir PersonalSyncIds.fromAccountSecret) ;
+      // seuls les appareils du compte connaissent le secret d'hebergement.
+      personalSyncIds: (user) async =>
+          PersonalSyncIds('perso-$user', 'secret-de-$user'),
     )..onHostingChanged = () => hostingChanges++;
     player
       ..onEngineEvent = jam.broadcastState
@@ -327,6 +332,41 @@ void main() {
       expect(pc.jam.isPersonalSyncParticipant, isTrue,
           reason: 'le PC reste en synchro perso, pas en suiveur de Jam muet');
       expect(phone.jamService.sentCommands, isNot(contains('play_track:a')));
+    });
+
+    test(
+        'un ami qui connait le code de la synchro perso (mirroir « en '
+        'cours ») ne peut pas en prendre l\'hebergement', () async {
+      final (pc, _) = await personalSync();
+      final ami = device('ami');
+
+      expect(await ami.jamService.host('perso-thibault'), isFalse);
+      expect(relay.refusedTakeovers, 1);
+      expect(pc.jam.isPersonalSyncHost, isTrue);
+      // Il peut toujours ecouter (ecoute a la demande).
+      expect(await ami.jam.joinSession('perso-thibault'), isTrue);
+    });
+
+    test(
+        'aucun autre appareil allume : le telephone espace ses tentatives '
+        '(20 s, 40 s...) au lieu de frapper le relais toutes les 20 s', () {
+      fakeAsync((async) {
+        final phone = device('thibault', label: 'Téléphone');
+        phone.jam.startPersonalSyncPolling();
+        async.flushMicrotasks();
+        expect(phone.jam.isActive, isFalse);
+        async.elapse(const Duration(seconds: 20)); // 2e essai, rate
+
+        final pc = device('thibault', label: 'PC');
+        pc.play(a, list: library);
+        async.elapse(Duration.zero);
+        expect(pc.jam.isPersonalSyncHost, isTrue);
+
+        async.elapse(const Duration(seconds: 39));
+        expect(phone.jam.isActive, isFalse, reason: '3e essai a +40 s');
+        async.elapse(const Duration(seconds: 1));
+        expect(phone.jam.isPersonalSyncParticipant, isTrue);
+      });
     });
 
     test(
