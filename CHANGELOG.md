@@ -9,28 +9,35 @@ commit.
 
 ## [Non publié]
 
+## [2.0.1] - 2026-10-13
+
+Corrections trouvées en testant la 2.0 sur PC et téléphone, plus la radio
+d'un titre et les moods.
+
+### Ajouté
 - « Lancer la radio » sur un titre (menu du lecteur, des titres likés et des
   titres sur PC) : joue le titre puis une trentaine de titres proches de ta
   bibliothèque.
+- Accueil : section « Ton mood » (Chill, Rock, Rap, Électro, Pop, BO &
+  classique) qui lance en aléatoire les titres du genre choisi.
+
+### Corrigé
+- Lecture : après une coupure (autre appli qui prend le son, réseau), un
+  titre mp3 ne repart plus du début pendant que le compteur continue.
 - Lecture aléatoire : lancer un titre d'une liste mélange maintenant toute la
   liste, pas seulement les titres placés après lui (la file restait vide en
   lançant le dernier titre).
 - Recherche : un titre déjà sur le NAS dont l'artiste principal a un nom
   court (« Gotye/Kimbra », « Muse/… ») n'apparaissait plus comme lisible.
-- Mobile : supprimer une playlist demande maintenant confirmation, comme sur
-  PC.
+- Téléchargement : l'app attend maintenant toute la durée possible côté NAS.
+  Un titre tout juste sorti n'est plus introuvable jusqu'au lendemain.
+- Un like fait sur un autre appareil (ex. le PC) apparaît au prochain
+  lancement, même pour un titre que l'appareil ne connaissait pas encore.
 - Synchro complète (au plus une fois toutes les 6 h) : ta bibliothèque reste
   visible et lisible pendant qu'elle tourne, au lieu de se vider puis se
   remplir petit à petit.
-- Téléchargement : l'app attend maintenant toute la durée possible côté NAS
-  (25 min). Un titre tout juste sorti, que le NAS met longtemps à récupérer,
-  n'était plus introuvable jusqu'au lendemain.
-- Un like fait sur un autre appareil (ex. le PC) apparaît au prochain
-  lancement, même pour un titre que l'appareil ne connaissait pas encore.
-- Lecture : après une coupure (autre appli qui prend le son, réseau), un
-  titre mp3 ne repart plus du début pendant que le compteur continue.
-- Accueil : section « Ton mood » (Chill, Rock, Rap, Électro, Pop, BO &
-  classique) qui lance en aléatoire les titres du genre choisi.
+- Mobile : supprimer une playlist demande maintenant confirmation, comme sur
+  PC.
 
 ## [2.0.0] - 2026-10-13
 
@@ -349,7 +356,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.0.0...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/ThibaultCauche/vinland/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/ThibaultCauche/vinland/compare/v1.2.2...v2.0.0
 [1.2.2]: https://github.com/ThibaultCauche/vinland/compare/v1.2.0...v1.2.2
 [1.2.1]: https://github.com/ThibaultCauche/vinland/releases/tag/v1.2.1
