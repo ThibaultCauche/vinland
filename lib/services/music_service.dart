@@ -1562,7 +1562,8 @@ class MusicService {
   /// si cette synchro legere tombe pendant l'import.
   Future<void> lightSync() async {
     debugPrint('LIGHT SYNC (pas de refetch complet)...');
-    final starredMap = await _navidrome.fetchStarredTrackIds();
+    final starredTracks = await _navidrome.fetchStarredTracks();
+    final starredMap = {for (final t in starredTracks) t.id: t.dateAdded};
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
     // Contrairement aux likes/albums ci-dessous, les tuiles epinglees sont
@@ -1584,6 +1585,11 @@ class MusicService {
       }
     }
 
+    // Derniers ajouts AVANT d'appliquer les likes : un titre tout juste
+    // arrive sur le NAS et like depuis un autre appareil ressortait sinon
+    // de syncRecentlyAdded sans son like.
+    await syncRecentlyAdded();
+
     var changed = false;
     for (final t in _allTracks) {
       if (!t.isLiked && starredMap.containsKey(t.id)) {
@@ -1592,6 +1598,19 @@ class MusicService {
         changed = true;
       }
     }
+    // Like fait ailleurs (ex: app PC) sur un titre que cet appareil ne
+    // connait pas encore -- sinon invisible jusqu'a la prochaine synchro
+    // complete (6h).
+    final knownIds = {for (final t in _navidromeTracks) t.id};
+    final unknown =
+        starredTracks.where((t) => !knownIds.contains(t.id)).toList();
+    if (unknown.isNotEmpty) {
+      _navidromeTracks.addAll(unknown);
+      _navidromeTracksView = null;
+      _allTracks = List.from(_navidromeTracks);
+      rebuildAlbums();
+      changed = true;
+    }
     for (final album in _albums) {
       if (!album.isSaved && starredAlbumIds.contains(album.id)) {
         album.isSaved = true;
@@ -1599,7 +1618,6 @@ class MusicService {
       }
     }
 
-    await syncRecentlyAdded();
     if (changed) _debouncedSave();
   }
 

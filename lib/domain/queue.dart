@@ -57,10 +57,16 @@ class PlayQueue {
     _history.clear();
     _sourceOrder = trackList ?? [track];
     final startIndex = _sourceOrder.indexWhere((t) => t.id == track.id);
-    var remainder =
+    // En aleatoire, toute la liste sauf le titre tape (comme reshuffle) : se
+    // limiter a ce qui le suit laissait la file vide en tapant le dernier
+    // titre d'une liste, et ne melangeait jamais ceux d'avant.
+    if (shuffled) {
+      upcoming = _sourceOrder.where((t) => t.id != track.id).toList()
+        ..shuffle(_random);
+      return;
+    }
+    upcoming =
         startIndex == -1 ? <Track>[] : _sourceOrder.sublist(startIndex + 1);
-    if (shuffled) remainder = List<Track>.of(remainder)..shuffle(_random);
-    upcoming = remainder;
   }
 
   /// Titre suivant (retire de la file), `current` passant dans

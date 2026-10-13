@@ -243,7 +243,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   }
 
   MediaItem _mediaItemFor(Track track) {
-    final path = _tracks.offlinePath(track.id) ?? track.filePath!;
+    final path = _tracks.offlinePath(track.id) ?? track.playbackPath!;
     final isRemote = path.startsWith('http');
 
     Uri? artUri;
