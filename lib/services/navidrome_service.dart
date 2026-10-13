@@ -30,6 +30,8 @@ class NavidromeService {
       // Les modeles (Track, Album...) ne stockent que des references sans
       // jeton : c'est ce service qui les transforme en URL a l'affichage.
       SubsonicRefs.streamUrlBuilder = getStreamUrl;
+      SubsonicRefs.rawStreamUrlBuilder =
+          (id) => getStreamUrl(id, format: 'raw');
       SubsonicRefs.coverUrlBuilder = getCoverUrl;
     }
   }
@@ -430,7 +432,7 @@ class NavidromeService {
       ..._authParams,
       'v': '1.16.1',
       'c': 'vinland',
-      'maxBitRate': '$effectiveBitRate',
+      if (effectiveFormat != 'raw') 'maxBitRate': '$effectiveBitRate',
       'format': effectiveFormat,
     }).toString();
   }

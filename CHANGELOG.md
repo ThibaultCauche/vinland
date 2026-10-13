@@ -21,6 +21,8 @@ commit.
   n'était plus introuvable jusqu'au lendemain.
 - Un like fait sur un autre appareil (ex. le PC) apparaît au prochain
   lancement, même pour un titre que l'appareil ne connaissait pas encore.
+- Lecture : après une coupure (autre appli qui prend le son, réseau), un
+  titre mp3 ne repart plus du début pendant que le compteur continue.
 
 ## [2.0.0] - 2026-10-13
 

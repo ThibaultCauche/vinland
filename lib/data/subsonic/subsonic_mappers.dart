@@ -46,6 +46,8 @@ Track trackFromSubsonic(Map<String, dynamic> json,
     discNumber: _intOrNull(json['discNumber']),
     // Extension OpenSubsonic (Navidrome 0.53+) : absent sur un vieux serveur.
     replayGain: ReplayGain.fromJson(json['replayGain']),
+    suffix: json['suffix']?.toString(),
+    bitRate: _intOrNull(json['bitRate']),
   );
 }
 
