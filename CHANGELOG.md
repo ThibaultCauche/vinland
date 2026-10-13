@@ -12,6 +12,8 @@ commit.
 - Lecture aléatoire : lancer un titre d'une liste mélange maintenant toute la
   liste, pas seulement les titres placés après lui (la file restait vide en
   lançant le dernier titre).
+- Recherche : un titre déjà sur le NAS dont l'artiste principal a un nom
+  court (« Gotye/Kimbra », « Muse/… ») n'apparaissait plus comme lisible.
 
 ## [2.0.0] - 2026-10-13
 

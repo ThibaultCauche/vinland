@@ -331,6 +331,13 @@ class MatchingService {
     final b = coreArtist(rawB);
     if (a.isEmpty || b.isEmpty) return false;
     if (a == b) return true;
+    // Champ multi-artiste du NAS ("Gotye/Kimbra") : l'artiste principal
+    // seul suffit, meme court -- l'inclusion ci-dessous exige 6 lettres, et
+    // un titre like n'etait alors pas reconnu dans la recherche.
+    if (coreArtist(rawA.split('/').first) == b ||
+        coreArtist(rawB.split('/').first) == a) {
+      return true;
+    }
 
     // minLen >= 2 laissait passer un artiste "June" des qu'il apparaissait
     // comme sous-chaine de n'importe quel autre nom ("Jace June", "Cloudy

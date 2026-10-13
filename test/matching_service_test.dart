@@ -58,6 +58,12 @@ void main() {
       );
     });
 
+    test('featuring avec un artiste principal au nom court', () {
+      expect(MatchingService.artistsMatch('Gotye/Kimbra', 'Gotye'), isTrue);
+      expect(MatchingService.artistsMatch('Muse', 'Muse/Other'), isTrue);
+      expect(MatchingService.artistsMatch('June/Other', 'Jace June'), isFalse);
+    });
+
     test('le mode strict est plus exigeant que le mode par defaut', () {
       // Ni l'un ni l'autre n'est un sous-ensemble litteral de l'autre : seul
       // le recouvrement de mots ("arctic", "monkeys") departage loose/strict.
