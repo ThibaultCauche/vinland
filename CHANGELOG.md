@@ -9,6 +9,9 @@ commit.
 
 ## [Non publié]
 
+- Accueil : section « Ton mood » (Chill, Rock, Rap, Électro, Pop, BO &
+  classique) qui lance en aléatoire les titres du genre choisi.
+
 ## [2.0.0] - 2026-10-13
 
 Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
