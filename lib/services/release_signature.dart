@@ -11,12 +11,13 @@ import 'package:http/http.dart' as http;
 /// correspondante n'existe que dans le secret GitHub `MINISIGN_SECRET_KEY`,
 /// avec lequel release.yml signe le fichier SHA256SUMS de chaque release.
 ///
-/// Vide tant que la paire de cles n'a pas ete generee : dans ce cas l'app
-/// refuse toute mise a jour automatique et renvoie vers la page de release
-/// (mieux vaut une mise a jour manuelle qu'un fichier non verifie).
-/// release.yml relit cette valeur et refuse de publier une release dont la
-/// signature ne correspond pas a cette cle.
-const String kReleasePublicKey = '';
+/// Id de cle 715BE221A9A7EB0D (genere le 13/10/2026). Ne pas la changer a la
+/// legere : voir « Signature des releases » dans CLAUDE.md. Vide, l'app
+/// refuserait toute mise a jour automatique. release.yml relit cette valeur
+/// et refuse de publier une release dont la signature ne correspond pas a
+/// cette cle.
+const String kReleasePublicKey =
+    'RWQN66epIeJbccJRD76fGODRHPsUV5CjPhBlMQCo3Jl8QsWi7ufYc9Ex';
 
 /// Nom des deux fichiers publies avec chaque release (voir release.yml).
 const String kChecksumsAssetName = 'SHA256SUMS';
