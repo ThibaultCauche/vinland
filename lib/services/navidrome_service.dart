@@ -505,6 +505,27 @@ class NavidromeService {
     }
   }
 
+  /// Titres likes du serveur avec leurs infos completes (getStarred2 les
+  /// renvoie deja) : permet d'adopter un like fait sur un autre appareil
+  /// pour un titre que cet appareil ne connait pas encore (voir
+  /// MusicService.lightSync).
+  Future<List<Track>> fetchStarredTracks() async {
+    if (!isConnected) return [];
+    try {
+      final starred = await _client.starred2();
+      return [
+        for (final s in starred['song']!)
+          trackFromSubsonic(s)
+            ..dateAdded = s['starred'] != null
+                ? DateTime.tryParse(s['starred'].toString())
+                : null
+      ];
+    } on SubsonicException catch (e) {
+      debugPrint('fetchStarredTracks error: $e');
+      return [];
+    }
+  }
+
   Future<bool> starAlbum(String albumId) =>
       _write('starAlbum', () => _client.star(albumId: albumId));
 
