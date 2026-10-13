@@ -9,6 +9,13 @@ commit.
 
 ## [Non publié]
 
+## [2.0.0] - 2026-10-13
+
+Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
+avant : sécurité du Jam et des mises à jour, lecture sans blanc, cache
+qui ne perd plus rien, code découpé et testé. Notes pour les amis :
+[docs/release-notes/v2.0.0.md](docs/release-notes/v2.0.0.md).
+
 ### Ajouté
 - Mode Soirée, extras : écran d'ambiance pour la télé (grande pochette sur
   un fond à ses couleurs, titre, qui l'a proposé, les 3 suivants, QR code
@@ -66,27 +73,13 @@ commit.
   services Python.
 - Job CI `services` : `ruff`, `pytest` quand un service a des tests, et
   validation du `docker compose`.
-
-### Sécurité
-- Jam : reprendre l'hébergement d'une session existante exige désormais le
-  secret d'hôte remis par le relais à la création (protocole v2). Un ami qui
-  connaît le code ne peut plus détourner la session ; un transfert d'hôte
-  remet un nouveau secret au nouvel hôte.
-- Synchro perso : l'identifiant ne se calcule plus à partir du pseudo. Il
-  dérive d'un secret aléatoire propre au compte, partagé entre ses appareils
-  par une playlist privée.
-- Codes de Jam entre amis sur 16 octets aléatoires (au lieu de 6).
-- Relais Jam : messages de 256 Ko max, 200 sessions, 50 participants par
-  session, 1 000 connexions, ping toutes les 20 s, fermeture des connexions
-  qui ne rejoignent rien en 30 s, journal sans contenu.
-- Au premier lancement, l'app demande ce que tu partages avec tes amis
-  (likes, écoutes récentes, titre en cours). Un nouveau compte ne partage
-  plus rien par défaut ; un compte existant retrouve ses réglages
-  actuels, à confirmer.
 - Documentation : architecture, décisions d'architecture (ADR), sécurité,
   confidentialité, liens et badges dans le README.
 
 ### Modifié
+- Identifiant Android inchangé (`com.example.vinland`) : la 2.0
+  s'installe par-dessus la 1.2.2 comme une mise à jour normale, sans
+  perdre les données (voir [ADR 0007](docs/adr/0007-garder-identifiant-android.md)).
 - La synchro perso ne sonde plus le relais toutes les 20 s pour toujours :
   le délai double à chaque essai (jusqu'à 5 min) et repart à 20 s au retour
   dans l'app.
@@ -142,15 +135,26 @@ commit.
   box).
 - Les actions GitHub sont épinglées par SHA.
 
+### Sécurité
+- Jam : reprendre l'hébergement d'une session existante exige désormais le
+  secret d'hôte remis par le relais à la création (protocole v2). Un ami qui
+  connaît le code ne peut plus détourner la session ; un transfert d'hôte
+  remet un nouveau secret au nouvel hôte.
+- Synchro perso : l'identifiant ne se calcule plus à partir du pseudo. Il
+  dérive d'un secret aléatoire propre au compte, partagé entre ses appareils
+  par une playlist privée.
+- Codes de Jam entre amis sur 16 octets aléatoires (au lieu de 6).
+- Relais Jam : messages de 256 Ko max, 200 sessions, 50 participants par
+  session, 1 000 connexions, ping toutes les 20 s, fermeture des connexions
+  qui ne rejoignent rien en 30 s, journal sans contenu.
+- Au premier lancement, l'app demande ce que tu partages avec tes amis
+  (likes, écoutes récentes, titre en cours). Un nouveau compte ne partage
+  plus rien par défaut ; un compte existant retrouve ses réglages
+  actuels, à confirmer.
+
 ### Corrigé
 - Plus de plantage possible si on quitte l'écran pendant une connexion à
   Navidrome, une recherche ou le choix d'un fichier à importer.
-
-### Supprimé
-- Variante « compacte » des cartes d'album de la page artiste, qui n'était
-  plus utilisée nulle part.
-
-### Corrigé
 - Une app tuée pendant une sauvegarde ou une synchro ne perd plus les
   titres hors ligne, les playlists locales, les épingles ni l'ordre des
   likes : écriture atomique avec copie de secours (`.bak`) rechargée si le
@@ -174,6 +178,15 @@ commit.
   (il demandait à l'autre appareil de rejouer son propre titre).
 - Jam : le changement de titre de l'hôte part tout de suite vers les
   participants au lieu d'attendre le battement suivant.
+- Import de playlist : un fichier CSV de plusieurs milliers de titres ne
+  donne plus de titres en « Ã© » (un accent coupé entre deux blocs de
+  lecture faisait basculer tout le bloc en latin1).
+- Import d'un export Spotify en JSON : l'album s'affiche par son nom, plus
+  en « {name: ...} ».
+
+### Supprimé
+- Variante « compacte » des cartes d'album de la page artiste, qui n'était
+  plus utilisée nulle part.
 
 ## [1.2.2] - 2026-10-08
 
@@ -313,7 +326,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v1.2.2...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/ThibaultCauche/vinland/compare/v1.2.2...v2.0.0
 [1.2.2]: https://github.com/ThibaultCauche/vinland/compare/v1.2.0...v1.2.2
 [1.2.1]: https://github.com/ThibaultCauche/vinland/releases/tag/v1.2.1
 [1.2.0]: https://github.com/ThibaultCauche/vinland/compare/v1.1.13...v1.2.0

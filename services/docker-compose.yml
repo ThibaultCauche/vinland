@@ -17,6 +17,12 @@ services:
     restart: unless-stopped
     environment:
       PORT: "8765"
+      # Mode Soiree (docs/soiree-protocole.md) : compte Navidrome dedie, sans
+      # droits d'admin, pour la recherche des invites. Vides = pas de soiree,
+      # le Jam marche quand meme.
+      NAVIDROME_URL: ${PARTY_NAVIDROME_URL:-}
+      NAVIDROME_USER: ${PARTY_NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${PARTY_NAVIDROME_PASSWORD:-}
     ports:
       - "127.0.0.1:${JAM_RELAY_PORT:-8765}:8765"
 

@@ -13,5 +13,6 @@ nouvelle ADR qui la remplace et on le note dans l'ancienne.
 | [0004](0004-tailscale-funnel.md) | Accès distant par Tailscale Funnel | Acceptée |
 | [0005](0005-playlists-miroirs-pour-le-social.md) | Playlists miroirs pour les fonctions sociales | Acceptée |
 | [0006](0006-transcodage-192-kbps.md) | Transcodage mp3 192 kbps | Acceptée |
+| [0007](0007-garder-identifiant-android.md) | Garder l'identifiant Android `com.example.vinland` | Acceptée |
 
 Nouvelle ADR : copier la plus proche, prendre le numéro suivant.
