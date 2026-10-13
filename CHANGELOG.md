@@ -14,6 +14,8 @@ commit.
   lançant le dernier titre).
 - Recherche : un titre déjà sur le NAS dont l'artiste principal a un nom
   court (« Gotye/Kimbra », « Muse/… ») n'apparaissait plus comme lisible.
+- Mobile : supprimer une playlist demande maintenant confirmation, comme sur
+  PC.
 
 ## [2.0.0] - 2026-10-13
 
