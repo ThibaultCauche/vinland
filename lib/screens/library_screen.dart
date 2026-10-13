@@ -25,6 +25,7 @@ import 'album_screen.dart';
 import 'playlist_screen.dart';
 import 'collab_playlist_screen.dart';
 import '../widgets/bottom_bar_reserve.dart';
+import '../widgets/player/player_options_sheet.dart' show startTrackRadio;
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -460,6 +461,14 @@ class _LibraryScreenState extends State<LibraryScreen>
                 onTap: () {
                   Navigator.pop(ctx);
                   _showAddToPlaylistDialog(context, track);
+                },
+              ),
+              SheetTile(
+                icon: Icons.radio,
+                label: 'Lancer la radio',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  startTrackRadio(context, track);
                 },
               ),
               SheetTile(

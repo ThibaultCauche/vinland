@@ -60,6 +60,19 @@ void main() {
     expect((await radio.next(seed, {'deja'}))?.songId, 'neuf');
   });
 
+  test('radio d un titre : toutes les sources, sans doublon ni le titre',
+      () async {
+    final radio = PartyRadio([
+      ListSource([song('s0'), song('a'), song('b')]),
+      ListSource([], fails: true),
+      ListSource([song('b'), song('c')]),
+    ], random: Random(1));
+    final ids = (await radio.mix(seed)).map((s) => s.songId);
+    expect(ids.toSet(), {'a', 'b', 'c'});
+    expect(ids.length, 3);
+    expect((await radio.mix(seed, size: 2)).length, 2);
+  });
+
   test('aucun titre neuf nulle part : pas de radio', () async {
     final radio = PartyRadio([
       ListSource([song('deja')])

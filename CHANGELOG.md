@@ -9,6 +9,10 @@ commit.
 
 ## [Non publié]
 
+- « Lancer la radio » sur un titre (menu du lecteur, des titres likés et des
+  titres sur PC) : joue le titre puis une trentaine de titres proches de ta
+  bibliothèque.
+
 ## [2.0.0] - 2026-10-13
 
 Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
