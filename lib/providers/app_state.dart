@@ -317,7 +317,7 @@ class AppState extends ChangeNotifier
       this.party,
       PlayerPartyPlayback(
         player: _player,
-        playTrack: playTrack,
+        playTrack: _playPartyTrack,
         findTrack: _findTrackById,
       ),
       radio: PartyRadio([
@@ -718,6 +718,19 @@ class AppState extends ChangeNotifier
     // JamController.interceptPlayTrack.
     if (_jamCtl.interceptPlayTrack(track)) return;
     await _player.playTrack(track, trackList: trackList);
+  }
+
+  /// Titre lance par la soiree (bouton lecture de la file, enchainement) :
+  /// l'hote de la soiree joue toujours lui-meme. Spectateur de la synchro
+  /// perso, playTrack envoyait le titre a l'autre appareil du compte, qui
+  /// ne le lancait pas : le bouton ne faisait rien (test du 2026-10-13).
+  /// Jouer ici prend la main sur l'autre appareil, qui se met en pause.
+  Future<void> _playPartyTrack(Track track) async {
+    if (_jamCtl.isPersonalSyncParticipant) {
+      await _player.playTrack(track);
+      return;
+    }
+    await playTrack(track);
   }
 
   /// Republie l'etat "now playing" (MusicService.updateNowPlaying) a chaque

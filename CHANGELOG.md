@@ -19,6 +19,8 @@ commit.
   appareils du compte voient tout de suite la musique en cours.
 - Un appareil retrouve l'autre en 1 minute au plus (contre 5) quand rien
   ne joue au moment où il cherche.
+- Mode soirée : le bouton lecture d'un titre proposé joue bien sur
+  l'appareil de l'hôte, même s'il suivait un autre appareil du compte.
 
 ## [2.0.0] - 2026-10-13
 

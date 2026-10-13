@@ -361,6 +361,22 @@ void main() {
     });
 
     test(
+        'la soiree lance un titre sur le PC spectateur : il joue lui-meme et '
+        'le telephone se met en pause', () async {
+      final (phone, pc) = await personalSync();
+      phone.engine.emitPlaying(true);
+      await pumpEventQueue();
+
+      // Ce que fait AppState._playPartyTrack : le lecteur directement.
+      await pc.player.playTrack(c);
+      await pumpEventQueue();
+
+      expect(pc.output.loadedTitles, ['c']);
+      expect(pc.jam.isPersonalSyncHost, isTrue);
+      expect(phone.output.calls.last, 'pause');
+    });
+
+    test(
         'un appareil qui joue sa propre musique ne devient pas spectateur '
         'muet de l\'autre (ecran noir)', () async {
       final pc = device('thibault', label: 'PC');
