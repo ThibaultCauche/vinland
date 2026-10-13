@@ -4,6 +4,7 @@ import '../models/track.dart';
 import '../providers/app_state.dart';
 import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/player/player_options_sheet.dart' show startTrackRadio;
 import 'glass.dart';
 
 /// Ligne de titre façon reference : cover, titre/artiste(s), album, duree,
@@ -61,6 +62,16 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
       position: position,
       color: const Color(0xFF1E1E1E),
       items: [
+        PopupMenuItem<void>(
+          child: const Row(
+            children: [
+              Icon(Icons.radio, color: Colors.white70, size: 18),
+              SizedBox(width: 10),
+              Text('Lancer la radio', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          onTap: () => startTrackRadio(context, widget.track),
+        ),
         PopupMenuItem<void>(
           child: const Row(
             children: [

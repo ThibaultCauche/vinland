@@ -83,6 +83,8 @@ class AppState extends ChangeNotifier
   // de la soiree jouee par le lecteur de l'hote).
   late final PartyController party;
   late final PartyHostDj _partyDj;
+  // Partagee entre le mode Soiree et « Lancer la radio » (voir startRadio).
+  late final PartyRadio _radio;
   late final PartyEnvironment partyEnvironment = PartyEnvironment(
     relayUrl: () => relayUrlFromServer(_navidrome.baseUrl),
     hostAuth: () => _navidrome.authParams,
@@ -320,7 +322,7 @@ class AppState extends ChangeNotifier
         playTrack: playTrack,
         findTrack: _findTrackById,
       ),
-      radio: PartyRadio([
+      radio: _radio = PartyRadio([
         NavidromeRadioSource(_navidrome.similarSongs),
         if (discovery != null)
           RelatedArtistsRadioSource(
@@ -818,6 +820,21 @@ class AppState extends ChangeNotifier
       : position;
 
   Track? _findTrackById(String id) => _tracks.findById(id);
+
+  /// « Lancer la radio » : joue [seed] puis des titres proches de la
+  /// bibliotheque (memes sources que la radio du mode Soiree). False si
+  /// rien de proche n'a ete trouve.
+  Future<bool> startRadio(Track seed) async {
+    final song = partySongForTrack(seed);
+    if (song == null) return false;
+    final tracks = (await _radio.mix(song))
+        .map((s) => _findTrackById('navidrome_${s.songId}'))
+        .whereType<Track>()
+        .toList();
+    if (tracks.isEmpty) return false;
+    await playTrack(seed, trackList: [seed, ...tracks]);
+    return true;
+  }
 
   Future<void> toggleLike(String trackId) async {
     await _music.toggleLike(trackId);

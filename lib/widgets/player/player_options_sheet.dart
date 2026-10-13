@@ -38,6 +38,23 @@ void showArtistAlbumPicker(BuildContext context, Track track) {
           ]);
 }
 
+/// « Lancer la radio » depuis un menu de titre (mobile et desktop).
+Future<void> startTrackRadio(BuildContext context, Track track) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(const SnackBar(
+    content: Text('Radio en préparation...'),
+    backgroundColor: Color(0xFF2A2A2A),
+  ));
+  final ok = await context.read<AppState>().startRadio(track);
+  messenger.hideCurrentSnackBar();
+  if (!ok) {
+    messenger.showSnackBar(const SnackBar(
+      content: Text('Aucun titre proche trouvé dans ta bibliothèque'),
+      backgroundColor: Color(0xFF2A2A2A),
+    ));
+  }
+}
+
 void showPlayerOptions(BuildContext context, Track track) {
   final state = context.read<AppState>();
 
@@ -66,6 +83,14 @@ void showPlayerOptions(BuildContext context, Track track) {
               onTap: () {
                 Navigator.pop(ctx);
                 state.toggleLike(track.id);
+              },
+            ),
+            SheetTile(
+              icon: Icons.radio,
+              label: 'Lancer la radio',
+              onTap: () {
+                Navigator.pop(ctx);
+                startTrackRadio(context, track);
               },
             ),
             SheetTile(

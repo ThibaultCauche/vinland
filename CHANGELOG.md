@@ -9,6 +9,9 @@ commit.
 
 ## [Non publié]
 
+- « Lancer la radio » sur un titre (menu du lecteur, des titres likés et des
+  titres sur PC) : joue le titre puis une trentaine de titres proches de ta
+  bibliothèque.
 - Lecture aléatoire : lancer un titre d'une liste mélange maintenant toute la
   liste, pas seulement les titres placés après lui (la file restait vide en
   lançant le dernier titre).

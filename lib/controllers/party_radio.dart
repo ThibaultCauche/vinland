@@ -59,6 +59,28 @@ class PartyRadio {
     return null;
   }
 
+  /// Radio d'un titre (« Lancer la radio ») : jusqu'a [size] titres proches
+  /// de [seed], sources les plus precises d'abord, sans doublon, melanges.
+  Future<List<PartySong>> mix(PartySong seed, {int size = 30}) async {
+    final seen = {_songKey(seed)};
+    final out = <PartySong>[];
+    for (final source in sources) {
+      if (out.length >= size) break;
+      List<PartySong> songs;
+      try {
+        songs = await source.similarTo(seed);
+      } catch (_) {
+        continue;
+      }
+      for (final song in songs) {
+        if (out.length >= size) break;
+        if (song.songId.isEmpty || song.songId == seed.songId) continue;
+        if (seen.add(_songKey(song))) out.add(song);
+      }
+    }
+    return out..shuffle(_random);
+  }
+
   static String _songKey(PartySong song) =>
       '${MatchingService.coreArtist(song.artist)}|'
       '${MatchingService.coreTitle(song.title)}';
