@@ -51,8 +51,9 @@ class _ArtistAvatarState extends State<ArtistAvatar> {
   Future<void> _load(String key) async {
     String? url;
     try {
-      final results =
-          await DiscoveryService().searchArtists(widget.artistName, limit: 5);
+      final results = await context
+          .read<DiscoveryService>()
+          .searchArtists(widget.artistName, limit: 5);
       DiscoveredArtist? match;
       for (final a in results) {
         if (MatchingService.artistsMatch(a.name, widget.artistName)) {
@@ -60,8 +61,8 @@ class _ArtistAvatarState extends State<ArtistAvatar> {
           break;
         }
       }
-      url = (match ?? (results.isNotEmpty ? results.first : null))
-          ?.pictureBigUrl;
+      url =
+          (match ?? (results.isNotEmpty ? results.first : null))?.pictureBigUrl;
     } catch (_) {
       // ponytail: pas de retry -- l'avatar reste sur la cover de repli, deja
       // un rendu correct.

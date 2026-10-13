@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -83,9 +85,9 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
                 behavior: HitTestBehavior.translucent,
                 onDoubleTap: () async {
                   if (await windowManager.isMaximized()) {
-                    windowManager.unmaximize();
+                    unawaited(windowManager.unmaximize());
                   } else {
-                    windowManager.maximize();
+                    unawaited(windowManager.maximize());
                   }
                 },
               ),
@@ -111,9 +113,9 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
             iconSize: _isMaximized ? 14 : 16,
             onPressed: () async {
               if (await windowManager.isMaximized()) {
-                windowManager.unmaximize();
+                unawaited(windowManager.unmaximize());
               } else {
-                windowManager.maximize();
+                unawaited(windowManager.maximize());
               }
             },
           ),
@@ -157,7 +159,7 @@ class _TitleBarButton extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          hoverColor: hoverColor ?? Colors.white.withOpacity(0.08),
+          hoverColor: hoverColor ?? Colors.white.withValues(alpha: 0.08),
           child: Icon(icon,
               size: iconSize,
               color: disabled ? Colors.white24 : (color ?? Colors.white70)),

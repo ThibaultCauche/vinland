@@ -10,6 +10,8 @@ on:
     tags:
       - 'v*'
 
+# contents: write pour publier la Release ; le job ci (workflow_call) ne
+# fait que lire, ci.yml restreint lui-meme ses permissions.
 permissions:
   contents: write
 
@@ -17,7 +19,13 @@ env:
   FLUTTER_VERSION: '3.47.2'
 
 jobs:
+  # Rejoue toute la CI (format, analyse, tests app + relais) sur le commit
+  # tague : si elle est rouge, aucun build ne part et rien n'est publie.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-windows:
+    needs: ci
     # windows-2022 (pas windows-latest) : l'image la plus recente utilise un
     # "Dev Drive" (D:, ReFS) pour le checkout et une toolchain VS plus
     # agressive, qui declenchent respectivement le bug CMake "Cannot extract
@@ -26,9 +34,9 @@ jobs:
     # windows-2022 reste sur un C: classique (NTFS) et un MSVC plus etabli.
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -94,30 +102,30 @@ jobs:
         run: flutter build windows --release
 
       # Zippe le CONTENU du dossier Release (pas le dossier lui-meme) : le
-      # script d'auto-update (self_updater_service.dart) fait un
-      # Expand-Archive direct dans le dossier d'install existant, un zip avec
-      # un sous-dossier imbrique casserait le remplacement des fichiers.
+      # script d'auto-update (self_updater_service.dart) attend vinland.exe a
+      # la racine du zip et refuse la mise a jour sinon.
       - name: Zip Windows build
         run: |
           $tag = "${{ github.ref_name }}"
           Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "vinland-windows-$tag.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-zip
           path: vinland-windows-*.zip
 
   build-android:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -182,7 +190,7 @@ jobs:
           tag="${{ github.ref_name }}"
           cp build/app/outputs/flutter-apk/app-release.apk "vinland-android-$tag.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: android-apk
           path: vinland-android-*.apk
@@ -191,17 +199,61 @@ jobs:
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: windows-zip
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: android-apk
 
-      - uses: softprops/action-gh-release@v2
+      # Empreintes de chaque fichier publie, signees avec minisign : l'app
+      # refuse d'installer un zip/APK dont l'empreinte n'est pas dans ce
+      # SHA256SUMS signe (voir lib/services/release_signature.dart). La cle
+      # privee n'existe que dans le secret MINISIGN_SECRET_KEY (generee sans
+      # mot de passe avec `minisign -G -W`, le secret GitHub la protege).
+      - name: Install minisign
+        run: sudo apt-get update -q && sudo apt-get install -y -q minisign
+
+      - name: Sign checksums
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::Secret MINISIGN_SECRET_KEY absent : impossible de signer la release."
+            exit 1
+          fi
+          sha256sum vinland-windows-*.zip vinland-android-*.apk > SHA256SUMS
+          cat SHA256SUMS
+          key="$RUNNER_TEMP/minisign.key"
+          (umask 077; printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key")
+          minisign -S -s "$key" -m SHA256SUMS -t "vinland ${{ github.ref_name }}"
+          rm -f "$key"
+
+      # Reverifie la signature avec la cle publique EMBARQUEE dans l'app du
+      # commit tague : si elle ne correspond pas au secret (ou est encore
+      # vide), aucune app installee ne pourrait s'auto-mettre a jour avec
+      # cette release, autant ne pas la publier.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          path: src
+          sparse-checkout: lib/services/release_signature.dart
+          sparse-checkout-cone-mode: false
+
+      - name: Verify signature with the app's public key
+        run: |
+          pub=$(grep -oE "'RW[A-Za-z0-9+/]{54}'" src/lib/services/release_signature.dart | tr -d "'" | head -n1)
+          if [ -z "$pub" ]; then
+            echo "::error::kReleasePublicKey est vide dans lib/services/release_signature.dart."
+            exit 1
+          fi
+          minisign -V -P "$pub" -m SHA256SUMS
+
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           generate_release_notes: true
           files: |
             vinland-windows-*.zip
             vinland-android-*.apk
+            SHA256SUMS
+            SHA256SUMS.minisig

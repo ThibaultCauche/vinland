@@ -98,7 +98,10 @@ class MediaKitPlayerEngine implements PlayerEngine {
     _logicalOrder
       ..clear()
       ..addAll(playlist.medias.map((m) => m.uri));
-    await _player.open(playlist);
+    // play: false : le titre peut etre precharge sur la platine inactive
+    // (voir DeckPlayerEngine) -- c'est VinlandAudioHandler qui lance la
+    // lecture, comme avec just_audio.
+    await _player.open(playlist, play: false);
     await _player.setShuffle(_shuffleEnabled);
     // _player.open() positionne bien playlist-pos sur adjustedIndex, mais
     // setShuffle() (commande mpv "playlist-shuffle") reordonne ensuite la
@@ -135,6 +138,11 @@ class MediaKitPlayerEngine implements PlayerEngine {
   Future<void> stop() => _player.stop();
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+
+  // mpv garde la hauteur du son a l'identique (audio-pitch-correction,
+  // actif par defaut).
+  @override
+  Future<void> setSpeed(double speed) => _player.setRate(speed);
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume * 100.0);
   @override

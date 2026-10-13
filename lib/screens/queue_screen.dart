@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../navigation/overlay_navigator.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../widgets/app_background.dart';
@@ -11,10 +12,10 @@ import '../widgets/bottom_bar_reserve.dart';
 /// "File d'attente" façon Spotify : titre en cours + titres à venir,
 /// réordonnables par glisser-déposer (poignée dédiée, pour ne pas entrer en
 /// conflit avec le tap "lire ce titre maintenant"). Alimentée par
-/// AppState.queue -- voir le commentaire sur ce champ pour le contexte
+/// AppState.queue -- voir le commentaire sur PlayQueue.upcoming pour le contexte
 /// (un seul titre à la fois est confié au moteur audio désormais, la file
 /// visible ici est intégralement gérée côté app).
-class QueueScreen extends StatelessWidget {
+class QueueScreen extends StatelessWidget implements SingleInstanceOverlay {
   const QueueScreen({super.key});
 
   @override
@@ -86,7 +87,7 @@ class QueueScreen extends StatelessWidget {
                                   padding: EdgeInsets.only(
                                       bottom: bottomBarReserve(context)),
                                   itemCount: queue.length,
-                                  onReorder: state.reorderQueue,
+                                  onReorderItem: state.reorderQueue,
                                   itemBuilder: (context, i) => _QueueTile(
                                     key: ValueKey('queue-$i-${queue[i].id}'),
                                     index: i,
@@ -116,9 +117,10 @@ class _CurrentTrackTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1DB954).withOpacity(0.12),
+        color: const Color(0xFF1DB954).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF1DB954).withOpacity(0.3)),
+        border:
+            Border.all(color: const Color(0xFF1DB954).withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [

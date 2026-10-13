@@ -186,7 +186,7 @@ class DesktopHeroCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(DesktopGlass.radiusLg),
             tint: Colors.transparent,
             blurSigma: 0,
-            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -240,9 +240,9 @@ class DesktopHeroCard extends StatelessWidget {
                       begin: Alignment.centerLeft,
                       end: Alignment.centerRight,
                       colors: [
-                        Colors.black.withOpacity(0.75),
-                        Colors.black.withOpacity(0.55),
-                        Colors.black.withOpacity(0.05),
+                        Colors.black.withValues(alpha: 0.75),
+                        Colors.black.withValues(alpha: 0.55),
+                        Colors.black.withValues(alpha: 0.05),
                       ],
                       stops: const [0.0, 0.45, 1.0],
                     ),
@@ -266,64 +266,65 @@ class DesktopHeroCard extends StatelessWidget {
                       ? SingleChildScrollView(
                           physics: const NeverScrollableScrollPhysics(),
                           child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: titleSize,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            SizedBox(height: _lerp(8, 2, shrink)),
-                            SizedBox(
-                              width: 420,
-                              child: Text(
-                                subtitle,
-                                style: const TextStyle(
-                                    color: Colors.white70, fontSize: 14),
-                                // 1 ligne (pas 2) : la ligne en trop etait la
-                                // premiere source du manque de place pendant
-                                // la transition.
-                                maxLines: 1,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: titleSize,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            SizedBox(height: _lerp(20, 8, shrink)),
-                            Row(
-                              children: [
-                                if (onToggleLike != null)
-                                  _LikeIcon(
-                                      isLiked: isLiked, onTap: onToggleLike!),
-                                if (onToggleLike != null)
-                                  const SizedBox(width: 8),
-                                Text(metaLabel,
-                                    style: const TextStyle(
-                                        color: Colors.white70, fontSize: 12)),
-                                const SizedBox(width: 20),
-                                _ShufflePill(onTap: onShuffle),
-                                if (onShare != null) ...[
-                                  const SizedBox(width: 8),
-                                  GlassIconButton(
-                                      icon: Icons.ios_share, onPressed: onShare!),
+                              SizedBox(height: _lerp(8, 2, shrink)),
+                              SizedBox(
+                                width: 420,
+                                child: Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 14),
+                                  // 1 ligne (pas 2) : la ligne en trop etait la
+                                  // premiere source du manque de place pendant
+                                  // la transition.
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              SizedBox(height: _lerp(20, 8, shrink)),
+                              Row(
+                                children: [
+                                  if (onToggleLike != null)
+                                    _LikeIcon(
+                                        isLiked: isLiked, onTap: onToggleLike!),
+                                  if (onToggleLike != null)
+                                    const SizedBox(width: 8),
+                                  Text(metaLabel,
+                                      style: const TextStyle(
+                                          color: Colors.white70, fontSize: 12)),
+                                  const SizedBox(width: 20),
+                                  _ShufflePill(onTap: onShuffle),
+                                  if (onShare != null) ...[
+                                    const SizedBox(width: 8),
+                                    GlassIconButton(
+                                        icon: Icons.ios_share,
+                                        onPressed: onShare!),
+                                  ],
+                                  if (onSendToFriend != null) ...[
+                                    const SizedBox(width: 8),
+                                    GlassIconButton(
+                                        icon: Icons.send_outlined,
+                                        onPressed: onSendToFriend!),
+                                  ],
+                                  if (moreActions.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    DesktopMoreMenuButton(actions: moreActions),
+                                  ],
                                 ],
-                                if (onSendToFriend != null) ...[
-                                  const SizedBox(width: 8),
-                                  GlassIconButton(
-                                      icon: Icons.send_outlined,
-                                      onPressed: onSendToFriend!),
-                                ],
-                                if (moreActions.isNotEmpty) ...[
-                                  const SizedBox(width: 8),
-                                  DesktopMoreMenuButton(actions: moreActions),
-                                ],
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
                           ),
                         )
                       // Reduit : titre - boutons, sur une seule ligne plutot
@@ -423,7 +424,8 @@ class DesktopMoreMenuButton extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(a.label,
                     style: TextStyle(
-                        color: a.destructive ? Colors.redAccent : Colors.white)),
+                        color:
+                            a.destructive ? Colors.redAccent : Colors.white)),
               ],
             ),
           ),
@@ -467,7 +469,7 @@ class _ShufflePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withOpacity(0.18),
+      color: Colors.white.withValues(alpha: 0.18),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),

@@ -98,7 +98,8 @@ class DesktopSidebar extends StatelessWidget {
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Divider(color: Colors.white.withOpacity(0.12), height: 1),
+              child: Divider(
+                  color: Colors.white.withValues(alpha: 0.12), height: 1),
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -123,7 +124,8 @@ class DesktopSidebar extends StatelessWidget {
             const SizedBox(height: 12),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Divider(color: Colors.white.withOpacity(0.12), height: 1),
+              child: Divider(
+                  color: Colors.white.withValues(alpha: 0.12), height: 1),
             ),
             const SizedBox(height: 12),
             // Synchro NAS : discret ici, ne pousse rien quand elle n'est pas

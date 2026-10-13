@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
@@ -29,13 +29,12 @@ class TrackTile extends StatelessWidget {
     // non cliquable au lieu du rendu normal.
     if (track.isPlaceholder) {
       return ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         leading: Container(
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF3E3E3E).withOpacity(0.5),
+            color: const Color(0xFF3E3E3E).withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(4),
           ),
           child: const Icon(Icons.music_note, color: Colors.white24),
@@ -56,8 +55,8 @@ class TrackTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: const Icon(Icons.error_outline,
-            color: Colors.orange, size: 18),
+        trailing:
+            const Icon(Icons.error_outline, color: Colors.orange, size: 18),
       );
     }
 

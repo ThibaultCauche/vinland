@@ -52,7 +52,8 @@ class SyncStatusBanner extends StatelessWidget {
         if (lastSyncEmpty && hasNoTracks) {
           return _Banner(
             color: const Color(0xFF3A2020),
-            icon: const Icon(Icons.wifi_off, color: Colors.orangeAccent, size: 20),
+            icon: const Icon(Icons.wifi_off,
+                color: Colors.orangeAccent, size: 20),
             text: 'Aucun titre trouvé -- vérifie que le serveur Navidrome '
                 'est joignable.',
             actionLabel: 'Réessayer',

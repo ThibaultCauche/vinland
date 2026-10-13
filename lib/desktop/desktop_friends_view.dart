@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../navigation/shared_item_opener.dart';
 import '../models/friend_profile.dart';
 import '../models/track.dart';
 import '../services/share_inbox_service.dart';
@@ -72,7 +73,7 @@ class _DesktopFriendsViewState extends State<DesktopFriendsView> {
                     child: _ReceivedShareCard(share: share),
                   ),
                 const SizedBox(height: 10),
-                Divider(color: Colors.white.withOpacity(0.12), height: 1),
+                Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
                 const SizedBox(height: 20),
               ],
               Expanded(
@@ -159,7 +160,8 @@ class _ReceivedShareCard extends StatelessWidget {
     return DesktopHoverable(
       onTap: () async {
         final state = context.read<AppState>();
-        final ok = await state.openSharedItem(type: share.type, id: share.itemId);
+        final ok =
+            await openSharedItem(state, type: share.type, id: share.itemId);
         if (ok) await state.dismissShare(share);
       },
       borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
@@ -169,7 +171,7 @@ class _ReceivedShareCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor: Colors.white.withOpacity(0.08),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
               child: Icon(_icon, color: Colors.white70, size: 18),
             ),
             const SizedBox(width: 14),
@@ -283,8 +285,8 @@ class _FriendCard extends StatelessWidget {
                 ),
                 if (alreadyInThisJam)
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: Colors.white10,
                       borderRadius: BorderRadius.circular(16),
@@ -314,8 +316,8 @@ class _FriendCard extends StatelessWidget {
                       // on le force explicitement plutot que de compter sur
                       // MaterialStateMouseCursor.
                       mouseCursor: SystemMouseCursors.click,
-                      hoverColor: Colors.white.withOpacity(0.18),
-                      splashColor: Colors.white.withOpacity(0.12),
+                      hoverColor: Colors.white.withValues(alpha: 0.18),
+                      splashColor: Colors.white.withValues(alpha: 0.12),
                       onTap: () async {
                         final messenger = ScaffoldMessenger.of(context);
                         final ok = await context

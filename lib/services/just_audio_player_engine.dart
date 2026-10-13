@@ -68,10 +68,7 @@ class JustAudioPlayerEngine implements PlayerEngine {
     try {
       await _player.stop();
     } catch (_) {}
-    await _player.setAudioSource(
-      ja.ConcatenatingAudioSource(children: sources),
-      initialIndex: initialIndex,
-    );
+    await _player.setAudioSources(sources, initialIndex: initialIndex);
   }
 
   @override
@@ -82,6 +79,9 @@ class JustAudioPlayerEngine implements PlayerEngine {
   Future<void> stop() => _player.stop();
   @override
   Future<void> seek(Duration position) => _player.seek(position);
+
+  @override
+  Future<void> setSpeed(double speed) => _player.setSpeed(speed);
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume);
   @override

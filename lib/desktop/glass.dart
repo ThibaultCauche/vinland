@@ -79,7 +79,7 @@ class GlassPanel extends StatelessWidget {
         color: tint,
         borderRadius: borderRadius,
         border: border ??
-            Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+            Border.all(color: Colors.white.withValues(alpha: 0.08), width: 1),
       ),
       child: child,
     );
@@ -129,7 +129,7 @@ class GlassIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final button = Material(
-      color: active ? Colors.white.withOpacity(0.14) : Colors.transparent,
+      color: active ? Colors.white.withValues(alpha: 0.14) : Colors.transparent,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -181,9 +181,9 @@ class DesktopHoverable extends StatelessWidget {
         // maniere fiable ici (verifie par l'utilisateur) -- on le force
         // explicitement plutot que de compter sur MaterialStateMouseCursor.
         mouseCursor: SystemMouseCursors.click,
-        hoverColor: Colors.white.withOpacity(0.08),
-        splashColor: Colors.white.withOpacity(0.06),
-        highlightColor: Colors.white.withOpacity(0.04),
+        hoverColor: Colors.white.withValues(alpha: 0.08),
+        splashColor: Colors.white.withValues(alpha: 0.06),
+        highlightColor: Colors.white.withValues(alpha: 0.04),
         child: child,
       ),
     );

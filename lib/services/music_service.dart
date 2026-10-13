@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:metadata_god/metadata_god.dart';
+import '../data/cache/library_cache.dart';
+import '../data/subsonic/subsonic_exception.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -13,7 +15,10 @@ import '../models/friend_profile.dart';
 import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
+import 'legacy_file_migration.dart';
 import 'navidrome_service.dart';
+import 'personal_sync_secret.dart';
+import 'sharing_consent.dart';
 import 'package:http/http.dart' as http;
 
 /// Fusionne un titre fraichement recu du serveur (Navidrome) avec l'etat
@@ -105,6 +110,9 @@ PlaylistSyncPlan planPlaylistSync(
     // MusicService.fetchCollabPlaylist(), ne doit jamais apparaitre comme
     // une playlist normale a part entiere ici.
     if (comment.startsWith(collabTagPrefix)) continue;
+    // Porteuse du secret de synchro perso (voir personal_sync_secret.dart) :
+    // playlist technique et vide, jamais une vraie playlist de l'utilisateur.
+    if (comment.startsWith(personalSyncTagPrefix)) continue;
 
     final local = byServerId[serverId];
     if (local != null) {
@@ -123,9 +131,13 @@ PlaylistSyncPlan planPlaylistSync(
 }
 
 class MusicService {
-  static final MusicService _instance = MusicService._internal();
-  factory MusicService() => _instance;
-  MusicService._internal();
+  /// Une seule instance par processus, creee dans main.dart (ou par
+  /// l'entree Bluetooth headless) puis injectee. [storageRoot] remplace les
+  /// dossiers de l'app (cache, covers) dans les tests.
+  MusicService(this._navidrome, {Future<Directory> Function()? storageRoot})
+      : _storageRoot = storageRoot;
+
+  final Future<Directory> Function()? _storageRoot;
 
   List<Track> _allTracks = [];
   List<Album> _albums = [];
@@ -165,12 +177,21 @@ class MusicService {
   /// seuil.
   static const Duration _nowPlayingStaleAfter = Duration(minutes: 2);
 
-  bool _shareLikesWithFriends = true;
+  // Rien n'est partagé tant que l'utilisateur n'a pas répondu à l'écran de
+  // consentement (voir SharingConsent) ; un cache 1.2.x garde ses choix.
+  bool _shareLikesWithFriends = false;
   bool get shareLikesWithFriends => _shareLikesWithFriends;
-  bool _shareRecentPlaysWithFriends = true;
+  bool _shareRecentPlaysWithFriends = false;
   bool get shareRecentPlaysWithFriends => _shareRecentPlaysWithFriends;
-  bool _shareNowPlayingWithFriends = true;
+  bool _shareNowPlayingWithFriends = false;
   bool get shareNowPlayingWithFriends => _shareNowPlayingWithFriends;
+  bool _sharingConsentAsked = false;
+
+  /// true quand le compte courant est chargé mais n'a encore jamais validé
+  /// ses choix de partage : l'interface doit alors poser la question.
+  /// Attend _initialized pour ne pas la poser avant d'avoir lu le cache (on
+  /// pré-remplirait alors « rien de partagé » à un ancien utilisateur).
+  bool get needsSharingConsent => _initialized && !_sharingConsentAsked;
   final Map<String, Timer> _playlistSyncDebounce = {};
 
   // Cache en memoire des covers existantes pour eviter les existsSync()
@@ -189,7 +210,7 @@ class MusicService {
   List<Album> get albums => _albumsView ??= List.unmodifiable(_albums);
   List<Playlist> get playlists => List.unmodifiable(_playlists);
 
-  final NavidromeService _navidrome = NavidromeService();
+  final NavidromeService _navidrome;
   List<Track> _navidromeTracks = [];
   Map<String, String> _offlineFiles = {}; // navidrome_id -> local path
 
@@ -202,6 +223,18 @@ class MusicService {
 
   List<RecentPlay> _recentPlays = [];
   List<RecentPlay> get recentPlays => List.unmodifiable(_recentPlays);
+
+  /// Etat perso par titre (like, date du like, super-like, ecoutes), tel
+  /// qu'enregistre dans le fichier de donnees perso. Garde aussi les titres
+  /// absents de la bibliotheque en memoire (synchro en cours, ou
+  /// bibliotheque perdue) pour que la synchro suivante les retrouve :
+  /// jamais vide par une synchro.
+  Map<String, Map<String, dynamic>> _trackStates = {};
+
+  /// Vrai pendant que la synchro complete remplit la bibliotheque lot par
+  /// lot : une sauvegarde a ce moment n'ecrit que les donnees perso, pas une
+  /// bibliotheque a moitie recue.
+  bool _libraryFetchInProgress = false;
 
   /// Enregistre un album/playlist/artiste comme "recemment ecoute".
   /// Deplace l'entree en tete si elle existe deja au lieu de la dupliquer.
@@ -256,7 +289,9 @@ class MusicService {
           jsonEncode(_pinnedItems.map((p) => p.toJson()).toList());
       var mirrorId = _pinnedMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final match = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -291,8 +326,8 @@ class MusicService {
   /// toutes les 6h (voir AppState._performSync).
   void _applyPinnedMirrorFrom(List<Map<String, dynamic>> ownedPlaylists) {
     final match = ownedPlaylists.firstWhere(
-      (pl) => (pl['comment'] as String? ?? '')
-          .startsWith(_pinnedMirrorTagPrefix),
+      (pl) =>
+          (pl['comment'] as String? ?? '').startsWith(_pinnedMirrorTagPrefix),
       orElse: () => <String, dynamic>{},
     );
     final id = match['id'] as String?;
@@ -369,25 +404,27 @@ class MusicService {
     _missingTracks = [];
     _missingTracksView = null;
     _recentPlays = [];
+    _trackStates = {};
     _pinnedItems = [];
     _existingCovers.clear();
     _tracksNeedingOrderRecovery.clear();
 
-    _shareLikesWithFriends = true;
+    _shareLikesWithFriends = false;
     _likesMirrorServerId = null;
-    _shareRecentPlaysWithFriends = true;
+    _shareRecentPlaysWithFriends = false;
     _recentPlaysMirrorServerId = null;
-    _shareNowPlayingWithFriends = true;
+    _shareNowPlayingWithFriends = false;
     _nowPlayingMirrorServerId = null;
+    _sharingConsentAsked = false;
     _pinnedMirrorServerId = null;
   }
 
-  String get _cacheFileName {
-    if (_currentUserId != null && _currentUserId!.isNotEmpty) {
-      return 'library_$_currentUserId.json';
-    }
-    return 'library.json';
-  }
+  String get _cacheFileName => 'library$_accountSuffix.json';
+  String get _userDataFileName => 'userdata$_accountSuffix.json';
+  String get _accountSuffix =>
+      (_currentUserId != null && _currentUserId!.isNotEmpty)
+          ? '_$_currentUserId'
+          : '';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -399,7 +436,7 @@ class MusicService {
   }
 
   Future<String> _getCoversDir() async {
-    final appDir = await getApplicationDocumentsDirectory();
+    final appDir = await (_storageRoot ?? getApplicationDocumentsDirectory)();
     final dir = Directory(p.join(appDir.path, 'covers'));
     await dir.create(recursive: true);
     return dir.path;
@@ -726,6 +763,20 @@ class MusicService {
   /// qu'elle est recuperee -- voir le commentaire complet la-bas.
   final Set<String> _tracksNeedingOrderRecovery = {};
 
+  /// Enregistre la réponse à l'écran de consentement et applique chaque
+  /// choix (visibilité des playlists miroirs sur le serveur).
+  Future<void> confirmSharingConsent({
+    required bool likes,
+    required bool recentPlays,
+    required bool nowPlaying,
+  }) async {
+    _sharingConsentAsked = true;
+    await setShareLikesWithFriends(likes);
+    await setShareRecentPlaysWithFriends(recentPlays);
+    await setShareNowPlayingWithFriends(nowPlaying);
+    await saveToCache();
+  }
+
   Future<void> setShareLikesWithFriends(bool value) async {
     _shareLikesWithFriends = value;
     _debouncedSave();
@@ -746,7 +797,9 @@ class MusicService {
     _likesMirrorDebounce = Timer(const Duration(seconds: 3), () async {
       var mirrorId = _likesMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -791,7 +844,9 @@ class MusicService {
     _recentPlaysMirrorDebounce = Timer(const Duration(seconds: 3), () async {
       var mirrorId = _recentPlaysMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -844,7 +899,9 @@ class MusicService {
       final name = jamSessionId != null ? 'Jam:$jamSessionId' : 'Now playing';
       var mirrorId = _nowPlayingMirrorServerId;
       if (mirrorId == null) {
-        final existing = await _navidrome.fetchPlaylists();
+        // null = serveur injoignable : surtout ne pas creer de doublon.
+        final existing = await _navidrome.fetchPlaylistsOrNull();
+        if (existing == null) return;
         final mine = existing.firstWhere(
           (pl) =>
               pl['owner'] == _navidrome.username &&
@@ -1053,32 +1110,101 @@ class MusicService {
     _syncRecentPlaysMirror();
   }
 
-  Future _getCacheFile() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final cacheDir = Directory(p.join(appDir.path, 'cache'));
-    await cacheDir.create(recursive: true);
-    return File(p.join(cacheDir.path, _cacheFileName));
+  /// Le cache vit dans le dossier support de l'app (AppData\Roaming sous
+  /// Windows, dossier prive sous Android) et plus dans Documents, que
+  /// Windows synchronise souvent avec OneDrive : ces fichiers n'ont rien a
+  /// faire dans le cloud de l'utilisateur. La bibliotheque va dans cache/,
+  /// les donnees perso dans userdata/ (voir LibraryCacheStore).
+  ///
+  /// Les noms de fichiers sont lus AVANT tout await : un changement de
+  /// compte pendant la recherche du dossier ne doit pas faire ecrire les
+  /// donnees d'un compte dans les fichiers d'un autre.
+  Future<LibraryCacheStore> _cacheStore() {
+    final libraryName = _cacheFileName;
+    final userDataName = _userDataFileName;
+    return _cacheStoreFor(libraryName, userDataName);
   }
 
-  Future _saveToCache() async {
-    final file = await _getCacheFile();
-    final data = {
-      'navidromeTracks': _navidromeTracks.map((t) => t.toJson()).toList(),
-      'offlineFiles': _offlineFiles,
+  Future<LibraryCacheStore> _cacheStoreFor(
+      String libraryName, String userDataName) async {
+    final root = await (_storageRoot ?? getApplicationSupportDirectory)();
+    final libraryPath = p.join(root.path, 'cache', libraryName);
+    if (_storageRoot == null) await _migrateLegacyCacheFile(File(libraryPath));
+    return LibraryCacheStore(
+      libraryPath: libraryPath,
+      userDataPath: p.join(root.path, 'userdata', userDataName),
+    );
+  }
+
+  /// Migration unique depuis Documents/cache (<= 1.2.x) : deplace l'ancien
+  /// fichier s'il n'existe pas encore de cache au nouvel endroit, puis
+  /// supprime l'ancien dans tous les cas (il contenait des URL avec jeton,
+  /// voir SubsonicRefs). Le contenu est assaini au premier chargement
+  /// (Track.fromJson) puis reecrit sans URL tout de suite apres.
+  Future<void> _migrateLegacyCacheFile(File target) async {
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final legacy =
+          File(p.join(documentsDir.path, 'cache', p.basename(target.path)));
+      await migrateLegacyFile(legacy: legacy, target: target);
+    } catch (e) {
+      debugPrint('MIGRATION CACHE: $e');
+    }
+  }
+
+  /// Reporte l'etat perso des titres en memoire dans [_trackStates]. Les
+  /// titres absents de la bibliotheque en memoire gardent leur etat.
+  void _captureTrackStates() {
+    for (final t in _navidromeTracks) {
+      final state = trackUserStateOf(t);
+      if (state == null) {
+        _trackStates.remove(t.id);
+      } else {
+        _trackStates[t.id] = state;
+      }
+    }
+  }
+
+  Map<String, dynamic> _userDataJson() {
+    _captureTrackStates();
+    return {
+      'offlineFiles': Map<String, String>.from(_offlineFiles),
       'missingTracks': _missingTracks,
       'recentPlays': _recentPlays.map((r) => r.toJson()).toList(),
       'playlists': _playlists.map((pl) => pl.toJson()).toList(),
-      'albums': _albums.map((a) => a.toJson()).toList(),
+      'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
       'shareLikesWithFriends': _shareLikesWithFriends,
       'likesMirrorServerId': _likesMirrorServerId,
       'shareRecentPlaysWithFriends': _shareRecentPlaysWithFriends,
       'recentPlaysMirrorServerId': _recentPlaysMirrorServerId,
       'shareNowPlayingWithFriends': _shareNowPlayingWithFriends,
       'nowPlayingMirrorServerId': _nowPlayingMirrorServerId,
-      'pinnedItems': _pinnedItems.map((p) => p.toJson()).toList(),
+      'sharingConsentAsked': _sharingConsentAsked,
       'pinnedMirrorServerId': _pinnedMirrorServerId,
+      'trackStates': Map<String, dynamic>.from(_trackStates),
     };
-    await file.writeAsString(jsonEncode(data));
+  }
+
+  Map<String, dynamic> _libraryJson() => {
+        'navidromeTracks': _navidromeTracks
+            .map((t) => withoutTrackUserFields(t.toJson()))
+            .toList(),
+        'albums': _albums.map((a) => a.toJson()).toList(),
+      };
+
+  Future _saveToCache() async {
+    // Contenu fige tout de suite (avant le premier await), comme les noms
+    // de fichiers dans _cacheStore.
+    final userData = _userDataJson();
+    final library = _libraryFetchInProgress ? null : _libraryJson();
+    final store = _cacheStore();
+    try {
+      await (await store).save(userData: userData, library: library);
+    } catch (e) {
+      // Le fichier precedent est intact (ecriture atomique) : on log et la
+      // prochaine sauvegarde reessaiera.
+      debugPrint('ERREUR SAUVEGARDE CACHE: $e');
+    }
   }
 
   void addTrack(Track track) {
@@ -1093,96 +1219,108 @@ class MusicService {
   }
 
   Future _loadFromCache() async {
-    final file = await _getCacheFile();
-    if (await file.exists()) {
+    final LoadedCache loaded;
+    try {
+      loaded = await (await _cacheStore()).load();
+    } catch (e) {
+      debugPrint('ERREUR CHARGEMENT CACHE: $e');
+      return;
+    }
+    debugPrint('CACHE: bibliotheque ${loaded.libraryBytes ~/ 1024} Ko, '
+        'donnees perso ${loaded.userDataBytes ~/ 1024} Ko');
+
+    final user = loaded.userData;
+    if (user != null) {
       try {
-        final data = jsonDecode(await file.readAsString());
-
-        _navidromeTracks = (data['navidromeTracks'] as List?)
-                ?.map((json) => Track.fromJson(json))
-                .toList() ??
-            [];
-        _navidromeTracksView = null;
-        _allTracks = List.from(_navidromeTracks);
-
-        _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
-
-        _playlists = (data['playlists'] as List?)
-                ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
-                .toList() ??
-            [];
-        _shareLikesWithFriends = data['shareLikesWithFriends'] ?? true;
-        _likesMirrorServerId = data['likesMirrorServerId'];
-        _shareRecentPlaysWithFriends =
-            data['shareRecentPlaysWithFriends'] ?? true;
-        _recentPlaysMirrorServerId = data['recentPlaysMirrorServerId'];
-        _shareNowPlayingWithFriends =
-            data['shareNowPlayingWithFriends'] ?? true;
-        _nowPlayingMirrorServerId = data['nowPlayingMirrorServerId'];
-        _missingTracks = (data['missingTracks'] as List?)
-                ?.map((m) => Map<String, dynamic>.from(m))
-                .toList() ??
-            [];
-        _missingTracksView = null;
-        _recentPlays = (data['recentPlays'] as List?)
-                ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
-                .toList() ??
-            [];
-        _pinnedItems = (data['pinnedItems'] as List?)
-                ?.map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
-                .toList() ??
-            [];
-        _pinnedMirrorServerId = data['pinnedMirrorServerId'];
-        _albums = (data['albums'] as List?)
-                ?.map((json) => Album.fromJson(json))
-                .toList() ??
-            [];
-        _albumsView = null;
-
-        // Ne rebuild que si pas d'albums en cache (premier chargement)
-        if (_albums.isEmpty) {
-          rebuildAlbums();
-        }
+        _applyUserData(user);
       } catch (e) {
-        debugPrint('ERREUR CHARGEMENT CACHE: $e');
+        debugPrint('ERREUR LECTURE DONNEES PERSO: $e');
       }
     }
+    final library = loaded.library;
+    if (library != null) {
+      try {
+        _applyLibrary(library, hasUserData: user != null);
+      } catch (e) {
+        debugPrint('ERREUR LECTURE BIBLIOTHEQUE: $e');
+      }
+    }
+
+    // Migration de schema, version precedente rechargee, ou cache d'avant
+    // la 1.3 (URL avec jeton, deja converties en references a la lecture,
+    // voir SubsonicRefs) : reecrit tout de suite plutot qu'a la prochaine
+    // synchro, pour que le disque soit sain des le premier lancement.
+    if (loaded.needsRewrite) await _saveToCache();
   }
 
-  /// Reconstruit filePath/coverArt des titres Navidrome deja en cache avec
-  /// l'URL de serveur courante. Ces champs sont figes au moment du sync
-  /// (NavidromeService._mapSubsonicTrack construit une URL absolue avec le
-  /// _baseUrl du moment), donc un cache charge au demarrage garde les URLs
-  /// de la DERNIERE synchro meme si l'utilisateur a change d'URL de serveur
-  /// depuis (ex: bascule VPN Tailscale <-> Funnel) -- l'authentification vit
-  /// deja avec la nouvelle URL, mais pas ces titres en cache tant qu'un vrai
-  /// resync (reseau) n'a pas eu lieu. Appelee juste apres une authentification
-  /// reussie (voir AppState.initialize) pour que covers/lecture marchent
-  /// immediatement, cache local uniquement, sans appel reseau.
-  void refreshNavidromeTrackUrls() {
-    if (!_navidrome.isConnected) return;
-    var changed = false;
-    for (final track in _navidromeTracks) {
-      if (!track.id.startsWith('navidrome_')) continue;
-      final rawId = track.id.substring('navidrome_'.length);
-      final freshFilePath = _navidrome.getStreamUrl(rawId);
-      final freshCoverPath = _navidrome.getCoverUrl(rawId);
-      if (track.filePath != freshFilePath ||
-          track.coverPath != freshCoverPath) {
-        track.filePath = freshFilePath;
-        track.coverPath = freshCoverPath;
-        changed = true;
+  void _applyUserData(Map<String, dynamic> data) {
+    _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
+    _playlists = (data['playlists'] as List?)
+            ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
+            .toList() ??
+        [];
+    final consent = SharingConsent.fromCache(data);
+    _shareLikesWithFriends = consent.likes;
+    _likesMirrorServerId = data['likesMirrorServerId'];
+    _shareRecentPlaysWithFriends = consent.recentPlays;
+    _recentPlaysMirrorServerId = data['recentPlaysMirrorServerId'];
+    _shareNowPlayingWithFriends = consent.nowPlaying;
+    _sharingConsentAsked = consent.asked;
+    _nowPlayingMirrorServerId = data['nowPlayingMirrorServerId'];
+    _missingTracks = (data['missingTracks'] as List?)
+            ?.map((m) => Map<String, dynamic>.from(m))
+            .toList() ??
+        [];
+    _missingTracksView = null;
+    _recentPlays = (data['recentPlays'] as List?)
+            ?.map((r) => RecentPlay.fromJson(Map<String, dynamic>.from(r)))
+            .toList() ??
+        [];
+    _pinnedItems = (data['pinnedItems'] as List?)
+            ?.map((p) => PinnedItem.fromJson(Map<String, dynamic>.from(p)))
+            .toList() ??
+        [];
+    _pinnedMirrorServerId = data['pinnedMirrorServerId'];
+    _trackStates = {
+      for (final e in ((data['trackStates'] as Map?) ?? const {}).entries)
+        if (e.value is Map)
+          e.key.toString(): Map<String, dynamic>.from(e.value as Map),
+    };
+  }
+
+  void _applyLibrary(Map<String, dynamic> data, {required bool hasUserData}) {
+    _navidromeTracks = (data['navidromeTracks'] as List?)
+            ?.map((json) => Track.fromJson(Map<String, dynamic>.from(json)))
+            .toList() ??
+        [];
+    // Le fichier de donnees perso fait foi pour les likes et compteurs. S'il
+    // est perdu (lui et sa version precedente), les likes reviendront du
+    // serveur a la prochaine synchro (voir reconcileTrack).
+    if (hasUserData) {
+      for (final t in _navidromeTracks) {
+        applyTrackUserState(t, _trackStates[t.id]);
       }
     }
-    if (changed) {
-      _navidromeTracksView = null;
-      _allTracks = List.from(_navidromeTracks);
+    _navidromeTracksView = null;
+    _allTracks = List.from(_navidromeTracks);
+    _albums = (data['albums'] as List?)
+            ?.map((json) => Album.fromJson(Map<String, dynamic>.from(json)))
+            .toList() ??
+        [];
+    _albumsView = null;
+
+    // Ne rebuild que si pas d'albums en cache (premier chargement)
+    if (_albums.isEmpty) {
       rebuildAlbums();
     }
   }
 
   Future<void> rescanCoversForExistingTracks() async {
-    final localTracks = _allTracks.where((t) => t.filePath != null).toList();
+    // Fichiers locaux uniquement : un titre Navidrome n'a pas de tags a
+    // relire ici (et son "chemin" est une URL avec jeton).
+    final localTracks = _allTracks
+        .where((t) => t.subsonicId == null && t.filePath != null)
+        .toList();
 
     int updated = 0;
     for (final track in localTracks) {
@@ -1215,13 +1353,17 @@ class MusicService {
                 year: track.year,
                 addedToServerAt: track.addedToServerAt,
                 genre: track.genre,
+                trackNumber: track.trackNumber,
+                discNumber: track.discNumber,
+                replayGain: track.replayGain,
               );
               updated++;
             }
           }
         }
       } catch (e) {
-        debugPrint('ERREUR COVER ${track.filePath}: $e');
+        // L'id plutot que le chemin : jamais d'URL (jeton) dans les logs.
+        debugPrint('ERREUR COVER ${track.id}: $e');
       }
     }
 
@@ -1239,12 +1381,16 @@ class MusicService {
     });
   }
 
-  /// [onProgress] est appele a chaque lot d'albums recu pendant la synchro
-  /// (voir NavidromeService.fetchAllTracks) : la bibliotheque affichee
-  /// (allTracks/albums) se remplit donc progressivement au lieu de rester
-  /// figee sur l'ancien cache jusqu'a la toute fin d'une resynchro complete,
-  /// qui peut prendre du temps sur une grosse bibliotheque.
-  Future<void> syncWithNavidrome({void Function()? onProgress}) async {
+  /// [onProgress] est appele a chaque page de titres recue pendant la
+  /// synchro (voir NavidromeService.fetchAllTracks) : la bibliotheque
+  /// affichee (allTracks/albums) se remplit donc progressivement au lieu de
+  /// rester figee sur l'ancien cache jusqu'a la toute fin d'une resynchro
+  /// complete, qui peut prendre du temps sur une grosse bibliotheque.
+  ///
+  /// Renvoie false si la synchro a echoue en cours de route : la
+  /// bibliotheque d'avant est alors remise en place, au lieu d'enregistrer
+  /// une bibliotheque tronquee a la premiere page en erreur.
+  Future<bool> syncWithNavidrome({void Function()? onProgress}) async {
     debugPrint('SYNC NAVIDROME...');
     _tracksNeedingOrderRecovery.clear();
     // Recuperes avant les titres (requetes uniques, rapides) pour pouvoir
@@ -1254,7 +1400,13 @@ class MusicService {
         await _navidrome.fetchStarredTrackIds(); // Map<String, DateTime?>
     final starredAlbumIds = await _navidrome.fetchStarredAlbumIds();
 
-    final localData = <String, Map<String, dynamic>>{};
+    // Etat perso enregistre d'abord (couvre les titres absents de la
+    // bibliotheque en memoire, ex. cache de bibliotheque perdu), puis celui
+    // des titres en memoire, plus recent.
+    final localData = <String, Map<String, dynamic>>{
+      for (final e in _trackStates.entries)
+        e.key: trackUserStateForReconcile(e.value),
+    };
     for (final t in _navidromeTracks) {
       localData[t.id] = {
         'isLiked': t.isLiked,
@@ -1278,19 +1430,39 @@ class MusicService {
       }
     }
 
+    final previousTracks = _navidromeTracks;
     final merged = <Track>[];
-    final fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
-      for (final t in batch) {
-        reconcile(t);
-      }
-      merged.addAll(batch);
-      _navidromeTracks = List.of(merged);
+    final List<Track> fresh;
+    // Les titres en memoire vont etre remplaces lot par lot : leur etat perso
+    // est mis de cote avant, pour qu'une sauvegarde pendant la synchro ne
+    // perde rien de ce qui n'a pas encore ete re-recu.
+    _captureTrackStates();
+    _libraryFetchInProgress = true;
+    try {
+      fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
+        for (final t in batch) {
+          reconcile(t);
+        }
+        merged.addAll(batch);
+        _navidromeTracks = List.of(merged);
+        _navidromeTracksView = null;
+        _allTracks = List.from(_navidromeTracks);
+        rebuildAlbums();
+        applyAlbumStarred();
+        onProgress?.call();
+      });
+    } on SubsonicException catch (e) {
+      debugPrint('SYNC NAVIDROME interrompue, bibliotheque conservee: $e');
+      _navidromeTracks = previousTracks;
       _navidromeTracksView = null;
       _allTracks = List.from(_navidromeTracks);
       rebuildAlbums();
       applyAlbumStarred();
       onProgress?.call();
-    });
+      return false;
+    } finally {
+      _libraryFetchInProgress = false;
+    }
 
     _navidromeTracks = fresh;
     _navidromeTracksView = null;
@@ -1302,6 +1474,7 @@ class MusicService {
     debugPrint('SYNC NAVIDROME: ${_navidromeTracks.length} tracks');
 
     await _syncPlaylistsFromServer();
+    return true;
   }
 
   /// Recupere juste les quelques albums les plus recents (un aller-retour
@@ -1440,7 +1613,10 @@ class MusicService {
     final username = _navidrome.username;
     if (username == null) return;
 
-    final raw = await _navidrome.fetchPlaylists();
+    // null = serveur injoignable : sans la liste du serveur, on republierait
+    // en double les playlists locales.
+    final raw = await _navidrome.fetchPlaylistsOrNull();
+    if (raw == null) return;
     final mine = raw.where((pl) => pl['owner'] == username).toList();
 
     // Playlists creees en local avant d'avoir jamais synchronise : on les
@@ -1562,7 +1738,8 @@ class MusicService {
     }
     _tracksNeedingOrderRecovery.clear();
     if (recovered > 0) {
-      debugPrint('ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
+      debugPrint(
+          'ORDRE TITRES LIKES: $recovered date(s) recuperee(s) depuis la playlist miroir');
       _debouncedSave();
     }
   }

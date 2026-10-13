@@ -81,7 +81,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
   @override
   Widget build(BuildContext context) {
     // Les etageres viennent de AppState (pre-calculees, stables pendant une
-    // synchro -- voir AppState._refreshHomeShelves) plutot que recalculees
+    // synchro -- voir HomeShelves) plutot que recalculees
     // ici a partir de albums/allTracks, qui grossissent en continu pendant
     // le chargement.
     return Selector<
@@ -190,8 +190,8 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: const Text('Tout afficher',
-                    style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600)),
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
               ),
           ],
         ),
@@ -272,8 +272,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
   }
 
   Widget _trackShelf(BuildContext context, List<Track> tracks) {
-    if (tracks.isEmpty)
+    if (tracks.isEmpty) {
       return _emptyShelf('Pas encore assez d\'écoutes cette semaine');
+    }
     final state = context.read<AppState>();
     return DesktopHorizontalShelf(
       height: 210,
@@ -381,7 +382,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ArtistAvatar(
-                      artistName: artist, fallbackCoverPath: coverPath, size: 96),
+                      artistName: artist,
+                      fallbackCoverPath: coverPath,
+                      size: 96),
                   const SizedBox(height: 8),
                   Text(artist,
                       maxLines: 1,
@@ -435,7 +438,7 @@ class _RecentPlayTile extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
             ),
             child: Row(
@@ -542,7 +545,8 @@ class _RecentPlayCover extends StatelessWidget {
           .cast<Playlist?>()
           .firstWhere((p) => p?.id == entry.id, orElse: () => null);
       if (playlist != null) {
-        return PlaylistCover(playlist: playlist, size: 48, borderRadius: _shape);
+        return PlaylistCover(
+            playlist: playlist, size: 48, borderRadius: _shape);
       }
     }
 
@@ -615,7 +619,8 @@ class _RecentPlayCover extends StatelessWidget {
 class DesktopShelfCover extends StatelessWidget {
   final String? coverPath;
   final double size;
-  const DesktopShelfCover({super.key, required this.coverPath, required this.size});
+  const DesktopShelfCover(
+      {super.key, required this.coverPath, required this.size});
 
   @override
   Widget build(BuildContext context) {

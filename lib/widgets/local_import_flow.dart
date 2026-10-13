@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -47,7 +49,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
 
   final messenger = ScaffoldMessenger.of(context);
 
-  showDialog(
+  unawaited(showDialog(
     context: context,
     barrierDismissible: false,
     builder: (_) => const AlertDialog(
@@ -65,7 +67,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
         ],
       ),
     ),
-  );
+  ));
 
   final result = await state.importLocalFiles(
     files: files,
@@ -75,7 +77,8 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
   );
 
   if (!context.mounted) return true;
-  Navigator.of(context, rootNavigator: true).pop(); // ferme le dialog de progression
+  Navigator.of(context, rootNavigator: true)
+      .pop(); // ferme le dialog de progression
 
   if (result == null) {
     messenger.showSnackBar(
@@ -89,7 +92,9 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
   }
 
   final destination = target.liked ? 'aux titres likes' : 'a la playlist';
-  final parts = <String>['${result.matchedCount} titre(s) ajouté(s) $destination'];
+  final parts = <String>[
+    '${result.matchedCount} titre(s) ajouté(s) $destination'
+  ];
   if (result.duplicateSkippedCount > 0) {
     parts.add(
         '${result.duplicateSkippedCount} déjà dans ta bibliothèque (pas re-uploadé)');
@@ -181,10 +186,9 @@ Future<LocalImportTarget?> _pickPlaylistTarget(
           if (playlists.isNotEmpty)
             const Divider(color: Color(0xFF2A2A2A), height: 1),
           ...playlists.map((pl) => ListTile(
-                leading:
-                    const Icon(Icons.queue_music, color: Colors.white54),
-                title: Text(pl.name,
-                    style: const TextStyle(color: Colors.white)),
+                leading: const Icon(Icons.queue_music, color: Colors.white54),
+                title:
+                    Text(pl.name, style: const TextStyle(color: Colors.white)),
                 onTap: () =>
                     Navigator.pop(ctx, LocalImportTarget.existing(pl.id)),
               )),

@@ -44,8 +44,9 @@ class DownloadStateIcon extends StatelessWidget {
             state == DownloadUiState.failed
                 ? Icons.error_outline
                 : Icons.download_rounded,
-            color:
-                state == DownloadUiState.failed ? Colors.redAccent : Colors.white54,
+            color: state == DownloadUiState.failed
+                ? Colors.redAccent
+                : Colors.white54,
             size: size,
           ),
         ),

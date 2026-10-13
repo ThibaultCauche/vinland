@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/album/album_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../models/album.dart';
-import '../models/discovered_album.dart';
 import '../models/discovered_track.dart';
 import '../models/pinned_item.dart';
-import '../models/recent_play.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
-import '../services/matching_service.dart';
 import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import 'desktop_hero_card.dart'
     show DesktopHeroMenuAction, DesktopMoreMenuButton, pickPlaylistAndAddTracks;
@@ -49,195 +47,34 @@ class DesktopAlbumView extends StatefulWidget {
 }
 
 class _DesktopAlbumViewState extends State<DesktopAlbumView> {
-  final _discovery = DiscoveryService();
-  final _downloadWorker = DownloadWorkerService();
+  late final AlbumModel _model;
   final _scrollController = SmoothScrollController();
-  List<DiscoveredTrack> _discoveredTracks = [];
-  // Reste a false le temps du tout premier chargement pour ne montrer ni
-  // les titres locaux seuls ni une liste incomplete avant d'avoir la
-  // reponse Deezer complete (evite le "flash" 4 titres -> 16 titres). Les
-  // rechargements suivants (fin de synchro) ne remettent pas ce flag a
-  // false : le contenu deja affiche reste visible pendant la mise a jour
-  // silencieuse.
-  bool _hasLoadedOnce = false;
-  final Map<int, DownloadUiState> _downloadStates = {};
-
-  AppState? _appState;
-  bool _wasSyncing = false;
 
   @override
   void initState() {
     super.initState();
-    _loadDeezerTracks();
+    _model = AlbumModel(
+      album: widget.album,
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+    )..addListener(_onModelChanged);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final appState = context.read<AppState>();
-    if (!identical(appState, _appState)) {
-      _appState?.removeListener(_onAppStateChanged);
-      _appState = appState;
-      _wasSyncing = appState.isSyncing;
-      appState.addListener(_onAppStateChanged);
-    }
-  }
-
-  /// Recharge le tracklist Deezer une fois la synchro NAS terminee : si cet
-  /// ecran a ete ouvert pendant une synchro en cours, le statut "possede"
-  /// calcule sur une bibliotheque encore incomplete serait fige et faux
-  /// pour le reste de la session (voir aussi DesktopArtistView).
-  void _onAppStateChanged() {
-    final syncing = _appState?.isSyncing ?? false;
-    if (_wasSyncing && !syncing && mounted) {
-      _loadDeezerTracks();
-    }
-    _wasSyncing = syncing;
-  }
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
-    _appState?.removeListener(_onAppStateChanged);
+    _model.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadDeezerTracks() async {
-    try {
-      final albums =
-          await _discovery.searchAlbums(widget.album.title, limit: 10);
-      DiscoveredAlbum? match;
-      for (final a in albums) {
-        if (MatchingService.artistsMatch(a.artistName, widget.album.artist) &&
-            MatchingService.albumsMatch(a.title, widget.album.title)) {
-          match = a;
-          break;
-        }
-      }
-      if (match != null) {
-        final tracks = await _discovery.getAlbumTracks(match.id);
-        if (mounted) setState(() => _discoveredTracks = tracks);
-      }
-    } catch (_) {}
-    if (mounted) setState(() => _hasLoadedOnce = true);
-  }
-
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final status = await showDownloadProgressDialog(context,
-        worker: _downloadWorker, jobId: jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) await _loadDeezerTracks();
-      if (mounted) setState(() => _downloadStates.remove(track.id));
-    } else {
-      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-    }
-  }
-
-  /// Fusionne les pistes locales par titre (garde la version likee) : evite
-  /// qu'un titre apparaisse deux fois si le NAS a un doublon range dans cet
-  /// album.
-  List<Track> _dedupByTitle(List<Track> tracks) {
-    final byTitle = <String, Track>{};
-    for (final t in tracks) {
-      final key = MatchingService.normalize(t.title);
-      final existing = byTitle[key];
-      if (existing == null || (!existing.isLiked && t.isLiked)) {
-        byTitle[key] = t;
-      }
-    }
-    return byTitle.values.toList();
-  }
-
-  /// Construit la liste affichee a partir du tracklist Deezer (ordre et
-  /// contenu de reference) : pour chaque titre, on cherche s'il existe en
-  /// local (lisible) ou non (grise+telechargeable). Les pistes locales
-  /// possedees mais absentes du tracklist Deezer (bonus...) sont ajoutees a
-  /// la suite.
-  List<_AlbumListItem> _buildTrackList(List<Track> localTracks) {
-    if (_discoveredTracks.isEmpty) {
-      return [for (final t in localTracks) _AlbumListItem(localTrack: t)];
-    }
-
-    final byTitle = {
-      for (final t in localTracks) MatchingService.normalize(t.title): t
-    };
-    final items = <_AlbumListItem>[];
-    final usedKeys = <String>{};
-
-    for (final dt in _discoveredTracks) {
-      final dtTitle = MatchingService.normalize(dt.title);
-      final exact = byTitle[dtTitle];
-      final match = exact ??
-          localTracks.cast<Track?>().firstWhere(
-                (t) => MatchingService.titlesMatch(t!.title, dt.title),
-                orElse: () => null,
-              );
-
-      if (match != null) {
-        usedKeys.add(MatchingService.normalize(match.title));
-        items.add(_AlbumListItem(localTrack: match));
-      } else {
-        items.add(_AlbumListItem(discoveredTrack: dt));
-      }
-    }
-
-    for (final t in localTracks) {
-      if (!usedKeys.contains(MatchingService.normalize(t.title))) {
-        items.add(_AlbumListItem(localTrack: t));
-      }
-    }
-    return items;
-  }
-
-  void _recordRecent(AppState state) {
-    state.recordRecentPlay(RecentPlay(
-      type: RecentPlayType.album,
-      id: widget.album.id,
-      title: widget.album.title,
-      subtitle: widget.album.artist,
-      coverPath: widget.album.coverPath,
-      playedAt: DateTime.now(),
-    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
 
-    var albumTracks = state.allTracks
-        .where((t) => MatchingService.albumsMatch(t.album, widget.album.title))
-        .toList();
-
-    // filterArtist n'est plus applique ici : une fois l'album ouvert, on
-    // montre TOUS ses titres, meme ceux ou l'artiste par lequel on est
-    // arrive (page artiste) n'apparait qu'en featuring ou pas du tout dans
-    // le champ artiste/album-artiste brut -- avant, un titre comme un
-    // single "Artiste X feat. Y" ouvert depuis la page de Y pouvait
-    // afficher "0 titres" alors que l'album existe bien (retour
-    // utilisateur).
-    albumTracks = _dedupByTitle(albumTracks)
-      ..sort((a, b) => a.title.compareTo(b.title));
-    final items = _buildTrackList(albumTracks);
+    final albumTracks = _model.localTracks;
+    final items = _model.items(albumTracks);
     final isLiked = widget.album.isSaved;
 
     return Padding(
@@ -252,28 +89,19 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                 SliverToBoxAdapter(
                   child: _Header(
                     album: widget.album,
-                    trackCount: _hasLoadedOnce ? items.length : albumTracks.length,
+                    trackCount: _model.hasLoadedOnce
+                        ? items.length
+                        : albumTracks.length,
                     isLiked: isLiked,
-                    onToggleLike: () =>
-                        state.toggleLikeAlbum(widget.album.id),
+                    onToggleLike: () => state.toggleLikeAlbum(widget.album.id),
                     onOpenArtist: () =>
                         widget.onOpenArtist(widget.album.artist),
                     onPlay: albumTracks.isEmpty
                         ? null
-                        : () {
-                            _recordRecent(state);
-                            state.playTrack(albumTracks.first,
-                                trackList: albumTracks);
-                          },
+                        : () => _model.playAll(albumTracks),
                     onShuffle: albumTracks.isEmpty
                         ? null
-                        : () {
-                            _recordRecent(state);
-                            final shuffled = List<Track>.of(albumTracks)
-                              ..shuffle();
-                            state.playTrack(shuffled.first,
-                                trackList: shuffled);
-                          },
+                        : () => _model.playAll(albumTracks, shuffle: true),
                     moreActions: [
                       DesktopHeroMenuAction(
                         label: state.isPinned(
@@ -304,8 +132,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                         DesktopHeroMenuAction(
                           label: 'Télécharger',
                           icon: Icons.download_outlined,
-                          onTap: () =>
-                              state.downloadTracksOffline(albumTracks),
+                          onTap: () => state.downloadTracksOffline(albumTracks),
                         ),
                         DesktopHeroMenuAction(
                           label: 'Ajouter à une playlist',
@@ -318,7 +145,7 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                if (!_hasLoadedOnce)
+                if (!_model.hasLoadedOnce)
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     sliver: SliverList(
@@ -333,32 +160,29 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final item = items[index];
-                        if (item.localTrack != null) {
-                          final track = item.localTrack!;
+                        if (item.local != null) {
+                          final track = item.local!;
                           return Selector<AppState, Track?>(
                             selector: (_, s) => s.displayTrack,
                             builder: (context, currentTrack, __) =>
                                 DesktopTrackRow(
                               track: track,
                               isPlaying: currentTrack?.id == track.id,
-                              onTap: () {
-                                _recordRecent(state);
-                                state.playTrack(track,
-                                    trackList: albumTracks);
-                              },
+                              onTap: () => _model.play(track, albumTracks),
                               onLike: () => state.toggleLike(track.id),
                               onMore: () {},
                               onOpenArtist: widget.onOpenArtist,
                             ),
                           );
                         }
-                        final dt = item.discoveredTrack!;
+                        final dt = item.discovered!;
                         return _DiscoveredTrackRow(
                           index: index,
                           track: dt,
-                          downloadState: _downloadStates[dt.id],
-                          showDownloadButton: _downloadWorker.isConfigured,
-                          onDownloadTap: () => _downloadTrack(dt),
+                          downloadState: _model.downloadStateOf(dt.id),
+                          showDownloadButton: _model.canDownload,
+                          onDownloadTap: () => _model.downloadTrack(dt,
+                              wait: waitWithProgressDialog(context)),
                         );
                       },
                       childCount: items.length,
@@ -373,12 +197,6 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
       ),
     );
   }
-}
-
-class _AlbumListItem {
-  final Track? localTrack;
-  final DiscoveredTrack? discoveredTrack;
-  const _AlbumListItem({this.localTrack, this.discoveredTrack});
 }
 
 /// Ligne fantome affichee pendant le tout premier chargement Deezer, le
@@ -468,7 +286,7 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(DesktopGlass.radiusMd),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.5),
+                  color: Colors.black.withValues(alpha: 0.5),
                   blurRadius: 24,
                   offset: const Offset(0, 12)),
             ],
@@ -531,8 +349,7 @@ class _Header extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text('Album • $trackCount titre${trackCount > 1 ? 's' : ''}',
-                  style:
-                      const TextStyle(color: Colors.white54, fontSize: 12)),
+                  style: const TextStyle(color: Colors.white54, fontSize: 12)),
               const SizedBox(height: 16),
               Row(
                 children: [

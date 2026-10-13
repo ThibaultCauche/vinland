@@ -1,20 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/search/search_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
-import '../models/discovered_artist.dart';
-import '../models/discovered_track.dart';
 import '../models/search_history_item.dart';
 import '../models/track.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
-import '../services/matching_service.dart';
-import '../services/search_history_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
-import '../widgets/download_progress_dialog.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'glass.dart';
 import '../widgets/smooth_scroll.dart';
@@ -44,126 +41,33 @@ class DesktopSearchView extends StatefulWidget {
 
 class _DesktopSearchViewState extends State<DesktopSearchView> {
   final _controller = TextEditingController();
-  final _discovery = DiscoveryService();
-  final _historyService = SearchHistoryService();
-  final _downloadWorker = DownloadWorkerService();
+  late final SearchModel _model;
   final _scrollController = SmoothScrollController();
-
-  Timer? _debounce;
-  bool _isLoading = false;
-  String _query = '';
-
-  List<_SearchTrack> _tracks = [];
-  List<DiscoveredArtist> _artists = [];
-  List<DiscoveredAlbum> _albums = [];
-  List<SearchHistoryItem> _history = [];
-  final Map<int, DownloadUiState> _downloadStates = {};
 
   @override
   void initState() {
     super.initState();
     final state = context.read<AppState>();
-    _historyService.setCurrentUser(state.currentUserId);
-    _loadHistory();
+    _model = SearchModel(
+      discovery: context.read<DiscoveryService>(),
+      library: state,
+      userId: state.currentUserId,
+      albumLimit: 12,
+    )..addListener(_onModelChanged);
   }
+
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
+    _model.dispose();
     _controller.dispose();
     _scrollController.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadHistory() async {
-    await _historyService.ensureLoaded();
-    if (mounted) setState(() => _history = _historyService.history);
-  }
-
-  void _onChanged(String value) {
-    _debounce?.cancel();
-    if (value.trim().isEmpty) {
-      setState(() {
-        _query = '';
-        _tracks = [];
-        _artists = [];
-        _albums = [];
-      });
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(value));
-  }
-
-  Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
-    for (final t in candidates) {
-      if (MatchingService.artistsMatch(t.artist, dt.artistName) &&
-          MatchingService.titlesMatch(t.title, dt.title)) {
-        return t;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _search(String query) async {
-    if (query.trim().isEmpty) return;
-    setState(() {
-      _isLoading = true;
-      _query = query;
-    });
-
-    final state = context.read<AppState>();
-    final results = await Future.wait([
-      _discovery.searchArtists(query, limit: 10),
-      // Pas de tri par popularite d'artiste ici (contrairement a une
-      // premiere version) : ca faisait sortir en premier les albums de
-      // l'artiste Deezer le plus connu parmi les resultats plutot que les
-      // albums les plus pertinents pour la recherche tapee -- l'app mobile
-      // (SearchScreen) garde l'ordre de pertinence renvoye par Deezer et
-      // fonctionne bien (retour utilisateur), on fait pareil ici.
-      _discovery.searchAlbums(query, limit: 12),
-      _discovery.searchTracks(query, limit: 15),
-    ]);
-
-    if (!mounted) return;
-    final artists = results[0] as List<DiscoveredArtist>;
-    final albums = results[1] as List<DiscoveredAlbum>;
-    final discoveredTracks = results[2] as List<DiscoveredTrack>;
-    // Titres trouves via l'API Deezer (pas uniquement ceux deja sur le NAS,
-    // retour utilisateur) : chaque resultat garde un lien vers son titre
-    // local s'il existe deja (pour la lecture directe), sinon reste
-    // telechargeable comme les autres listes de titres decouverts de l'app.
-    final localTracks = state.allTracks;
-    final tracks = [
-      for (final dt in discoveredTracks)
-        _SearchTrack(discovered: dt, local: _findLocalTrack(dt, localTracks)),
-    ];
-
-    setState(() {
-      _tracks = tracks;
-      _artists = artists;
-      _albums = albums;
-      _isLoading = false;
-    });
-  }
-
-  void _openArtistResult(DiscoveredArtist artist) {
-    _historyService.addArtist(artist.name, artist.id.toString(),
-        query: _query, imageUrl: artist.pictureUrl);
-    widget.onOpenArtist(artist.name);
-  }
-
   void _openAlbumResult(DiscoveredAlbum album) {
-    _historyService.addAlbum(album.title, album.id.toString(), album.artistName,
-        query: _query, imageUrl: album.coverUrl);
-    final state = context.read<AppState>();
-    Album? localAlbum;
-    try {
-      localAlbum = state.albums.firstWhere(
-        (a) => a.title.toLowerCase().trim() == album.title.toLowerCase().trim(),
-      );
-    } catch (_) {
-      localAlbum = null;
-    }
+    final localAlbum = _model.openAlbum(album);
     if (localAlbum != null) {
       widget.onOpenAlbum(localAlbum);
     } else {
@@ -172,65 +76,11 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
   }
 
   Future<void> _playLocalTrack(Track track) async {
-    await _historyService.addTrack(
-      track.title,
-      track.id,
-      track.artist,
-      query: _query,
-      imageUrl:
-          track.coverPath?.startsWith('http') == true ? track.coverPath : null,
-    );
+    await _model.rememberTrack(track);
     if (!mounted) return;
-    final playable = [
-      for (final t in _tracks)
-        if (t.local != null) t.local!
-    ];
-    context.read<AppState>().playTrack(track, trackList: playable);
-  }
-
-  /// Demande le telechargement automatique d'un titre trouve via Deezer mais
-  /// pas encore sur le NAS -- meme logique que DesktopArtistView/AlbumScreen
-  /// (DownloadWorkerService), jusqu'ici jamais branchee sur cette page
-  /// puisque la recherche ne montrait que des titres locaux.
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final status = await showDownloadProgressDialog(context,
-        worker: _downloadWorker, jobId: jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) {
-        setState(() {
-          _downloadStates.remove(track.id);
-          final i = _tracks.indexWhere((t) => t.discovered.id == track.id);
-          if (i != -1) {
-            _tracks[i] = _SearchTrack(
-              discovered: track,
-              local: _findLocalTrack(track, context.read<AppState>().allTracks),
-            );
-          }
-        });
-      }
-    } else {
-      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-    }
+    unawaited(context
+        .read<AppState>()
+        .playTrack(track, trackList: _model.playableTracks));
   }
 
   void _onHistoryTap(SearchHistoryItem item) {
@@ -244,12 +94,8 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
         }
         break;
       case 'track':
-        if (item.id != null) {
-          final state = context.read<AppState>();
-          final matches =
-              state.allTracks.where((t) => t.id == item.id).toList();
-          if (matches.isNotEmpty) state.playTrack(matches.first);
-        }
+        final track = _model.historyTrack(item);
+        if (track != null) context.read<AppState>().playTrack(track);
         break;
     }
   }
@@ -280,7 +126,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
               child: GlassPanel(
                 borderRadius: BorderRadius.circular(20),
                 blurSigma: 0,
-                tint: Colors.white.withOpacity(0.06),
+                tint: Colors.white.withValues(alpha: 0.06),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: SizedBox(
                   height: 36,
@@ -301,8 +147,8 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
                             border: InputBorder.none,
                             isDense: true,
                           ),
-                          onChanged: _onChanged,
-                          onSubmitted: _search,
+                          onChanged: _model.onQueryChanged,
+                          onSubmitted: _model.search,
                         ),
                       ),
                       if (_controller.text.isNotEmpty)
@@ -311,7 +157,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
                           size: 16,
                           onPressed: () {
                             _controller.clear();
-                            _onChanged('');
+                            _model.onQueryChanged('');
                             setState(() {});
                           },
                         ),
@@ -321,7 +167,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
               ),
             ),
           ),
-          if (_isLoading) ...[
+          if (_model.isLoading) ...[
             const SizedBox(height: 8),
             const LinearProgressIndicator(
                 color: DesktopGlass.accent,
@@ -329,7 +175,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
           ],
           const SizedBox(height: 20),
           Expanded(
-            child: _query.isEmpty ? _buildHistory() : _buildResults(),
+            child: _model.query.isEmpty ? _buildHistory() : _buildResults(),
           ),
         ],
       ),
@@ -337,7 +183,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
   }
 
   Widget _buildHistory() {
-    if (_history.isEmpty) {
+    if (_model.history.isEmpty) {
       return const Center(
         child: Text('Recherchez un artiste, un album ou un titre',
             style: TextStyle(color: Colors.white38)),
@@ -356,33 +202,28 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
                     fontSize: 16,
                     fontWeight: FontWeight.w600)),
             TextButton(
-              onPressed: () async {
-                await _historyService.clear();
-                if (mounted) setState(() => _history = []);
-              },
+              onPressed: _model.clearHistory,
               child: const Text('Effacer',
                   style: TextStyle(color: DesktopGlass.accent)),
             ),
           ],
         ),
         const SizedBox(height: 4),
-        for (final item in _history)
+        for (final item in _model.history)
           _HistoryRow(
             item: item,
             onTap: () => _onHistoryTap(item),
-            onRemove: () async {
-              await _historyService.remove(item);
-              if (mounted) setState(() => _history = _historyService.history);
-            },
+            onRemove: () => _model.removeFromHistory(item),
           ),
       ],
     );
   }
 
   Widget _buildResults() {
-    final hasAnything =
-        _artists.isNotEmpty || _albums.isNotEmpty || _tracks.isNotEmpty;
-    if (!hasAnything && !_isLoading) {
+    final artists = _model.artists;
+    final albums = _model.albums;
+    final tracks = _model.tracks;
+    if (!_model.hasResults && !_model.isLoading) {
       return const Center(
         child: Text('Aucun résultat', style: TextStyle(color: Colors.white38)),
       );
@@ -392,19 +233,22 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
       controller: _scrollController,
       padding: const EdgeInsets.only(bottom: DesktopGlass.playerBarReserve),
       children: [
-        if (_artists.isNotEmpty) ...[
+        if (artists.isNotEmpty) ...[
           _sectionTitle('Artistes'),
           DesktopHorizontalShelf(
             height: 128,
-            itemCount: _artists.length,
+            itemCount: artists.length,
             itemBuilder: (context, i) {
-              final artist = _artists[i];
+              final artist = artists[i];
               return Padding(
                 padding: const EdgeInsets.only(right: 20),
                 child: SizedBox(
                   width: 100,
                   child: DesktopHoverable(
-                    onTap: () => _openArtistResult(artist),
+                    onTap: () {
+                      _model.openArtist(artist);
+                      widget.onOpenArtist(artist.name);
+                    },
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -441,7 +285,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
             },
           ),
         ],
-        if (_albums.isNotEmpty) ...[
+        if (albums.isNotEmpty) ...[
           _sectionTitle('Albums'),
           // Une seule rangee qui defile horizontalement, comme la rangee
           // Artistes juste au-dessus -- retour utilisateur : ca permet de
@@ -449,9 +293,9 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
           // lignes.
           DesktopHorizontalShelf(
             height: 210,
-            itemCount: _albums.length,
+            itemCount: albums.length,
             itemBuilder: (context, i) {
-              final album = _albums[i];
+              final album = albums[i];
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: SizedBox(
@@ -463,14 +307,14 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
             },
           ),
         ],
-        if (_tracks.isNotEmpty) ...[
-          _sectionTitle('Titres (${_tracks.length})'),
+        if (tracks.isNotEmpty) ...[
+          _sectionTitle('Titres (${tracks.length})'),
           Selector<AppState, Track?>(
             selector: (_, s) => s.displayTrack,
             builder: (context, currentTrack, __) {
               return Column(
                 children: [
-                  for (final t in _tracks)
+                  for (final t in tracks)
                     _SearchTrackRow(
                       track: t,
                       isPlaying:
@@ -482,9 +326,10 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
                           ? () =>
                               context.read<AppState>().toggleLike(t.local!.id)
                           : null,
-                      downloadState: _downloadStates[t.discovered.id],
-                      showDownloadButton: _downloadWorker.isConfigured,
-                      onDownloadTap: () => _downloadTrack(t.discovered),
+                      downloadState: _model.downloadStateOf(t.discovered.id),
+                      showDownloadButton: _model.canDownload,
+                      onDownloadTap: () => _model.downloadTrack(t.discovered,
+                          wait: waitWithProgressDialog(context)),
                     ),
                 ],
               );
@@ -580,23 +425,13 @@ class _AlbumResultCard extends StatelessWidget {
   }
 }
 
-/// Un resultat de la section "Titres" : toujours issu de la recherche
-/// Deezer (retour utilisateur -- avant, cette section ne montrait que les
-/// titres deja sur le NAS), avec un lien vers le titre local correspondant
-/// quand il existe deja, pour la lecture directe.
-class _SearchTrack {
-  final DiscoveredTrack discovered;
-  final Track? local;
-  const _SearchTrack({required this.discovered, this.local});
-}
-
 /// Ligne d'un resultat de la section "Titres" -- meme habillage que
 /// _PopularTrackRow (DesktopArtistView) : cover, titre/artiste, puis
 /// like+menu si le titre est deja sur le NAS, sinon un bouton de
 /// telechargement (voir DownloadStateIcon) plutot qu'une ligne inerte, comme
 /// partout ailleurs ou l'app montre un titre pas encore possede.
 class _SearchTrackRow extends StatelessWidget {
-  final _SearchTrack track;
+  final SearchTrack track;
   final bool isPlaying;
   final VoidCallback? onTap;
   final VoidCallback? onLike;
@@ -742,7 +577,9 @@ class _HistoryRowState extends State<_HistoryRow> {
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
+            color: _hover
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
           ),
           child: Row(

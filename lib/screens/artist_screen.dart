@@ -1,78 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../navigation/overlay_navigator.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
-import '../models/discovered_artist.dart';
-import '../models/discovered_track.dart';
-import '../models/recent_play.dart';
-import '../services/artist_discography.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
-import '../services/matching_service.dart';
 import '../widgets/download_button.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/artist_options_sheet.dart';
 import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/player/player_options_sheet.dart';
+import '../features/artist/artist_model.dart';
+import '../features/shared/download_waiters.dart';
 import 'album_screen.dart';
 import 'artist_discography_screen.dart';
 import 'discovered_album_screen.dart';
 
-class _ArtistCache {
-  final DiscoveredArtist? artist;
-  final List<DiscoveredAlbum> albums;
-  final List<DiscoveredTrack> topTracks;
-  final bool deepMatched;
-  _ArtistCache(
-      {this.artist,
-      required this.albums,
-      required this.topTracks,
-      this.deepMatched = false});
-}
-
-class ArtistScreen extends StatefulWidget {
+class ArtistScreen extends StatefulWidget implements KeyedOverlay {
   final String artistName;
 
   const ArtistScreen({super.key, required this.artistName});
+
+  /// Taper deux fois de suite sur le meme artiste n'empile pas deux pages.
+  @override
+  Object get overlayKey => artistName;
 
   @override
   State<ArtistScreen> createState() => _ArtistScreenState();
 }
 
 class _ArtistScreenState extends State<ArtistScreen> {
-  static final Map<String, _ArtistCache> _deezerCache = {};
   // Position de defilement par artiste, conservee pour la duree de la
   // session -- restauree a la reouverture d'une page artiste deja visitee
-  // au lieu de systematiquement remonter en haut (retour utilisateur). Meme
-  // pattern que _deezerCache ci-dessus.
+  // au lieu de systematiquement remonter en haut (retour utilisateur).
   static final Map<String, double> _savedScrollOffsets = {};
 
-  final _discovery = DiscoveryService();
-  final _downloadWorker = DownloadWorkerService();
-  final Map<int, DownloadUiState> _downloadStates = {};
+  late final ArtistModel _model;
   late final ScrollController _scrollController;
-
-  DiscoveredArtist? _discoveredArtist;
-  List<DiscoveredAlbum> _discoveredAlbums = [];
-  List<DiscoveredTrack> _topTracks = [];
-  bool _loadingDeezer = true;
-  bool _deepMatching = false;
-  bool _loadingTopTracks = true;
-  int _deepMatchProgress = 0;
-  int _deepMatchTotal = 0;
-
-  // Nombre de titres reel par album Deezer (id -> nb_tracks) : l'endpoint
-  // liste des albums d'un artiste ne renvoie pas ce champ (contrairement a
-  // /album/{id} ou /search/album), donc on le recupere a part pour ne pas
-  // afficher le nombre de titres deja telecharges comme total de l'album.
-  final Map<int, int> _trueTrackCounts = {};
-
-  AppState? _appState;
-  bool _wasSyncing = false;
 
   @override
   void initState() {
@@ -82,286 +49,45 @@ class _ArtistScreenState extends State<ArtistScreen> {
     _scrollController.addListener(() {
       _savedScrollOffsets[widget.artistName] = _scrollController.offset;
     });
-    final cached = _deezerCache[MatchingService.normalize(widget.artistName)];
-    if (cached != null) {
-      _discoveredArtist = cached.artist;
-      _discoveredAlbums = cached.albums;
-      _topTracks = cached.topTracks;
-      _loadingDeezer = false;
-      _loadingTopTracks = false;
-      if (!cached.deepMatched) _deepMatchAlbums();
-      _loadTrueTrackCounts();
-    } else {
-      _loadDeezerData();
-    }
+    // Seuls 4 albums sont affiches ici (voir shownAlbumEntries) : on ne
+    // verifie que les 12 premiers plutot que toute la discographie Deezer
+    // (retour utilisateur : chargement inutilement lourd). La page
+    // Discographie fait sa propre verification complete.
+    _model = ArtistModel(
+      artistName: widget.artistName,
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+      deepMatchLimit: 12,
+    )..addListener(_onModelChanged);
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final appState = context.read<AppState>();
-    if (!identical(appState, _appState)) {
-      _appState?.removeListener(_onAppStateChanged);
-      _appState = appState;
-      _wasSyncing = appState.isSyncing;
-      appState.addListener(_onAppStateChanged);
-    }
-  }
-
-  /// Si cette page a ete ouverte pendant que la bibliotheque NAS finissait
-  /// encore de charger, le statut "possede" calcule alors (isInLibrary) est
-  /// fige dans le cache de session et reste faux pour le reste de la
-  /// session -- on relance le calcul une fois la synchro terminee. Meme
-  /// logique que DesktopArtistView.
-  void _onAppStateChanged() {
-    final syncing = _appState?.isSyncing ?? false;
-    if (_wasSyncing && !syncing && mounted) {
-      _loadDeezerData();
-    }
-    _wasSyncing = syncing;
-  }
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
-    _appState?.removeListener(_onAppStateChanged);
+    _model.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadTrueTrackCounts() async {
-    final targets = _discoveredAlbums
-        .where((a) => a.isInLibrary && !_trueTrackCounts.containsKey(a.id))
-        .toList();
-    if (targets.isEmpty) return;
-
-    // Un seul setState a la toute fin, pas un par lot : ce nombre de titres
-    // n'alimente qu'un petit label cosmetique sur chaque carte d'album, rien
-    // qui justifie de re-render toute la page (tri/filtrage des sections
-    // Albums/Singles, matching des titres populaires...) plusieurs fois de
-    // suite pendant le chargement -- sur un artiste avec beaucoup d'albums,
-    // ces reconstructions repetees rendaient la page saccadee et peu
-    // reactive au scroll le temps du chargement (retour utilisateur).
-    const batchSize = 5;
-    for (var i = 0; i < targets.length; i += batchSize) {
-      final batch = targets.skip(i).take(batchSize);
-      await Future.wait(batch.map((a) async {
-        final full = await _discovery.getAlbum(a.id);
-        if (full?.nbTracks != null) _trueTrackCounts[a.id] = full!.nbTracks!;
-      }));
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _loadDeezerData() async {
-    final data = await loadArtistDeezerData(_discovery, widget.artistName);
-    _discoveredArtist = data.artist;
-    _discoveredAlbums = data.albums;
-    _topTracks = data.topTracks;
-
-    if (mounted)
-      setState(() {
-        _loadingDeezer = false;
-        _loadingTopTracks = false; // ← ici, APRÈS le Future.wait
-      });
-    _deezerCache[MatchingService.normalize(widget.artistName)] = _ArtistCache(
-      artist: _discoveredArtist,
-      albums: _discoveredAlbums,
-      topTracks: _topTracks,
-    );
-    _deepMatchAlbums();
-    _loadTrueTrackCounts();
-  }
-
-  /// Demande le telechargement automatique d'un titre populaire absent du
-  /// NAS (voir DownloadWorkerService) -- meme logique que AlbumScreen,
-  /// jusqu'ici jamais branchee sur cette page (retour utilisateur). Pas
-  /// besoin de recharger _topTracks apres coup : `popularTracks` (dans
-  /// build()) recroise deja _topTracks avec state.allTracks a chaque
-  /// reconstruction, donc handleTrackDownloaded() suffit a faire apparaitre
-  /// le titre comme disponible.
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final status = await showDownloadProgressDialog(context,
-        worker: _downloadWorker, jobId: jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) setState(() => _downloadStates.remove(track.id));
-    } else {
-      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-    }
-  }
-
-  Future<void> _deepMatchAlbums() async {
-    final state = context.read<AppState>();
-
-    // Ne verifie que les albums susceptibles d'apparaitre dans l'apercu (4
-    // affiches ici, voir shownAlbumEntries) plutot que toute la
-    // discographie Deezer (jusqu'a plusieurs dizaines d'albums) -- retour
-    // utilisateur : verification/chargement inutilement lourds pour une
-    // page qui n'en montre que 4. Marge (12 au lieu de 4) pour absorber les
-    // changements d'ordre au fur et a mesure que des albums basculent de
-    // "decouvert" a "possede" pendant la verification. La page
-    // Discographie fait sa propre verification complete independamment
-    // (voir ArtistDiscographyScreen), donc rien n'y manquera.
-    final (_, localAlbums) = _artistTracksAndAlbums(state);
-    final previewCandidates = buildArtistAlbumEntries(
-      localAlbums: localAlbums,
-      discoveredAlbums: _discoveredAlbums,
-      trueTrackCounts: _trueTrackCounts,
-    ).take(12).map((e) => e.discovered).whereType<DiscoveredAlbum>().toList();
-
-    final unmatchedTotal =
-        previewCandidates.where((a) => !a.isInLibrary).length;
-    if (unmatchedTotal == 0) return;
-
-    if (mounted) {
-      setState(() {
-        _deepMatching = true;
-        _deepMatchTotal = unmatchedTotal;
-        _deepMatchProgress = 0;
-      });
-    }
-
-    // setState() ici recalcule aussi tracks/albums de tout l'artiste (voir
-    // le selector de build(), qui rescanne toute la bibliotheque locale) --
-    // un artiste avec beaucoup d'albums non-matches declenchait un
-    // setState() par lot de 5, donc un rescan complet toutes les quelques
-    // requetes reseau : page saccadee et scroll qui ne repondait plus le
-    // temps du chargement (retour utilisateur). On garde la mise a jour
-    // progressive (versus tout a la fin), juste moins frequente --
-    // ponytail: throttle naif base sur le temps, pas de debounce propre,
-    // suffisant ici puisque la derniere iteration force toujours une mise a
-    // jour finale.
-    var lastUiUpdate = DateTime.now();
-    await deepMatchArtistAlbums(
-      discovery: _discovery,
-      discoveredAlbums: previewCandidates,
-      allLocalTracks: state.allTracks,
-      artistName: widget.artistName,
-      onProgress: (completed, total) {
-        final isLast = completed >= total;
-        final now = DateTime.now();
-        if (mounted &&
-            (isLast ||
-                now.difference(lastUiUpdate) >
-                    const Duration(milliseconds: 400))) {
-          lastUiUpdate = now;
-          setState(() => _deepMatchProgress = completed);
-        }
-      },
-    );
-
-    if (mounted) {
-      setState(() {
-        _deepMatching = false;
-        final key = MatchingService.normalize(widget.artistName);
-        if (_deezerCache.containsKey(key)) {
-          _deezerCache[key] = _ArtistCache(
-            artist: _discoveredArtist,
-            albums: _discoveredAlbums,
-            topTracks: _topTracks,
-            deepMatched: true,
-          );
-        }
-      });
-    }
-  }
-
-  /// Trouve la track locale correspondant a une track Deezer
-  Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
-    for (final t in candidates) {
-      if (MatchingService.titlesMatch(t.title, dt.title)) return t;
-    }
-    return null;
-  }
-
-  // Memoise le resultat du filtrage artiste (state.allTracks/albums,
-  // MusicService.navidromeTracks/albums, sont des vues mises en cache : la
-  // meme instance de List tant que la bibliotheque locale n'a pas vraiment
-  // change -- voir les getters correspondants dans music_service.dart) au
-  // lieu de rescanner toute la bibliotheque (potentiellement des milliers de
-  // titres) a CHAQUE rebuild de cet ecran. Cet ecran declenche beaucoup de
-  // setState() locaux pendant son chargement (progression du deep-match
-  // Deezer...), qui ne touchent jamais allTracks/albums -- sans ce cache, un
-  // gros artiste avec beaucoup d'albums rendait la page saccadee et peu
-  // reactive au scroll tout le temps du chargement (retour utilisateur).
-  List<Track>? _matchCacheTracksInput;
-  List<Album>? _matchCacheAlbumsInput;
-  (List<Track>, List<Album>)? _matchCacheResult;
-
-  (List<Track>, List<Album>) _artistTracksAndAlbums(AppState state) {
-    if (identical(state.allTracks, _matchCacheTracksInput) &&
-        identical(state.albums, _matchCacheAlbumsInput)) {
-      return _matchCacheResult!;
-    }
-
-    final tracks = tracksForArtist(state.allTracks, widget.artistName);
-    final albums =
-        albumsForArtist(state.albums, state.allTracks, widget.artistName);
-
-    _matchCacheTracksInput = state.allTracks;
-    _matchCacheAlbumsInput = state.albums;
-    _matchCacheResult = (tracks, albums);
-    return _matchCacheResult!;
-  }
-
-  void _recordRecent(AppState state, {String? coverPath}) {
-    state.recordRecentPlay(RecentPlay(
-      type: RecentPlayType.artist,
-      id: widget.artistName,
-      title: widget.artistName,
-      subtitle: 'Artiste',
-      coverPath: coverPath ?? _discoveredArtist?.pictureBigUrl,
-      playedAt: DateTime.now(),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (List<Track>, List<Album>)>(
-      selector: (_, state) => _artistTracksAndAlbums(state),
+    final model = _model;
+    // Ne se redessine que si la bibliotheque de l'artiste change, pas a
+    // chaque notification d'AppState (position de lecture...).
+    return Selector<AppState, ArtistLibrary>(
+      selector: (_, __) => model.local,
       builder: (context, data, child) {
-        final (allArtistTracks, localAlbums) = data;
+        final allArtistTracks = data.tracks;
         final state = context.read<AppState>();
-
-        // Match les top tracks Deezer avec les tracks locales
-        final popularTracks = <_PopularTrack>[];
-        for (final dt in _topTracks) {
-          final local = _findLocalTrack(dt, allArtistTracks);
-          popularTracks.add(_PopularTrack(discovered: dt, local: local));
-        }
-
-        final albumEntries = buildArtistAlbumEntries(
-          localAlbums: localAlbums,
-          discoveredAlbums: _discoveredAlbums,
-          trueTrackCounts: _trueTrackCounts,
-        );
+        final popularTracks = model.popularTracks;
         // Un maximum de 4 albums (2x2) sur la page artiste, le reste (et le
         // tracklist complet de chaque album) n'est visible que sur la page
         // "Discographie" dediee -- sinon la page artiste devenait trop
         // chargee a afficher tous les albums d'un coup (retour utilisateur).
-        final shownAlbumEntries = albumEntries.take(4).toList();
+        final shownAlbumEntries = model.albumEntries.take(4).toList();
 
-        final artistImage = _discoveredArtist?.pictureBigUrl ??
-            (localAlbums.isNotEmpty ? localAlbums.first.coverPath : null);
+        final artistImage = model.imageUrl;
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -412,9 +138,9 @@ class _ArtistScreenState extends State<ArtistScreen> {
                               style: const TextStyle(
                                   color: Colors.white54, fontSize: 14),
                             ),
-                            if (_discoveredAlbums.isNotEmpty)
+                            if (model.discoveredAlbums.isNotEmpty)
                               Text(
-                                '${_discoveredAlbums.length} albums sur Deezer',
+                                '${model.discoveredAlbums.length} albums sur Deezer',
                                 style: const TextStyle(
                                     color: Colors.white38, fontSize: 12),
                               ),
@@ -433,13 +159,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                   child: Row(
                     children: [
                       ElevatedButton.icon(
-                        onPressed: () {
-                          if (allArtistTracks.isNotEmpty) {
-                            _recordRecent(state, coverPath: artistImage);
-                            state.playTrack(allArtistTracks.first,
-                                trackList: allArtistTracks);
-                          }
-                        },
+                        onPressed: model.playAll,
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('Lecture'),
                         style: ElevatedButton.styleFrom(
@@ -453,15 +173,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       const SizedBox(width: 12),
                       IconButton(
                         icon: const Icon(Icons.shuffle, color: Colors.white),
-                        onPressed: () {
-                          if (allArtistTracks.isNotEmpty) {
-                            _recordRecent(state, coverPath: artistImage);
-                            final shuffled = List.of(allArtistTracks)
-                              ..shuffle();
-                            state.playTrack(shuffled.first,
-                                trackList: shuffled);
-                          }
-                        },
+                        onPressed: () => model.playAll(shuffle: true),
                       ),
                     ],
                   ),
@@ -469,7 +181,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
               ),
 
               // TITRES POPULAIRES (depuis Deezer)
-              if (_loadingTopTracks) ...[
+              if (model.isLoading) ...[
                 const SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
@@ -507,17 +219,16 @@ class _ArtistScreenState extends State<ArtistScreen> {
                       (context, index) => _PopularTrackTile(
                         index: index,
                         track: popularTracks[index],
-                        onPlay: () {
-                          if (popularTracks[index].local != null) {
-                            _recordRecent(state, coverPath: artistImage);
-                            state.playTrack(popularTracks[index].local!);
-                          }
-                        },
-                        downloadState:
-                            _downloadStates[popularTracks[index].discovered.id],
-                        showDownloadButton: _downloadWorker.isConfigured,
-                        onDownloadTap: () =>
-                            _downloadTrack(popularTracks[index].discovered),
+                        onPlay: () => model.playPopular(popularTracks[index]),
+                        downloadState: model.downloadStateOf(
+                            popularTracks[index].discovered.id),
+                        showDownloadButton: model.canDownload,
+                        // Pas besoin de recharger les titres populaires
+                        // apres coup : model.popularTracks recroise deja
+                        // Deezer et la bibliotheque a chaque reconstruction.
+                        onDownloadTap: () => model.downloadTrack(
+                            popularTracks[index].discovered,
+                            wait: waitWithProgressDialog(context)),
                       ),
                       childCount: popularTracks.length,
                     ),
@@ -540,7 +251,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (_deepMatching) ...[
+                        if (model.isDeepMatching) ...[
                           const SizedBox(width: 12),
                           const SizedBox(
                             width: 12,
@@ -552,7 +263,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Vérification $_deepMatchProgress/$_deepMatchTotal',
+                            'Vérification ${model.deepMatchProgress}/${model.deepMatchTotal}',
                             style: const TextStyle(
                                 color: Colors.white38, fontSize: 11),
                           ),
@@ -602,7 +313,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                     ),
                   ),
                 ),
-              ] else if (_loadingDeezer) ...[
+              ] else if (model.isLoading) ...[
                 const SliverToBoxAdapter(
                   child: Center(
                     child: Padding(
@@ -651,10 +362,8 @@ class _ArtistScreenState extends State<ArtistScreen> {
                             track: allArtistTracks[index],
                             isPlaying:
                                 currentTrack?.id == allArtistTracks[index].id,
-                            onTap: () {
-                              _recordRecent(state, coverPath: artistImage);
-                              state.playTrack(allArtistTracks[index]);
-                            },
+                            onTap: () =>
+                                model.playLocal(allArtistTracks[index]),
                             onLike: () =>
                                 state.toggleLike(allArtistTracks[index].id),
                             onMore: () => showPlayerOptions(
@@ -678,17 +387,10 @@ class _ArtistScreenState extends State<ArtistScreen> {
   }
 }
 
-/// Pair : track Deezer + track locale correspondante (ou null)
-class _PopularTrack {
-  final DiscoveredTrack discovered;
-  final Track? local;
-  const _PopularTrack({required this.discovered, this.local});
-}
-
 // TITRE POPULAIRE
 class _PopularTrackTile extends StatelessWidget {
   final int index;
-  final _PopularTrack track;
+  final PopularTrack track;
   final VoidCallback onPlay;
   final DownloadUiState? downloadState;
   final bool showDownloadButton;
@@ -839,7 +541,6 @@ class _LocalAlbumCard extends StatelessWidget {
   final Album album;
   final AppState state;
   final String artistName;
-  final bool compact;
   // Nombre de titres reel de l'album cote Deezer, quand connu -- affiche a
   // la place du nombre de titres deja telecharges pour un album seulement
   // partiellement possede.
@@ -849,7 +550,6 @@ class _LocalAlbumCard extends StatelessWidget {
     required this.album,
     required this.state,
     required this.artistName,
-    this.compact = false,
     this.totalTrackCount,
   });
 
@@ -861,20 +561,14 @@ class _LocalAlbumCard extends StatelessWidget {
     // nom.
     final trackCount = totalTrackCount ?? album.trackIds.length;
 
-    final cover = compact
-        ? SizedBox(
-            width: 120,
-            height: 120,
-            child: _AlbumCover(coverPath: album.coverPath),
-          )
-        : Expanded(child: _AlbumCover(coverPath: album.coverPath));
+    final cover = Expanded(child: _AlbumCover(coverPath: album.coverPath));
 
     final card = GestureDetector(
       onTap: () => state
           .pushOverlay(AlbumScreen(album: album, filterArtist: artistName)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+        mainAxisSize: MainAxisSize.max,
         children: [
           cover,
           const SizedBox(height: 8),
@@ -889,14 +583,14 @@ class _LocalAlbumCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            compact ? 'Single' : '$trackCount titres',
+            '$trackCount titres',
             style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
       ),
     );
 
-    return compact ? SizedBox(width: 120, child: card) : card;
+    return card;
   }
 }
 
@@ -905,18 +599,16 @@ class _DiscoveredAlbumCard extends StatelessWidget {
   final DiscoveredAlbum album;
   final AppState state;
   final String artistName;
-  final bool compact;
 
   const _DiscoveredAlbumCard({
     required this.album,
     required this.state,
     required this.artistName,
-    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final coverSide = compact ? 120.0 : 150.0;
+    const coverSide = 150.0;
     final coverBox = Container(
       decoration: BoxDecoration(
         color: const Color(0xFF2A2A2A),
@@ -935,9 +627,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               child: Icon(Icons.album, color: Colors.white54, size: 48))
           : null,
     );
-    final cover = compact
-        ? SizedBox(width: 120, height: 120, child: coverBox)
-        : Expanded(child: coverBox);
+    final cover = Expanded(child: coverBox);
 
     final card = GestureDetector(
       onTap: () => state.pushOverlay(
@@ -946,7 +636,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
         opacity: 0.45,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
+          mainAxisSize: MainAxisSize.max,
           children: [
             cover,
             const SizedBox(height: 8),
@@ -961,7 +651,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              compact ? 'Single' : (album.releaseDate ?? ''),
+              album.releaseDate ?? '',
               style: const TextStyle(color: Colors.white38, fontSize: 11),
             ),
             const Padding(
@@ -980,7 +670,7 @@ class _DiscoveredAlbumCard extends StatelessWidget {
       ),
     );
 
-    return compact ? SizedBox(width: 120, child: card) : card;
+    return card;
   }
 }
 

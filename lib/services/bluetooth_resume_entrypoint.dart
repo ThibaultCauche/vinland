@@ -8,6 +8,7 @@ import '../models/track.dart';
 import 'audio_handler.dart';
 import 'just_audio_player_engine.dart';
 import 'music_service.dart';
+import 'log_redaction.dart';
 import 'navidrome_service.dart';
 
 const _resumeChannel = MethodChannel('vinland/bluetooth_resume');
@@ -22,6 +23,9 @@ const _keyLastQueueIds = 'vinland_last_queue_ids';
 @pragma('vm:entry-point')
 void bluetoothResumeMain() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Point d'entree Dart a part : le masquage des logs de main() ne
+  // s'applique pas ici.
+  installRedactingDebugPrint();
   _run();
 }
 
@@ -34,7 +38,7 @@ Future<void> _run() async {
       return;
     }
 
-    final music = MusicService();
+    final music = MusicService(navidrome);
     music.setCurrentUser(navidrome.username);
     await music.initialize();
 

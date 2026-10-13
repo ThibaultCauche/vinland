@@ -15,71 +15,72 @@ void showPlaylistOptions(BuildContext context, Playlist playlist,
     {VoidCallback? onDeleted}) {
   final state = context.read<AppState>();
 
-  showOptionsSheet(context, builder: (ctx) => [
-    BottomSheetHeader(
-      coverPath: null,
-      title: playlist.name,
-      subtitle: '${playlist.trackIds.length} titre(s)',
-      fallbackIcon: Icons.queue_music,
-    ),
-    const Divider(color: Color(0xFF2A2A2A), height: 1),
-    SheetTile(
-      icon: state.isPinned(PinnedItemType.playlist, playlist.id)
-          ? Icons.push_pin
-          : Icons.push_pin_outlined,
-      label: state.isPinned(PinnedItemType.playlist, playlist.id)
-          ? "Désépingler de l'accueil"
-          : "Épingler à l'accueil",
-      onTap: () {
-        Navigator.pop(ctx);
-        state.togglePin(PinnedItem(
-          type: PinnedItemType.playlist,
-          id: playlist.id,
-          title: playlist.name,
-          subtitle: '${playlist.trackIds.length} titre(s)',
-        ));
-      },
-    ),
-    SheetTile(
-      icon: playlist.isPublic ? Icons.public : Icons.public_off,
-      label: playlist.isPublic
-          ? 'Rendre privée'
-          : 'Rendre publique (visible par les amis)',
-      onTap: () {
-        Navigator.pop(ctx);
-        state.setPlaylistPublic(playlist.id, !playlist.isPublic);
-      },
-    ),
-    SheetTile(
-      icon: Icons.delete_outline,
-      label: 'Supprimer la playlist',
-      onTap: () {
-        Navigator.pop(ctx);
-        state.deletePlaylist(playlist.id);
-        onDeleted?.call();
-      },
-    ),
-    SheetTile(
-      icon: Icons.ios_share,
-      label: 'Partager',
-      onTap: () {
-        Navigator.pop(ctx);
-        sharePlaylist(context, playlist);
-      },
-    ),
-    if (state.shareInboxConfigured)
-      SheetTile(
-        icon: Icons.send_outlined,
-        label: 'Envoyer à un ami',
-        onTap: () {
-          Navigator.pop(ctx);
-          showSendToFriendDialog(context,
-              type: 'playlist',
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            BottomSheetHeader(
+              coverPath: null,
               title: playlist.name,
               subtitle: '${playlist.trackIds.length} titre(s)',
-              playlistForPrivacyCheck: playlist);
-        },
-      ),
-    const SizedBox(height: 8),
-  ]);
+              fallbackIcon: Icons.queue_music,
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            SheetTile(
+              icon: state.isPinned(PinnedItemType.playlist, playlist.id)
+                  ? Icons.push_pin
+                  : Icons.push_pin_outlined,
+              label: state.isPinned(PinnedItemType.playlist, playlist.id)
+                  ? "Désépingler de l'accueil"
+                  : "Épingler à l'accueil",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.togglePin(PinnedItem(
+                  type: PinnedItemType.playlist,
+                  id: playlist.id,
+                  title: playlist.name,
+                  subtitle: '${playlist.trackIds.length} titre(s)',
+                ));
+              },
+            ),
+            SheetTile(
+              icon: playlist.isPublic ? Icons.public : Icons.public_off,
+              label: playlist.isPublic
+                  ? 'Rendre privée'
+                  : 'Rendre publique (visible par les amis)',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.setPlaylistPublic(playlist.id, !playlist.isPublic);
+              },
+            ),
+            SheetTile(
+              icon: Icons.delete_outline,
+              label: 'Supprimer la playlist',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.deletePlaylist(playlist.id);
+                onDeleted?.call();
+              },
+            ),
+            SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                sharePlaylist(context, playlist);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer à un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'playlist',
+                      title: playlist.name,
+                      subtitle: '${playlist.trackIds.length} titre(s)',
+                      playlistForPrivacyCheck: playlist);
+                },
+              ),
+            const SizedBox(height: 8),
+          ]);
 }

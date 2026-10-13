@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/artist_discography/artist_discography_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../services/artist_discography.dart';
@@ -26,105 +28,25 @@ class ArtistDiscographyScreen extends StatefulWidget {
 }
 
 class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
-  final _discovery = DiscoveryService();
-  final _downloadWorker = DownloadWorkerService();
-  final Map<int, DownloadUiState> _downloadStates = {};
-
-  List<ArtistAlbumEntry> _entries = [];
-  final Map<int, List<ReleaseTrack>> _tracksByEntry = {};
-  bool _loading = true;
+  late final ArtistDiscographyModel _model;
 
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final state = context.read<AppState>();
-    final data = await loadArtistDeezerData(_discovery, widget.artistName);
-    final localAlbums =
-        albumsForArtist(state.albums, state.allTracks, widget.artistName);
-
-    await deepMatchArtistAlbums(
-      discovery: _discovery,
-      discoveredAlbums: data.albums,
-      allLocalTracks: state.allTracks,
+    _model = ArtistDiscographyModel(
       artistName: widget.artistName,
-    );
-
-    final trueTrackCounts = <int, int>{};
-    final withKnownCount = data.albums.where((a) => a.isInLibrary).toList();
-    await Future.wait(withKnownCount.map((a) async {
-      final full = await _discovery.getAlbum(a.id);
-      if (full?.nbTracks != null) trueTrackCounts[a.id] = full!.nbTracks!;
-    }));
-
-    final entries = buildArtistAlbumEntries(
-      localAlbums: localAlbums,
-      discoveredAlbums: data.albums,
-      trueTrackCounts: trueTrackCounts,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _entries = entries;
-      _loading = false;
-    });
-
-    const batchSize = 4;
-    final allLocalTracks = state.allTracks;
-    for (var i = 0; i < entries.length; i += batchSize) {
-      final end =
-          (i + batchSize < entries.length) ? i + batchSize : entries.length;
-      final indices = [for (var k = i; k < end; k++) k];
-      final results = await Future.wait(indices.map((idx) => loadReleaseTracks(
-            discovery: _discovery,
-            entry: entries[idx],
-            discoveredAlbums: data.albums,
-            allLocalTracks: allLocalTracks,
-          )));
-      if (!mounted) return;
-      setState(() {
-        for (var k = 0; k < indices.length; k++) {
-          _tracksByEntry[indices[k]] = results[k];
-        }
-      });
-    }
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+    )..addListener(_onModelChanged);
   }
 
-  Future<void> _downloadTrack(ReleaseTrack rt) async {
-    final dt = rt.discovered;
-    if (dt == null) return;
-    setState(() => _downloadStates[dt.id] = DownloadUiState.downloading);
+  void _onModelChanged() => setState(() {});
 
-    final jobId = await _downloadWorker.requestDownload(
-      artist: dt.artistName,
-      title: dt.title,
-      album: dt.albumName == 'Inconnu' ? null : dt.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
-      return;
-    }
-
-    final status = await _downloadWorker.waitForCompletion(jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(dt.artistName, dt.title);
-      if (mounted) setState(() => _downloadStates.remove(dt.id));
-    } else {
-      setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
-    }
+  @override
+  void dispose() {
+    _model.dispose();
+    super.dispose();
   }
-
-  String? _coverPath(ArtistAlbumEntry entry) =>
-      entry.local?.coverPath ??
-      entry.discovered?.coverBigUrl ??
-      entry.discovered?.coverUrl;
 
   void _openRelease(AppState state, ArtistAlbumEntry entry) {
     if (entry.local != null) {
@@ -151,21 +73,24 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
         ),
         title: Text('Discographie · ${widget.artistName}',
             style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
       ),
-      body: _loading
+      body: _model.isLoading
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFF1DB954)))
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
-                for (var i = 0; i < _entries.length; i++) ...[
+                for (var i = 0; i < _model.entries.length; i++) ...[
                   _ReleaseHeader(
-                    entry: _entries[i],
-                    coverPath: _coverPath(_entries[i]),
-                    onTap: () => _openRelease(state, _entries[i]),
+                    entry: _model.entries[i],
+                    coverPath: releaseCoverPath(_model.entries[i]),
+                    onTap: () => _openRelease(state, _model.entries[i]),
                     onPlay: () {
-                      final tracks = _tracksByEntry[i]
+                      final tracks = _model
+                              .tracksOf(i)
                               ?.where((t) => t.local != null)
                               .map((t) => t.local!)
                               .toList() ??
@@ -175,7 +100,7 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
                       }
                     },
                   ),
-                  if (_tracksByEntry[i] == null)
+                  if (_model.tracksOf(i) == null)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 16),
                       child: Center(
@@ -188,7 +113,7 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
                       ),
                     )
                   else
-                    for (final rt in _tracksByEntry[i]!)
+                    for (final rt in _model.tracksOf(i)!)
                       Selector<AppState, Track?>(
                         selector: (_, s) => s.displayTrack,
                         builder: (context, currentTrack, __) {
@@ -197,7 +122,8 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
                               track: rt.local!,
                               isPlaying: currentTrack?.id == rt.local!.id,
                               onTap: () {
-                                final localTracks = _tracksByEntry[i]!
+                                final localTracks = _model
+                                    .tracksOf(i)!
                                     .where((t) => t.local != null)
                                     .map((t) => t.local!)
                                     .toList();
@@ -210,10 +136,11 @@ class _ArtistDiscographyScreenState extends State<ArtistDiscographyScreen> {
                           return _MissingReleaseTrackTile(
                             track: rt,
                             downloadState: rt.discovered != null
-                                ? _downloadStates[rt.discovered!.id]
+                                ? _model.downloadStateOf(rt.discovered!.id)
                                 : null,
-                            showDownloadButton: _downloadWorker.isConfigured,
-                            onDownloadTap: () => _downloadTrack(rt),
+                            showDownloadButton: _model.canDownload,
+                            onDownloadTap: () =>
+                                _model.downloadRelease(rt, wait: waitSilently),
                           );
                         },
                       ),

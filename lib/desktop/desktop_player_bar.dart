@@ -79,7 +79,8 @@ class DesktopPlayerBar extends StatelessWidget {
                                 width: 300,
                                 child: _NowPlayingInfo(
                                   track: track,
-                                  deviceName: isRemote ? remoteDeviceName : null,
+                                  deviceName:
+                                      isRemote ? remoteDeviceName : null,
                                   onOpenAlbum: onOpenAlbum,
                                   onOpenArtist: onOpenArtist,
                                 ),
@@ -140,7 +141,8 @@ class _SeekBar extends StatelessWidget {
     );
   }
 
-  Widget _buildSlider(BuildContext context, Duration position, Duration duration) {
+  Widget _buildSlider(
+      BuildContext context, Duration position, Duration duration) {
     final progress = duration.inMilliseconds > 0
         ? position.inMilliseconds / duration.inMilliseconds
         : 0.0;
@@ -151,7 +153,7 @@ class _SeekBar extends StatelessWidget {
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
         activeTrackColor: Colors.white,
-        inactiveTrackColor: Colors.white.withOpacity(0.15),
+        inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
         thumbColor: Colors.white,
       ),
       child: Slider(
@@ -240,8 +242,7 @@ class _NowPlayingInfo extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.devices,
-                        color: Colors.white38, size: 11),
+                    const Icon(Icons.devices, color: Colors.white38, size: 11),
                     const SizedBox(width: 3),
                     Text('En lecture sur $deviceName',
                         style: const TextStyle(
@@ -547,7 +548,7 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
               activeTrackColor: Colors.white,
-              inactiveTrackColor: Colors.white.withOpacity(0.15),
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
               thumbColor: Colors.white,
             ),
             child: Slider(

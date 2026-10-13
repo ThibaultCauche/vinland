@@ -13,13 +13,38 @@ import '../models/track.dart';
 import 'matching_service.dart';
 import 'music_service.dart';
 
+/// Donnees Deezer d'une page artiste gardees pour la session (voir
+/// DiscoveryService.artistPages).
+class CachedArtistPage {
+  CachedArtistPage({
+    this.artist,
+    required this.albums,
+    required this.topTracks,
+    this.deepMatched = false,
+  });
+
+  final DiscoveredArtist? artist;
+  final List<DiscoveredAlbum> albums;
+  final List<DiscoveredTrack> topTracks;
+
+  /// Le statut "possede" des albums a deja ete verifie titre par titre.
+  bool deepMatched;
+}
+
 class DiscoveryService {
-  static final DiscoveryService _instance = DiscoveryService._internal();
-  factory DiscoveryService() => _instance;
-  DiscoveryService._internal();
+  /// Une seule instance, creee dans main.dart et lue par les ecrans via
+  /// `provider` : le cache memoire ci-dessous est partage entre eux.
+  DiscoveryService(this._music);
 
   final String _baseUrl = 'https://api.deezer.com';
-  final MusicService _music = MusicService();
+  final MusicService _music;
+
+  /// Pages artiste deja chargees pendant la session (cle : nom d'artiste
+  /// normalise), pour rouvrir une page sans refaire la recherche ni le
+  /// deep-matching. Vivait avant dans un cache statique de chaque vue
+  /// artiste (mobile et desktop chacun le sien) ; ici il est partage et
+  /// remis a zero avec le service.
+  final Map<String, CachedArtistPage> artistPages = {};
 
   // ── CACHE DISQUE ──
   // Les metadonnees Deezer (recherche album/artiste, tracklists) changent
@@ -104,6 +129,19 @@ class DiscoveryService {
     final data = await _get('/artist/$artistId', {});
     if (data.isEmpty || data.containsKey('error')) return null;
     return DiscoveredArtist.fromJson(data);
+  }
+
+  /// Noms des artistes que Deezer juge proches de [artistId] (radio du
+  /// mode Soiree, quand Navidrome ne connait pas de titres similaires).
+  Future<List<String>> getRelatedArtistNames(int artistId,
+      {int limit = 10}) async {
+    final data = await _get('/artist/$artistId/related', {'limit': '$limit'});
+    final list = data['data'] as List? ?? [];
+    return list
+        .whereType<Map>()
+        .map((j) => j['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
   }
 
   Future<List<DiscoveredTrack>> getArtistTopTracks(int artistId,
@@ -208,7 +246,8 @@ class DiscoveryService {
 
     int matches = 0;
     for (final dt in deezerTracks) {
-      if (localTracks.any((lt) => MatchingService.titlesMatch(lt.title, dt.title))) {
+      if (localTracks
+          .any((lt) => MatchingService.titlesMatch(lt.title, dt.title))) {
         matches++;
       }
     }

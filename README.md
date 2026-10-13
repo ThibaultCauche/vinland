@@ -1,5 +1,10 @@
 # Vinland
 
+[![CI](https://github.com/ThibaultCauche/vinland/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ThibaultCauche/vinland/actions/workflows/ci.yml)
+[![Dernière version](https://img.shields.io/github/v/release/ThibaultCauche/vinland?label=version)](https://github.com/ThibaultCauche/vinland/releases/latest)
+![Plateformes](https://img.shields.io/badge/plateformes-Android%20%7C%20Windows-1DB954)
+![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter)
+
 Un lecteur de musique personnel : streaming des morceaux hébergés sur mon NAS, accessible depuis n'importe où, avec les fonctionnalités sociales d'un vrai service (playlists collaboratives, amis, découverte) qu'un simple client Navidrome n'offre pas.
 
 ## Pourquoi ce projet
@@ -20,7 +25,24 @@ Je voulais garder le contrôle de ma bibliothèque musicale (pas d'abonnement, p
 - **Client** : Flutter (Android + Windows desktop depuis la même base de code), `provider` pour l'état, `media_kit`/`just_audio` pour la lecture audio selon la plateforme, `audio_service` pour les contrôles média système
 - **Backend musical** : [Navidrome](https://www.navidrome.org/) (API Subsonic) sur un NAS auto-hébergé
 - **Accès distant** : tunnel sécurisé (Tailscale Funnel) plutôt qu'un port exposé directement
-- **CI/CD** : GitHub Actions (`.github/workflows/release.yml`) build et publie les binaires Android et Windows à chaque release
+- **CI/CD** : GitHub Actions. `ci.yml` vérifie formatage, analyse et tests à chaque PR ; `release.yml` rejoue ces vérifications puis build et publie les binaires Android et Windows à chaque release
+
+## Plateformes
+
+| Plateforme | Statut |
+|---|---|
+| Android | Supportée (APK publié à chaque release) |
+| Windows | Supportée (zip publié à chaque release, mise à jour automatique) |
+| iOS, macOS, Linux, Web | **Non supportées** : les dossiers `ios/`, `macos/`, `linux/` et `web/` viennent du modèle `flutter create`, ils ne sont ni construits ni testés. |
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) : schéma, rôle de chaque service, flux d'une lecture, d'une synchro et d'un Jam.
+- [Décisions d'architecture (ADR)](docs/adr/) : pourquoi le code est comme il est.
+- [Sécurité](SECURITY.md) : modèle de menace, gestion et rotation des secrets, signaler une faille.
+- [Ce que tes amis voient](docs/confidentialite.md) : la confidentialité en langage simple.
+- [Journal des modifications](CHANGELOG.md).
+- [`CLAUDE.md`](CLAUDE.md) : conventions de travail et procédure de release.
 
 ## Lancer le projet
 

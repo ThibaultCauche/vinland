@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/friend_profile/friend_profile_model.dart';
 import '../providers/app_state.dart';
 import '../models/friend_profile.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
-import '../models/recent_play.dart';
 import '../services/navidrome_service.dart';
 import '../screens/playlist_screen.dart';
 import '../widgets/smooth_scroll.dart';
@@ -38,19 +38,11 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
     super.dispose();
   }
 
-  Future<List<Track>> _resolvePlaylistTracks(
-      AppState state, Playlist playlist) async {
-    final byId = {for (final t in state.allTracks) t.id: t};
-    if (playlist.trackIds.isNotEmpty) {
-      return playlist.trackIds
-          .map((id) => byId[id])
-          .whereType<Track>()
-          .toList();
-    }
-    final trackIds =
-        await NavidromeService().fetchPlaylistSongIds(playlist.serverId!);
-    return trackIds.map((id) => byId[id]).whereType<Track>().toList();
-  }
+  late final _model = FriendProfileModel(
+    friend: widget.friend,
+    library: context.read<AppState>(),
+    fetchPlaylistIds: context.read<NavidromeService>().fetchPlaylistSongIds,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -59,28 +51,9 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
       selector: (_, state) => state.allTracks,
       builder: (context, allTracks, __) {
         final state = context.read<AppState>();
-        final byId = {for (final t in allTracks) t.id: t};
-        final likedTracks = (friend.likesPlaylist?.trackIds ?? [])
-            .map((id) => byId[id])
-            .whereType<Track>()
-            .toList();
-        final recentTracks = (friend.recentPlaysPlaylist?.trackIds ?? [])
-            .map((id) => byId[id])
-            .whereType<Track>()
-            .toList();
-        final nowPlayingTrack = friend.nowPlayingTrackId == null
-            ? null
-            : byId[friend.nowPlayingTrackId];
-
-        void recordRecent() {
-          state.recordRecentPlay(RecentPlay(
-            type: RecentPlayType.friend,
-            id: friend.username,
-            title: friend.username,
-            subtitle: 'Ami',
-            playedAt: DateTime.now(),
-          ));
-        }
+        final likedTracks = _model.likedTracks;
+        final recentTracks = _model.recentTracks;
+        final nowPlayingTrack = _model.nowPlayingTrack;
 
         // top: DesktopGlass.topInset -- meme raison que les autres vues.
         return Padding(
@@ -97,32 +70,17 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                         friend: friend,
                         likedCount: likedTracks.length,
                         nowPlayingTrack: nowPlayingTrack,
-                        onPlay: likedTracks.isEmpty
-                            ? null
-                            : () {
-                                recordRecent();
-                                state.playTrack(likedTracks.first,
-                                    trackList: likedTracks);
-                              },
+                        onPlay: likedTracks.isEmpty ? null : _model.playLikes,
                         onShuffle: likedTracks.isEmpty
                             ? null
-                            : () {
-                                recordRecent();
-                                final shuffled = List.of(likedTracks)
-                                  ..shuffle();
-                                state.playTrack(shuffled.first,
-                                    trackList: shuffled);
-                              },
+                            : () => _model.playLikes(shuffle: true),
                       ),
                     ),
                     if (recentTracks.isNotEmpty) ...[
                       const _SectionTitle('Écouté récemment'),
                       _trackList(
                         recentTracks.take(5).toList(),
-                        onTap: (t) {
-                          recordRecent();
-                          state.playTrack(t, trackList: recentTracks);
-                        },
+                        onTap: (t) => _model.play(t, recentTracks),
                         state: state,
                       ),
                     ],
@@ -130,10 +88,7 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                       const _SectionTitle('Titres likes'),
                       _trackList(
                         likedTracks,
-                        onTap: (t) {
-                          recordRecent();
-                          state.playTrack(t, trackList: likedTracks);
-                        },
+                        onTap: (t) => _model.play(t, likedTracks),
                         state: state,
                       ),
                     ],
@@ -153,24 +108,11 @@ class _DesktopFriendProfileViewState extends State<DesktopFriendProfileView> {
                                   // mobile) plutot que de la lancer direct :
                                   // permet de la parcourir et de l'ajouter a
                                   // sa bibliotheque (retour utilisateur).
-                                  final tracks =
-                                      await _resolvePlaylistTracks(state, pl);
-                                  if (!context.mounted || tracks.isEmpty) {
-                                    return;
-                                  }
-                                  final refreshed = Playlist(
-                                    id: pl.id,
-                                    name: pl.name,
-                                    trackIds: tracks.map((t) => t.id).toList(),
-                                    serverId: pl.serverId,
-                                    isPublic: true,
-                                    ownerUsername: pl.ownerUsername,
-                                    isLikesMirror: pl.isLikesMirror,
-                                  );
-                                  state.pushOverlay(
-                                      PlaylistScreen(
-                                          playlist: refreshed,
-                                          readOnly: true));
+                                  final toOpen =
+                                      await _model.playlistToOpen(pl);
+                                  if (!context.mounted) return;
+                                  state.pushOverlay(PlaylistScreen(
+                                      playlist: toOpen, readOnly: true));
                                 },
                               );
                             },
@@ -375,11 +317,10 @@ class _Header extends StatelessWidget {
                               // curseur/hover explicites, le comportement par
                               // defaut d'InkWell n'etait pas fiable ici.
                               mouseCursor: SystemMouseCursors.click,
-                              hoverColor: Colors.white.withOpacity(0.18),
-                              splashColor: Colors.white.withOpacity(0.12),
+                              hoverColor: Colors.white.withValues(alpha: 0.18),
+                              splashColor: Colors.white.withValues(alpha: 0.12),
                               onTap: () async {
-                                final messenger =
-                                    ScaffoldMessenger.of(context);
+                                final messenger = ScaffoldMessenger.of(context);
                                 final ok = await context
                                     .read<AppState>()
                                     .joinJamSession(friend.jamSessionId!);

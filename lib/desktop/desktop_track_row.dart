@@ -46,7 +46,8 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
   /// albums, artistes, recherche).
   void _showMoreMenu() {
     final box = _moreButtonKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
     if (box == null || overlay == null) return;
     final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
     final position = RelativeRect.fromLTRB(
@@ -130,9 +131,8 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      cursor: isPlaceholder
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor:
+          isPlaceholder ? SystemMouseCursors.basic : SystemMouseCursors.click,
       child: GestureDetector(
         onTap: isPlaceholder ? null : widget.onTap,
         child: Opacity(
@@ -142,117 +142,118 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             margin: const EdgeInsets.symmetric(vertical: 2),
             decoration: BoxDecoration(
-              color:
-                  _hover ? Colors.white.withOpacity(0.08) : Colors.transparent,
+              color: _hover
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
             ),
             child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3E3E3E),
-                  borderRadius: BorderRadius.circular(6),
-                  image: path != null
-                      ? DecorationImage(
-                          image: coverImageProvider(context,
-                              path: path, width: 40, height: 40),
-                          fit: BoxFit.cover,
-                          onError: (_, __) {},
-                        )
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3E3E3E),
+                    borderRadius: BorderRadius.circular(6),
+                    image: path != null
+                        ? DecorationImage(
+                            image: coverImageProvider(context,
+                                path: path, width: 40, height: 40),
+                            fit: BoxFit.cover,
+                            onError: (_, __) {},
+                          )
+                        : null,
+                  ),
+                  child: path == null
+                      ? const Icon(Icons.music_note,
+                          color: Colors.white54, size: 18)
                       : null,
                 ),
-                child: path == null
-                    ? const Icon(Icons.music_note,
-                        color: Colors.white54, size: 18)
-                    : null,
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                flex: 3,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      track.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: widget.isPlaying
-                            ? DesktopGlass.accent
-                            : Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                const SizedBox(width: 14),
+                Expanded(
+                  flex: 3,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: widget.isPlaying
+                              ? DesktopGlass.accent
+                              : Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (var i = 0; i < artistNames.length; i++) ...[
-                          if (i > 0)
-                            const Text(', ',
-                                style: TextStyle(
-                                    color: Colors.white54, fontSize: 12)),
-                          Flexible(
-                            child: _HoverableText(
-                              text: artistNames[i],
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 12),
-                              onTap: widget.onOpenArtist == null
-                                  ? null
-                                  : () => widget.onOpenArtist!(artistNames[i]),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < artistNames.length; i++) ...[
+                            if (i > 0)
+                              const Text(', ',
+                                  style: TextStyle(
+                                      color: Colors.white54, fontSize: 12)),
+                            Flexible(
+                              child: _HoverableText(
+                                text: artistNames[i],
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 12),
+                                onTap: widget.onOpenArtist == null
+                                    ? null
+                                    : () =>
+                                        widget.onOpenArtist!(artistNames[i]),
+                              ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: _HoverableText(
-                  text: track.album,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                  onTap: widget.onOpenAlbum,
-                ),
-              ),
-              if (isPlaceholder) ...[
-                const Icon(Icons.error_outline,
-                    color: Colors.orange, size: 16),
-                const SizedBox(width: 6),
-                const Text('Introuvable',
-                    style: TextStyle(color: Colors.orange, fontSize: 12)),
-              ] else ...[
-                SizedBox(
-                  width: 56,
-                  child: Text(
-                    formatDuration(track.duration),
-                    style:
-                        const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                GlassIconButton(
-                  icon:
-                      track.isLiked ? Icons.favorite : Icons.favorite_border,
-                  color:
-                      track.isLiked ? DesktopGlass.accent : Colors.white54,
-                  size: 18,
-                  onPressed: widget.onLike,
+                Expanded(
+                  flex: 2,
+                  child: _HoverableText(
+                    text: track.album,
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    onTap: widget.onOpenAlbum,
+                  ),
                 ),
-                GlassIconButton(
-                  key: _moreButtonKey,
-                  icon: Icons.more_horiz,
-                  color: Colors.white54,
-                  size: 18,
-                  onPressed: _showMoreMenu,
-                ),
+                if (isPlaceholder) ...[
+                  const Icon(Icons.error_outline,
+                      color: Colors.orange, size: 16),
+                  const SizedBox(width: 6),
+                  const Text('Introuvable',
+                      style: TextStyle(color: Colors.orange, fontSize: 12)),
+                ] else ...[
+                  SizedBox(
+                    width: 56,
+                    child: Text(
+                      formatDuration(track.duration),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GlassIconButton(
+                    icon:
+                        track.isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: track.isLiked ? DesktopGlass.accent : Colors.white54,
+                    size: 18,
+                    onPressed: widget.onLike,
+                  ),
+                  GlassIconButton(
+                    key: _moreButtonKey,
+                    icon: Icons.more_horiz,
+                    color: Colors.white54,
+                    size: 18,
+                    onPressed: _showMoreMenu,
+                  ),
+                ],
               ],
-            ],
-          ),
+            ),
           ),
         ),
       ),

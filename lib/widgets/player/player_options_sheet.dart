@@ -15,107 +15,111 @@ import 'jam_controls.dart';
 /// utilisateur).
 void showArtistAlbumPicker(BuildContext context, Track track) {
   final state = context.read<AppState>();
-  showOptionsSheet(context, builder: (ctx) => [
-    SheetTile(
-      icon: Icons.person_outline,
-      label: 'Artiste',
-      onTap: () {
-        Navigator.pop(ctx);
-        showArtistPicker(context, track.artist);
-      },
-    ),
-    SheetTile(
-      icon: Icons.album_outlined,
-      label: 'Album',
-      onTap: () {
-        Navigator.pop(ctx);
-        state.pushOverlay(AlbumScreen(album: resolveTrackAlbum(state, track)));
-      },
-    ),
-    const SizedBox(height: 8),
-  ]);
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            SheetTile(
+              icon: Icons.person_outline,
+              label: 'Artiste',
+              onTap: () {
+                Navigator.pop(ctx);
+                showArtistPicker(context, track.artist);
+              },
+            ),
+            SheetTile(
+              icon: Icons.album_outlined,
+              label: 'Album',
+              onTap: () {
+                Navigator.pop(ctx);
+                state.pushOverlay(
+                    AlbumScreen(album: resolveTrackAlbum(state, track)));
+              },
+            ),
+            const SizedBox(height: 8),
+          ]);
 }
 
 void showPlayerOptions(BuildContext context, Track track) {
   final state = context.read<AppState>();
 
-  showOptionsSheet(context, builder: (ctx) => [
-    BottomSheetHeader(
-      coverPath: track.coverPath,
-      title: track.title,
-      subtitle: track.artist,
-    ),
-    const Divider(color: Color(0xFF2A2A2A), height: 1),
-    SheetTile(
-      icon: Icons.add_circle_outline,
-      label: 'Ajouter à la playlist',
-      onTap: () {
-        Navigator.pop(ctx);
-        _showAddToPlaylistDialog(context, track);
-      },
-    ),
-    SheetTile(
-      icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
-      label: track.isLiked
-          ? 'Retirer des titres likes'
-          : 'Ajouter aux titres likes',
-      iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
-      onTap: () {
-        Navigator.pop(ctx);
-        state.toggleLike(track.id);
-      },
-    ),
-    SheetTile(
-      icon: Icons.album_outlined,
-      label: "Accéder à l'album",
-      onTap: () {
-        Navigator.pop(ctx);
-        state.pushOverlay(AlbumScreen(album: resolveTrackAlbum(state, track)));
-      },
-    ),
-    SheetTile(
-      icon: Icons.person_outline,
-      label: "Accéder à l'artiste",
-      onTap: () {
-        Navigator.pop(ctx);
-        showArtistPicker(context, track.artist);
-      },
-    ),
-    SheetTile(
-      icon: Icons.ios_share,
-      label: 'Partager',
-      onTap: () {
-        Navigator.pop(ctx);
-        shareTrack(track);
-      },
-    ),
-    if (state.shareInboxConfigured)
-      SheetTile(
-        icon: Icons.send_outlined,
-        label: 'Envoyer à un ami',
-        onTap: () {
-          Navigator.pop(ctx);
-          showSendToFriendDialog(context,
-              type: 'track',
-              itemId: track.id,
+  showOptionsSheet(context,
+      builder: (ctx) => [
+            BottomSheetHeader(
+              coverPath: track.coverPath,
               title: track.title,
-              subtitle: track.artist);
-        },
-      ),
-    SheetTile(
-      icon: state.isJamActive ? Icons.close : Icons.groups,
-      label: state.isJamActive
-          ? (state.isJamHost
-              ? 'Session Jam (${state.jamParticipantCount} à l\'écoute)'
-              : 'Session Jam en cours')
-          : 'Écouter ensemble (Jam)',
-      onTap: () {
-        Navigator.pop(ctx);
-        showJamMenu(context);
-      },
-    ),
-    const SizedBox(height: 8),
-  ]);
+              subtitle: track.artist,
+            ),
+            const Divider(color: Color(0xFF2A2A2A), height: 1),
+            SheetTile(
+              icon: Icons.add_circle_outline,
+              label: 'Ajouter à la playlist',
+              onTap: () {
+                Navigator.pop(ctx);
+                _showAddToPlaylistDialog(context, track);
+              },
+            ),
+            SheetTile(
+              icon: track.isLiked ? Icons.favorite : Icons.favorite_border,
+              label: track.isLiked
+                  ? 'Retirer des titres likes'
+                  : 'Ajouter aux titres likes',
+              iconColor: track.isLiked ? const Color(0xFF1DB954) : Colors.white,
+              onTap: () {
+                Navigator.pop(ctx);
+                state.toggleLike(track.id);
+              },
+            ),
+            SheetTile(
+              icon: Icons.album_outlined,
+              label: "Accéder à l'album",
+              onTap: () {
+                Navigator.pop(ctx);
+                state.pushOverlay(
+                    AlbumScreen(album: resolveTrackAlbum(state, track)));
+              },
+            ),
+            SheetTile(
+              icon: Icons.person_outline,
+              label: "Accéder à l'artiste",
+              onTap: () {
+                Navigator.pop(ctx);
+                showArtistPicker(context, track.artist);
+              },
+            ),
+            SheetTile(
+              icon: Icons.ios_share,
+              label: 'Partager',
+              onTap: () {
+                Navigator.pop(ctx);
+                shareTrack(track);
+              },
+            ),
+            if (state.shareInboxConfigured)
+              SheetTile(
+                icon: Icons.send_outlined,
+                label: 'Envoyer à un ami',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  showSendToFriendDialog(context,
+                      type: 'track',
+                      itemId: track.id,
+                      title: track.title,
+                      subtitle: track.artist);
+                },
+              ),
+            SheetTile(
+              icon: state.isJamActive ? Icons.close : Icons.groups,
+              label: state.isJamActive
+                  ? (state.isJamHost
+                      ? 'Session Jam (${state.jamParticipantCount} à l\'écoute)'
+                      : 'Session Jam en cours')
+                  : 'Écouter ensemble (Jam)',
+              onTap: () {
+                Navigator.pop(ctx);
+                showJamMenu(context);
+              },
+            ),
+            const SizedBox(height: 8),
+          ]);
 }
 
 void _showAddToPlaylistDialog(BuildContext context, Track track) {

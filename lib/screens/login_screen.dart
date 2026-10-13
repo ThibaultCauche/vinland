@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/cleartext_policy.dart';
 import '../providers/app_state.dart';
+import 'party/party_join_screen.dart';
 
 /// Ecran de connexion : se connecter a Vinland EST se connecter a Navidrome.
 /// Il n'y a plus de compte Vinland separe -- pour ajouter quelqu'un, on lui
@@ -84,7 +86,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   Text(
                     _error!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                    style:
+                        const TextStyle(color: Colors.redAccent, fontSize: 13),
                   ),
                 ],
                 const SizedBox(height: 24),
@@ -118,6 +121,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   "serveur de t'en créer un depuis Navidrome.",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                // Un invite de soiree n'a pas besoin de compte : il scanne
+                // le QR de l'hote (voir PartyJoinScreen).
+                TextButton.icon(
+                  onPressed: () =>
+                      Navigator.of(context).push(PartyJoinScreen.route()),
+                  icon: const Icon(Icons.nightlife, size: 18),
+                  label: const Text('Rejoindre une soirée sans compte'),
                 ),
               ],
             ),
@@ -159,6 +171,13 @@ class _LoginScreenState extends State<LoginScreen> {
         _usernameController.text.trim().isEmpty ||
         _passwordController.text.isEmpty) {
       setState(() => _error = 'Veuillez remplir tous les champs');
+      return;
+    }
+
+    if (!isCleartextAllowed(_urlController.text)) {
+      setState(() => _error =
+          'Adresse non sécurisée : utilisez https://, ou http:// seulement '
+              'avec une adresse Tailscale (100.x.x.x) ou du réseau local');
       return;
     }
 

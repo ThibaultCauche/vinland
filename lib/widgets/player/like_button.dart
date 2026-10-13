@@ -20,8 +20,7 @@ class PlayerLikeButton extends StatelessWidget {
           size: 24,
           idleColor: Colors.white,
           onTap: () => context.read<AppState>().toggleLike(trackId),
-          onLongPress: () =>
-              context.read<AppState>().toggleSuperLike(trackId),
+          onLongPress: () => context.read<AppState>().toggleSuperLike(trackId),
         );
       },
     );

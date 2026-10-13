@@ -86,35 +86,36 @@ class _BluetoothTrustedDevicesScreenState
                   : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                      const Text(
-                        "Coche un ou plusieurs appareils appairés (casque, enceinte...) : "
-                        "quand l'un d'eux se connecte, Vinland reprend automatiquement "
-                        "la dernière lecture en fond, même si l'app n'a jamais été "
-                        'ouverte depuis le dernier redémarrage du téléphone.',
-                        style: TextStyle(color: Colors.white54, fontSize: 13),
-                      ),
-                      const SizedBox(height: 16),
-                      if (_devices.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.only(top: 32),
-                          child: Center(
-                            child: Text('Aucun appareil Bluetooth appairé',
-                                style: TextStyle(color: Colors.white38)),
-                          ),
-                        )
-                      else
-                        ..._devices.map((d) => SwitchListTile(
-                              secondary: const Icon(Icons.bluetooth,
-                                  color: Colors.white54),
-                              title: Text(d.name,
-                                  style: const TextStyle(color: Colors.white)),
-                              subtitle: Text(d.address,
-                                  style: const TextStyle(
-                                      color: Colors.white38, fontSize: 12)),
-                              activeColor: const Color(0xFF1DB954),
-                              value: _trusted.contains(d.address),
-                              onChanged: (v) => _toggle(d.address, v),
-                            )),
+                        const Text(
+                          "Coche un ou plusieurs appareils appairés (casque, enceinte...) : "
+                          "quand l'un d'eux se connecte, Vinland reprend automatiquement "
+                          "la dernière lecture en fond, même si l'app n'a jamais été "
+                          'ouverte depuis le dernier redémarrage du téléphone.',
+                          style: TextStyle(color: Colors.white54, fontSize: 13),
+                        ),
+                        const SizedBox(height: 16),
+                        if (_devices.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 32),
+                            child: Center(
+                              child: Text('Aucun appareil Bluetooth appairé',
+                                  style: TextStyle(color: Colors.white38)),
+                            ),
+                          )
+                        else
+                          ..._devices.map((d) => SwitchListTile(
+                                secondary: const Icon(Icons.bluetooth,
+                                    color: Colors.white54),
+                                title: Text(d.name,
+                                    style:
+                                        const TextStyle(color: Colors.white)),
+                                subtitle: Text(d.address,
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 12)),
+                                activeThumbColor: const Color(0xFF1DB954),
+                                value: _trusted.contains(d.address),
+                                onChanged: (v) => _toggle(d.address, v),
+                              )),
                       ],
                     ),
         ),

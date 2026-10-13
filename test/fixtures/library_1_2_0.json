@@ -1,0 +1,53 @@
+{
+  "navidromeTracks": [
+    {
+      "id": "navidrome_abc123",
+      "title": "Titre en cache",
+      "artist": "Artiste",
+      "album": "Album",
+      "duration": 180000,
+      "filePath": "http://100.101.102.103:30043/rest/stream.view?id=abc123&u=thibault&t=0123456789abcdef0123456789abcdef&s=Sel12345&v=1.16.1&c=vinland&maxBitRate=192&format=mp3",
+      "coverPath": "http://100.101.102.103:30043/rest/getCoverArt.view?id=abc123&u=thibault&t=0123456789abcdef0123456789abcdef&s=Sel12345&v=1.16.1&c=vinland",
+      "isLiked": true,
+      "superLiked": false,
+      "playCount": 4,
+      "lastPlayed": null,
+      "dateAdded": "2026-09-01T10:00:00.000",
+      "albumId": "al-1",
+      "albumArtist": "Artiste",
+      "year": 2020,
+      "addedToServerAt": null,
+      "genre": "Rock"
+    },
+    {
+      "id": "navidrome_hors-ligne",
+      "title": "Synchro sans connexion",
+      "artist": "Artiste",
+      "album": "Album",
+      "duration": 200000,
+      "filePath": "",
+      "coverPath": ""
+    }
+  ],
+  "albums": [
+    {
+      "id": "al-1",
+      "title": "Album",
+      "artist": "Artiste",
+      "trackIds": ["navidrome_abc123"],
+      "isSaved": false,
+      "coverPath": "http://100.101.102.103:30043/rest/getCoverArt.view?id=abc123&u=thibault&t=0123456789abcdef0123456789abcdef&s=Sel12345&v=1.16.1&c=vinland",
+      "year": 2020
+    }
+  ],
+  "recentPlays": [
+    {
+      "type": "album",
+      "id": "al-1",
+      "title": "Album",
+      "subtitle": "Artiste",
+      "coverPath": "http://100.101.102.103:30043/rest/getCoverArt.view?id=abc123&u=thibault&t=0123456789abcdef0123456789abcdef&s=Sel12345&v=1.16.1&c=vinland",
+      "playedAt": "2026-10-01T20:00:00.000"
+    }
+  ]
+}

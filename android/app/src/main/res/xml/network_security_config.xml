@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Regles reseau Android de Vinland.
+
+  Le trafic en clair (http://) reste permis au niveau Android parce que le
+  NAS est joint en http:// sur son adresse Tailscale (100.x.x.x, deja
+  chiffree par WireGuard) ou sur le reseau local, et que ce fichier ne sait
+  exprimer que des noms de domaine, pas une plage d'IP comme 100.64.0.0/10.
+  La restriction reelle est faite dans l'app : lib/services/cleartext_policy.dart
+  refuse tout nouveau serveur en http:// hors Tailscale / reseau local, et
+  les URL ne contiennent plus de jeton durable (sel renouvele a chaque
+  demarrage, voir NavidromeService._newSession).
+
+  Ce fichier remplace android:usesCleartextTraffic="true" pour que la regle
+  soit explicite et qu'on puisse la resserrer ici (domain-config) le jour ou
+  tout passe en https://. Seuls les certificats systeme sont acceptes
+  (pas les autorites ajoutees par l'utilisateur).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

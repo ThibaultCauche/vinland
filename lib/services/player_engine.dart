@@ -59,9 +59,50 @@ abstract class PlayerEngine {
   Future<void> stop();
   Future<void> seek(Duration position);
   Future<void> setVolume(double volume);
+
+  /// Vitesse de lecture (1 = normale), sans changer la hauteur du son.
+  /// Utilise seulement par le Jam pour rattraper l'hote en douceur (voir
+  /// JamController._applyJamState), de +/-3 % au plus.
+  Future<void> setSpeed(double speed);
   Future<void> seekToNext();
   Future<void> seekToPrevious();
   Future<void> setShuffleModeEnabled(bool enabled);
   Future<void> setLoopMode(LoopMode mode);
   Future<void> dispose();
+}
+
+/// Ce que PlayerController pilote : le moteur (pour ses flux d'etat) et le
+/// chargement d'un titre avec sa fiche pour la notification/l'ecran
+/// verrouille. Implemente par VinlandAudioHandler, remplace par un faux
+/// dans les tests (voir test/fakes/fake_player_engine.dart).
+abstract class PlaybackOutput {
+  PlayerEngine get player;
+
+  /// Retourne false si le chargement echoue apres toutes les tentatives.
+  ///
+  /// Si le titre a ete precharge ([preload]), bascule simplement dessus,
+  /// en fondu de [crossfade] si > 0. [gain] : volume ReplayGain du titre
+  /// (0..1), multiplie par le volume choisi par l'utilisateur.
+  Future<bool> loadAndPlay(
+    List<MediaItem> items,
+    int startIndex, {
+    Duration crossfade = Duration.zero,
+    double gain = 1.0,
+  });
+
+  /// Prepare le titre suivant sans interrompre celui qui joue. Retourne
+  /// false si le moteur ne sait pas precharger ou si le chargement echoue :
+  /// le titre sera alors charge normalement par [loadAndPlay].
+  Future<bool> preload(MediaItem item, {double gain = 1.0});
+
+  /// Le titre precharge n'est plus le suivant (file modifiee).
+  void cancelPreload();
+
+  /// Change le gain ReplayGain du titre en cours (reglage modifie).
+  Future<void> setTrackGain(double gain);
+
+  Future<void> play();
+  Future<void> pause();
+  Future<void> seek(Duration position);
+  Future<void> stop();
 }

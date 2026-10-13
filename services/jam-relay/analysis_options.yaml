@@ -1,0 +1,3 @@
+# Le relais est un projet Dart pur : sans ce fichier, il heritait de
+# l'analysis_options.yaml de l'app (flutter_lints), introuvable ici.
+include: package:lints/recommended.yaml

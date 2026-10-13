@@ -53,15 +53,15 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
   void initState() {
     super.initState();
     final state = context.read<AppState>();
-    state.onDesktopOpenAlbum = _openAlbum;
-    state.onDesktopOpenPlaylist = _openPlaylist;
+    state.navigator.onDesktopOpenAlbum = _openAlbum;
+    state.navigator.onDesktopOpenPlaylist = _openPlaylist;
   }
 
   @override
   void dispose() {
     final state = context.read<AppState>();
-    state.onDesktopOpenAlbum = null;
-    state.onDesktopOpenPlaylist = null;
+    state.navigator.onDesktopOpenAlbum = null;
+    state.navigator.onDesktopOpenPlaylist = null;
     super.dispose();
   }
 
@@ -133,72 +133,71 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
         ? coverCandidates[Random().nextInt(coverCandidates.length)].coverPath
         : (tracks.isNotEmpty ? tracks.first.coverPath : null);
     _push(DesktopCollectionView(
-          key: ValueKey('playlist-${playlist.id}'),
-          title: playlist.name,
-          subtitle: trackCountLabel,
-          coverPath: coverPath,
-          tracks: tracks,
-          onOpenAlbum: _openAlbum,
-          onOpenArtist: _openArtist,
-          onRecordRecent: () => state.recordRecentPlay(RecentPlay(
-                type: RecentPlayType.playlist,
-                id: playlist.id,
-                title: playlist.name,
-                subtitle: trackCountLabel,
-                coverPath: coverPath,
-                playedAt: DateTime.now(),
-              )),
-          onShare: () => sharePlaylist(context, playlist),
-          onSendToFriend: context.read<AppState>().shareInboxConfigured
-              ? () => showSendToFriendDialog(context,
-                  type: 'playlist',
-                  title: playlist.name,
-                  subtitle: trackCountLabel,
-                  playlistForPrivacyCheck: playlist)
-              : null,
-          moreActions: [
-            DesktopHeroMenuAction(
-              label: state.isPinned(PinnedItemType.playlist, playlist.id)
-                  ? "Désépingler de l'accueil"
-                  : "Épingler à l'accueil",
-              icon: state.isPinned(PinnedItemType.playlist, playlist.id)
-                  ? Icons.push_pin
-                  : Icons.push_pin_outlined,
-              onTap: () => state.togglePin(PinnedItem(
-                type: PinnedItemType.playlist,
-                id: playlist.id,
-                title: playlist.name,
-                subtitle: trackCountLabel,
-              )),
-            ),
-            DesktopHeroMenuAction(
-              label: "Ajouter à la file d'attente",
-              icon: Icons.playlist_add,
-              onTap: () {
-                for (final t in tracks) {
-                  state.addToQueue(t);
-                }
-              },
-            ),
-            DesktopHeroMenuAction(
-              label: 'Télécharger',
-              icon: Icons.download_outlined,
-              onTap: () => state.downloadTracksOffline(tracks),
-            ),
-            DesktopHeroMenuAction(
-              label: playlist.isPublic ? 'Rendre privée' : 'Rendre publique',
-              icon: playlist.isPublic ? Icons.lock_outline : Icons.public,
-              onTap: () =>
-                  state.setPlaylistPublic(playlist.id, !playlist.isPublic),
-            ),
-            DesktopHeroMenuAction(
-              label: 'Supprimer',
-              icon: Icons.delete_outline,
-              destructive: true,
-              onTap: () => _confirmDeletePlaylist(playlist),
-            ),
-          ],
-        ));
+      key: ValueKey('playlist-${playlist.id}'),
+      title: playlist.name,
+      subtitle: trackCountLabel,
+      coverPath: coverPath,
+      tracks: tracks,
+      onOpenAlbum: _openAlbum,
+      onOpenArtist: _openArtist,
+      onRecordRecent: () => state.recordRecentPlay(RecentPlay(
+        type: RecentPlayType.playlist,
+        id: playlist.id,
+        title: playlist.name,
+        subtitle: trackCountLabel,
+        coverPath: coverPath,
+        playedAt: DateTime.now(),
+      )),
+      onShare: () => sharePlaylist(context, playlist),
+      onSendToFriend: context.read<AppState>().shareInboxConfigured
+          ? () => showSendToFriendDialog(context,
+              type: 'playlist',
+              title: playlist.name,
+              subtitle: trackCountLabel,
+              playlistForPrivacyCheck: playlist)
+          : null,
+      moreActions: [
+        DesktopHeroMenuAction(
+          label: state.isPinned(PinnedItemType.playlist, playlist.id)
+              ? "Désépingler de l'accueil"
+              : "Épingler à l'accueil",
+          icon: state.isPinned(PinnedItemType.playlist, playlist.id)
+              ? Icons.push_pin
+              : Icons.push_pin_outlined,
+          onTap: () => state.togglePin(PinnedItem(
+            type: PinnedItemType.playlist,
+            id: playlist.id,
+            title: playlist.name,
+            subtitle: trackCountLabel,
+          )),
+        ),
+        DesktopHeroMenuAction(
+          label: "Ajouter à la file d'attente",
+          icon: Icons.playlist_add,
+          onTap: () {
+            for (final t in tracks) {
+              state.addToQueue(t);
+            }
+          },
+        ),
+        DesktopHeroMenuAction(
+          label: 'Télécharger',
+          icon: Icons.download_outlined,
+          onTap: () => state.downloadTracksOffline(tracks),
+        ),
+        DesktopHeroMenuAction(
+          label: playlist.isPublic ? 'Rendre privée' : 'Rendre publique',
+          icon: playlist.isPublic ? Icons.lock_outline : Icons.public,
+          onTap: () => state.setPlaylistPublic(playlist.id, !playlist.isPublic),
+        ),
+        DesktopHeroMenuAction(
+          label: 'Supprimer',
+          icon: Icons.delete_outline,
+          destructive: true,
+          onTap: () => _confirmDeletePlaylist(playlist),
+        ),
+      ],
+    ));
   }
 
   Future<void> _confirmDeletePlaylist(Playlist playlist) async {
@@ -232,41 +231,40 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
   void _openLikedSongs() {
     final state = context.read<AppState>();
     final tracks = state.likedTracksWithMissing;
-    final trackCountLabel = '${tracks.length} titre${tracks.length > 1 ? 's' : ''}';
+    final trackCountLabel =
+        '${tracks.length} titre${tracks.length > 1 ? 's' : ''}';
     _push(DesktopCollectionView(
-          key: const ValueKey('liked-songs'),
-          title: 'Titres likes',
-          subtitle: 'Vos titres favoris',
-          coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
-          tracks: tracks,
-          onOpenAlbum: _openAlbum,
-          onOpenArtist: _openArtist,
-          onRecordRecent: () => state.recordRecentPlay(RecentPlay(
-                type: RecentPlayType.playlist,
-                id: kLikedSongsRecentId,
-                title: 'Titres likés',
-                subtitle: trackCountLabel,
-                playedAt: DateTime.now(),
-              )),
-          moreActions: [
-            DesktopHeroMenuAction(
-              label: state.isPinned(
-                      PinnedItemType.playlist, kLikedSongsRecentId)
-                  ? "Désépingler de l'accueil"
-                  : "Épingler à l'accueil",
-              icon: state.isPinned(
-                      PinnedItemType.playlist, kLikedSongsRecentId)
-                  ? Icons.push_pin
-                  : Icons.push_pin_outlined,
-              onTap: () => state.togglePin(const PinnedItem(
-                type: PinnedItemType.playlist,
-                id: kLikedSongsRecentId,
-                title: 'Titres likes',
-                subtitle: 'Playlist',
-              )),
-            ),
-          ],
-        ));
+      key: const ValueKey('liked-songs'),
+      title: 'Titres likes',
+      subtitle: 'Vos titres favoris',
+      coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
+      tracks: tracks,
+      onOpenAlbum: _openAlbum,
+      onOpenArtist: _openArtist,
+      onRecordRecent: () => state.recordRecentPlay(RecentPlay(
+        type: RecentPlayType.playlist,
+        id: kLikedSongsRecentId,
+        title: 'Titres likés',
+        subtitle: trackCountLabel,
+        playedAt: DateTime.now(),
+      )),
+      moreActions: [
+        DesktopHeroMenuAction(
+          label: state.isPinned(PinnedItemType.playlist, kLikedSongsRecentId)
+              ? "Désépingler de l'accueil"
+              : "Épingler à l'accueil",
+          icon: state.isPinned(PinnedItemType.playlist, kLikedSongsRecentId)
+              ? Icons.push_pin
+              : Icons.push_pin_outlined,
+          onTap: () => state.togglePin(const PinnedItem(
+            type: PinnedItemType.playlist,
+            id: kLikedSongsRecentId,
+            title: 'Titres likes',
+            subtitle: 'Playlist',
+          )),
+        ),
+      ],
+    ));
   }
 
   void _openArtist(String artistName) {
@@ -497,7 +495,7 @@ class _TopBar extends StatelessWidget {
                         child: GlassPanel(
                           borderRadius: BorderRadius.circular(20),
                           blurSigma: 0,
-                          tint: Colors.white.withOpacity(0.06),
+                          tint: Colors.white.withValues(alpha: 0.06),
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           child: const SizedBox(
                             height: 36,

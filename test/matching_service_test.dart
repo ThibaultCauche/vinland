@@ -52,7 +52,8 @@ void main() {
 
     test('reconnait un featuring dans un champ multi-artiste', () {
       expect(
-        MatchingService.artistsMatch('Daft Punk/Pharrell Williams', 'Daft Punk'),
+        MatchingService.artistsMatch(
+            'Daft Punk/Pharrell Williams', 'Daft Punk'),
         isTrue,
       );
     });

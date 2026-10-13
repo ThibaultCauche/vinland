@@ -1,23 +1,17 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/search/search_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../providers/app_state.dart';
-import '../models/discovered_artist.dart';
-import '../models/discovered_album.dart';
-import '../models/discovered_track.dart';
-import '../models/track.dart';
 import '../models/search_history_item.dart';
 import '../services/discovery_service.dart';
-import '../services/download_worker_service.dart';
-import '../services/matching_service.dart';
-import '../services/search_history_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../screens/artist_screen.dart';
 import '../screens/album_screen.dart';
 import '../screens/discovered_album_screen.dart';
-import '../models/album.dart';
 import '../widgets/bottom_bar_reserve.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -30,175 +24,53 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
-  final _discovery = DiscoveryService();
-  final _historyService = SearchHistoryService();
-  final _downloadWorker = DownloadWorkerService();
+  late final SearchModel _model;
   late TabController _tabController;
-
-  bool _isLoading = false;
-  String _query = '';
-  Timer? _debounce;
-
-  List<_SearchTrack> _tracks = [];
-  List<DiscoveredArtist> _artists = [];
-  List<DiscoveredAlbum> _albums = [];
-  List<SearchHistoryItem> _history = [];
-  final Map<int, DownloadUiState> _downloadStates = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     final state = context.read<AppState>();
-    _historyService.setCurrentUser(state.currentUserId);
-    _loadHistory();
+    _model = SearchModel(
+      discovery: context.read<DiscoveryService>(),
+      library: state,
+      userId: state.currentUserId,
+    )..addListener(_onModelChanged);
   }
+
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
+    _model.dispose();
     _controller.dispose();
     _tabController.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadHistory() async {
-    await _historyService.ensureLoaded();
-    if (mounted) setState(() => _history = _historyService.history);
-  }
-
-  void _onSearchChanged(String value) {
-    _debounce?.cancel();
-    if (value.trim().isEmpty) {
-      setState(() {
-        _query = '';
-        _tracks = [];
-        _artists = [];
-        _albums = [];
-      });
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      _performSearch(value);
-    });
-  }
-
-  Track? _findLocalTrack(DiscoveredTrack dt, List<Track> candidates) {
-    for (final t in candidates) {
-      if (MatchingService.artistsMatch(t.artist, dt.artistName) &&
-          MatchingService.titlesMatch(t.title, dt.title)) {
-        return t;
-      }
-    }
-    return null;
-  }
-
-  // Recherche Deezer (pas uniquement les titres deja sur le NAS, voir
-  // DesktopSearchView pour la meme logique cote desktop) : avant, l'onglet
-  // "Titres" ne cherchait QUE dans la bibliotheque locale deja synchronisee,
-  // donc un titre pas encore telecharge n'y apparaissait jamais meme en le
-  // tapant exactement -- il fallait passer par Artiste puis Album pour le
-  // retrouver et le telecharger (retour utilisateur).
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) return;
-    setState(() {
-      _isLoading = true;
-      _query = query;
-    });
-
-    final state = context.read<AppState>();
-    final results = await Future.wait([
-      _discovery.searchArtists(query, limit: 10),
-      _discovery.searchAlbums(query, limit: 15),
-      _discovery.searchTracks(query, limit: 15),
-    ]);
-
-    if (mounted) {
-      final localTracks = state.allTracks;
-      final discoveredTracks = results[2] as List<DiscoveredTrack>;
-      setState(() {
-        _tracks = [
-          for (final dt in discoveredTracks)
-            _SearchTrack(discovered: dt, local: _findLocalTrack(dt, localTracks)),
-        ];
-        _artists = results[0] as List<DiscoveredArtist>;
-        _albums = results[1] as List<DiscoveredAlbum>;
-        _isLoading = false;
-      });
-    }
-  }
-
-  /// Meme logique que DesktopSearchView._downloadTrack -- jusqu'ici jamais
-  /// branchee cote mobile, l'onglet "Titres" ne montrant que des titres deja
-  /// locaux.
-  Future<void> _downloadTrack(DiscoveredTrack track) async {
-    setState(() => _downloadStates[track.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: track.artistName,
-      title: track.title,
-      album: track.albumName == 'Inconnu' ? null : track.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) {
-        setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-      }
-      return;
-    }
-
-    if (!mounted) return;
-    final status = await showDownloadProgressDialog(context,
-        worker: _downloadWorker, jobId: jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(track.artistName, track.title);
-      if (mounted) {
-        setState(() {
-          _downloadStates.remove(track.id);
-          final i = _tracks.indexWhere((t) => t.discovered.id == track.id);
-          if (i != -1) {
-            _tracks[i] = _SearchTrack(
-              discovered: track,
-              local: _findLocalTrack(track, context.read<AppState>().allTracks),
-            );
-          }
-        });
-      }
-    } else {
-      setState(() => _downloadStates[track.id] = DownloadUiState.failed);
-    }
-  }
-
   void _onHistoryTap(SearchHistoryItem item) {
+    final state = context.read<AppState>();
     switch (item.type) {
       case 'artist':
         if (item.name != null) {
-          final state = context.read<AppState>();
           state.popOverlay();
           state.pushOverlay(ArtistScreen(artistName: item.name!));
         }
         break;
       case 'album':
         if (item.id != null) {
-          final state = context.read<AppState>();
           state.popOverlay();
           state.pushOverlay(
               DiscoveredAlbumScreen.fromAlbumId(int.parse(item.id!)));
         }
         break;
       case 'track':
-        if (item.id != null) {
-          final state = context.read<AppState>();
-          final matches =
-              state.allTracks.where((t) => t.id == item.id).toList();
-          if (matches.isNotEmpty) {
-            FocusScope.of(context).unfocus();
-            state.popOverlay();
-            state.playTrack(matches.first);
-          }
+        final track = _model.historyTrack(item);
+        if (track != null) {
+          FocusScope.of(context).unfocus();
+          state.popOverlay();
+          state.playTrack(track);
         }
         break;
     }
@@ -260,8 +132,8 @@ class _SearchScreenState extends State<SearchScreen>
                       child: TextField(
                         controller: _controller,
                         autofocus: true,
-                        onSubmitted: _performSearch,
-                        onChanged: _onSearchChanged,
+                        onSubmitted: _model.search,
+                        onChanged: _model.onQueryChanged,
                         style:
                             const TextStyle(color: Colors.white, fontSize: 14),
                         decoration: InputDecoration(
@@ -276,7 +148,7 @@ class _SearchScreenState extends State<SearchScreen>
                                       color: Colors.white54, size: 18),
                                   onPressed: () {
                                     _controller.clear();
-                                    _onSearchChanged('');
+                                    _model.onQueryChanged('');
                                   },
                                 )
                               : null,
@@ -290,12 +162,12 @@ class _SearchScreenState extends State<SearchScreen>
                 ],
               ),
             ),
-            if (_isLoading)
+            if (_model.isLoading)
               const LinearProgressIndicator(
                 color: Color(0xFF1DB954),
                 backgroundColor: Colors.transparent,
               ),
-            if (_query.isNotEmpty) ...[
+            if (_model.query.isNotEmpty) ...[
               TabBar(
                 controller: _tabController,
                 isScrollable: true,
@@ -303,9 +175,9 @@ class _SearchScreenState extends State<SearchScreen>
                 unselectedLabelColor: Colors.white38,
                 indicatorColor: const Color(0xFF1DB954),
                 tabs: [
-                  Tab(text: 'Artistes (${_artists.length})'),
-                  Tab(text: 'Albums (${_albums.length})'),
-                  Tab(text: 'Titres (${_tracks.length})'),
+                  Tab(text: 'Artistes (${_model.artists.length})'),
+                  Tab(text: 'Albums (${_model.albums.length})'),
+                  Tab(text: 'Titres (${_model.tracks.length})'),
                 ],
               ),
               Expanded(
@@ -318,12 +190,12 @@ class _SearchScreenState extends State<SearchScreen>
                   ],
                 ),
               ),
-            ] else if (_history.isNotEmpty) ...[
+            ] else if (_model.history.isNotEmpty) ...[
               Expanded(
                 child: ListView.builder(
                   padding: EdgeInsets.only(
                       top: 8, bottom: bottomBarReserve(context)),
-                  itemCount: _history.length + 1,
+                  itemCount: _model.history.length + 1,
                   itemBuilder: (context, index) {
                     if (index == 0) {
                       return Padding(
@@ -340,10 +212,7 @@ class _SearchScreenState extends State<SearchScreen>
                               ),
                             ),
                             TextButton(
-                              onPressed: () async {
-                                await _historyService.clear();
-                                setState(() => _history = []);
-                              },
+                              onPressed: _model.clearHistory,
                               child: const Text('Effacer',
                                   style: TextStyle(color: Color(0xFF1DB954))),
                             ),
@@ -351,7 +220,7 @@ class _SearchScreenState extends State<SearchScreen>
                         ),
                       );
                     }
-                    final item = _history[index - 1];
+                    final item = _model.history[index - 1];
                     return ListTile(
                       contentPadding:
                           const EdgeInsets.symmetric(horizontal: 16),
@@ -373,10 +242,7 @@ class _SearchScreenState extends State<SearchScreen>
                       trailing: IconButton(
                         icon: const Icon(Icons.close,
                             color: Colors.white38, size: 18),
-                        onPressed: () async {
-                          await _historyService.remove(item);
-                          setState(() => _history = _historyService.history);
-                        },
+                        onPressed: () => _model.removeFromHistory(item),
                       ),
                       onTap: () => _onHistoryTap(item),
                     );
@@ -407,17 +273,19 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildTracks() {
-    if (_tracks.isEmpty) {
+    final tracks = _model.tracks;
+    if (tracks.isEmpty) {
       return const Center(
-        child: Text('Aucun titre trouvé', style: TextStyle(color: Colors.white38)),
+        child:
+            Text('Aucun titre trouvé', style: TextStyle(color: Colors.white38)),
       );
     }
     final state = context.read<AppState>();
     return ListView.builder(
       padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
-      itemCount: _tracks.length,
+      itemCount: tracks.length,
       itemBuilder: (context, i) {
-        final t = _tracks[i];
+        final t = tracks[i];
         final discovered = t.discovered;
         final localTrack = t.local;
         final isAvailable = localTrack != null;
@@ -475,26 +343,21 @@ class _SearchScreenState extends State<SearchScreen>
                   onPressed: () => state.toggleLike(localTrack.id),
                 )
               : DownloadStateIcon(
-                  state: _downloadStates[discovered.id],
-                  showDownloadButton: _downloadWorker.isConfigured,
-                  onDownloadTap: () => _downloadTrack(discovered),
+                  state: _model.downloadStateOf(discovered.id),
+                  showDownloadButton: _model.canDownload,
+                  onDownloadTap: () => _model.downloadTrack(discovered,
+                      wait: waitWithProgressDialog(context)),
                 ),
           onTap: !isAvailable
               ? null
               : () async {
-                  await _historyService.addTrack(
-                    localTrack.title,
-                    localTrack.id,
-                    localTrack.artist,
-                    query: _query,
-                    imageUrl: localTrack.coverPath?.startsWith('http') == true
-                        ? localTrack.coverPath
-                        : null,
-                  );
-                  if (!mounted) return;
+                  await _model.rememberTrack(localTrack);
+                  // context est celui de la ligne (itemBuilder), pas du State :
+                  // c'est lui qu'il faut verifier apres l'await.
+                  if (!context.mounted) return;
                   FocusScope.of(context).unfocus();
                   state.popOverlay();
-                  state.playTrack(localTrack);
+                  unawaited(state.playTrack(localTrack));
                 },
         );
       },
@@ -502,7 +365,8 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildArtists() {
-    if (_artists.isEmpty) {
+    final artists = _model.artists;
+    if (artists.isEmpty) {
       return const Center(
         child: Text('Aucun artiste trouvé',
             style: TextStyle(color: Colors.white38)),
@@ -510,9 +374,9 @@ class _SearchScreenState extends State<SearchScreen>
     }
     return ListView.builder(
       padding: EdgeInsets.only(bottom: bottomBarReserve(context)),
-      itemCount: _artists.length,
+      itemCount: artists.length,
       itemBuilder: (context, i) {
-        final artist = _artists[i];
+        final artist = artists[i];
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           leading: CircleAvatar(
@@ -539,12 +403,7 @@ class _SearchScreenState extends State<SearchScreen>
               : null,
           trailing: const Icon(Icons.chevron_right, color: Colors.white38),
           onTap: () {
-            _historyService.addArtist(
-              artist.name,
-              artist.id.toString(),
-              query: _query,
-              imageUrl: artist.pictureUrl,
-            );
+            _model.openArtist(artist);
             final state = context.read<AppState>();
             state.popOverlay();
             state.pushOverlay(ArtistScreen(artistName: artist.name));
@@ -555,7 +414,8 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildAlbums() {
-    if (_albums.isEmpty) {
+    final albums = _model.albums;
+    if (albums.isEmpty) {
       return const Center(
         child:
             Text('Aucun album trouvé', style: TextStyle(color: Colors.white38)),
@@ -569,35 +429,18 @@ class _SearchScreenState extends State<SearchScreen>
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
       ),
-      itemCount: _albums.length,
+      itemCount: albums.length,
       itemBuilder: (context, i) {
-        final album = _albums[i];
+        final album = albums[i];
         return _AlbumCard(
           title: album.title,
           artist: album.artistName,
           coverUrl: album.coverUrl,
           isInLibrary: album.isInLibrary,
           onTap: () {
-            _historyService.addAlbum(
-              album.title,
-              album.id.toString(),
-              album.artistName,
-              query: _query,
-              imageUrl: album.coverUrl,
-            );
+            final localAlbum = _model.openAlbum(album);
             final state = context.read<AppState>();
             state.popOverlay();
-            Album? localAlbum;
-            try {
-              localAlbum = state.albums.firstWhere(
-                (a) =>
-                    a.title.toLowerCase().trim() ==
-                    album.title.toLowerCase().trim(),
-              );
-            } catch (_) {
-              localAlbum = null;
-            }
-
             if (localAlbum != null) {
               state.pushOverlay(AlbumScreen(album: localAlbum));
             } else {
@@ -608,15 +451,6 @@ class _SearchScreenState extends State<SearchScreen>
       },
     );
   }
-}
-
-/// Un resultat de l'onglet "Titres" : toujours issu de la recherche Deezer
-/// (voir _performSearch), avec un lien vers le titre local correspondant
-/// quand il existe deja -- meme structure que DesktopSearchView._SearchTrack.
-class _SearchTrack {
-  final DiscoveredTrack discovered;
-  final Track? local;
-  const _SearchTrack({required this.discovered, this.local});
 }
 
 class _AlbumCard extends StatelessWidget {

@@ -11,6 +11,7 @@ import '../widgets/app_background.dart';
 import '../widgets/app_bar_safe_area.dart';
 import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/download_progress_dialog.dart';
+import '../widgets/playback_settings_tiles.dart';
 import '../widgets/update_prompt.dart';
 import 'personalization_screen.dart';
 
@@ -135,6 +136,8 @@ class SettingsScreen extends StatelessWidget {
                         'sur tous les fichiers déjà présents',
                     onTap: () => _runLibraryTagScan(context, downloadWorker),
                   ),
+                _buildSection('Lecture'),
+                PlaybackSettingsTiles(settings: state.playbackSettings),
                 _buildSection('Amis'),
                 _buildSwitchTile(
                   icon: Icons.people_outline,
@@ -212,8 +215,14 @@ class SettingsScreen extends StatelessWidget {
                           return;
                         }
                         final messenger = ScaffoldMessenger.of(context);
-                        await state.checkForUpdate();
-                        if (state.updateInfo == null) {
+                        final checked = await state.checkForUpdate(force: true);
+                        if (!checked && state.updateInfo == null) {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'GitHub limite les vérifications depuis ce réseau, réessaie dans une heure')),
+                          );
+                        } else if (state.updateInfo == null) {
                           messenger.showSnackBar(
                             const SnackBar(
                                 content:
@@ -296,7 +305,7 @@ class SettingsScreen extends StatelessWidget {
           : null,
       value: value,
       onChanged: onChanged,
-      activeColor: const Color(0xFF1DB954),
+      activeThumbColor: const Color(0xFF1DB954),
     );
   }
 
@@ -384,13 +393,18 @@ class SettingsScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               final state = context.read<AppState>();
+              // Capturés avant l'await : si l'écran est fermé pendant la
+              // connexion, relire Navigator/ScaffoldMessenger depuis un
+              // context démonté ferait planter l'app.
+              final navigator = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
               final ok = await state.configureNavidrome(
                 urlCtrl.text.trim(),
                 userCtrl.text.trim(),
                 passCtrl.text.trim(),
               );
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
+              if (navigator.mounted) navigator.pop();
+              messenger.showSnackBar(
                 SnackBar(
                   content:
                       Text(ok ? 'Connecté à Navidrome' : 'Échec de connexion'),

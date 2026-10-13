@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../features/artist_discography/artist_discography_model.dart';
+import '../features/shared/download_waiters.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
-import '../models/discovered_artist.dart';
 import '../models/track.dart';
 import '../services/artist_discography.dart';
 import '../services/discovery_service.dart';
 import '../services/download_worker_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/download_button.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../widgets/smooth_scroll.dart';
 import 'desktop_track_row.dart';
 import 'glass.dart';
@@ -42,114 +42,27 @@ class DesktopArtistDiscographyView extends StatefulWidget {
 
 class _DesktopArtistDiscographyViewState
     extends State<DesktopArtistDiscographyView> {
-  final _discovery = DiscoveryService();
-  final _downloadWorker = DownloadWorkerService();
+  late final ArtistDiscographyModel _model;
   final _scrollController = SmoothScrollController();
-  final Map<int, DownloadUiState> _downloadStates = {};
-
-  DiscoveredArtist? _discoveredArtist;
-  List<ArtistAlbumEntry> _entries = [];
-  final Map<int, List<ReleaseTrack>> _tracksByEntry = {};
-  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _model = ArtistDiscographyModel(
+      artistName: widget.artistName,
+      discovery: context.read<DiscoveryService>(),
+      library: context.read<AppState>(),
+    )..addListener(_onModelChanged);
   }
+
+  void _onModelChanged() => setState(() {});
 
   @override
   void dispose() {
+    _model.dispose();
     _scrollController.dispose();
     super.dispose();
   }
-
-  Future<void> _load() async {
-    final state = context.read<AppState>();
-    final data = await loadArtistDeezerData(_discovery, widget.artistName);
-    final localAlbums =
-        albumsForArtist(state.albums, state.allTracks, widget.artistName);
-
-    await deepMatchArtistAlbums(
-      discovery: _discovery,
-      discoveredAlbums: data.albums,
-      allLocalTracks: state.allTracks,
-      artistName: widget.artistName,
-    );
-
-    final trueTrackCounts = <int, int>{};
-    final withKnownCount = data.albums.where((a) => a.isInLibrary).toList();
-    await Future.wait(withKnownCount.map((a) async {
-      final full = await _discovery.getAlbum(a.id);
-      if (full?.nbTracks != null) trueTrackCounts[a.id] = full!.nbTracks!;
-    }));
-
-    final entries = buildArtistAlbumEntries(
-      localAlbums: localAlbums,
-      discoveredAlbums: data.albums,
-      trueTrackCounts: trueTrackCounts,
-    );
-
-    if (!mounted) return;
-    setState(() {
-      _discoveredArtist = data.artist;
-      _entries = entries;
-      _loading = false;
-    });
-
-    const batchSize = 4;
-    final allLocalTracks = state.allTracks;
-    for (var i = 0; i < entries.length; i += batchSize) {
-      final end =
-          (i + batchSize < entries.length) ? i + batchSize : entries.length;
-      final indices = [for (var k = i; k < end; k++) k];
-      final results = await Future.wait(indices.map((idx) => loadReleaseTracks(
-            discovery: _discovery,
-            entry: entries[idx],
-            discoveredAlbums: data.albums,
-            allLocalTracks: allLocalTracks,
-          )));
-      if (!mounted) return;
-      setState(() {
-        for (var k = 0; k < indices.length; k++) {
-          _tracksByEntry[indices[k]] = results[k];
-        }
-      });
-    }
-  }
-
-  Future<void> _downloadTrack(ReleaseTrack rt) async {
-    final dt = rt.discovered;
-    if (dt == null) return;
-    setState(() => _downloadStates[dt.id] = DownloadUiState.downloading);
-
-    final jobId = await _downloadWorker.requestDownload(
-      artist: dt.artistName,
-      title: dt.title,
-      album: dt.albumName == 'Inconnu' ? null : dt.albumName,
-    );
-    if (jobId == null) {
-      if (mounted) setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
-      return;
-    }
-
-    if (!mounted) return;
-    final status = await showDownloadProgressDialog(context,
-        worker: _downloadWorker, jobId: jobId);
-    if (!mounted) return;
-
-    if (status.state == DownloadJobState.done) {
-      await context
-          .read<AppState>()
-          .handleTrackDownloaded(dt.artistName, dt.title);
-      if (mounted) setState(() => _downloadStates.remove(dt.id));
-    } else {
-      setState(() => _downloadStates[dt.id] = DownloadUiState.failed);
-    }
-  }
-
-  String? _coverPath(ArtistAlbumEntry entry) =>
-      entry.local?.coverPath ?? entry.discovered?.coverBigUrl ?? entry.discovered?.coverUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -157,7 +70,7 @@ class _DesktopArtistDiscographyViewState
 
     return Padding(
       padding: const EdgeInsets.only(top: DesktopGlass.topInsetCompact),
-      child: _loading
+      child: _model.isLoading
           ? const Center(
               child: CircularProgressIndicator(color: DesktopGlass.accent))
           : CustomScrollView(
@@ -168,12 +81,12 @@ class _DesktopArtistDiscographyViewState
                     padding: const EdgeInsets.fromLTRB(4, 4, 4, 20),
                     child: Row(
                       children: [
-                        if (_discoveredArtist?.pictureBigUrl != null) ...[
+                        if (_model.discoveredArtist?.pictureBigUrl != null) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(28),
                             child: Image(
                               image: coverImageProvider(context,
-                                  path: _discoveredArtist!.pictureBigUrl!,
+                                  path: _model.discoveredArtist!.pictureBigUrl!,
                                   width: 56,
                                   height: 56),
                               width: 56,
@@ -194,13 +107,13 @@ class _DesktopArtistDiscographyViewState
                     ),
                   ),
                 ),
-                for (var i = 0; i < _entries.length; i++) ...[
+                for (var i = 0; i < _model.entries.length; i++) ...[
                   SliverToBoxAdapter(
                     child: _ReleaseHeader(
-                      entry: _entries[i],
-                      coverPath: _coverPath(_entries[i]),
+                      entry: _model.entries[i],
+                      coverPath: releaseCoverPath(_model.entries[i]),
                       onTap: () {
-                        final entry = _entries[i];
+                        final entry = _model.entries[i];
                         if (entry.local != null) {
                           widget.onOpenAlbum(entry.local!,
                               filterArtist: widget.artistName);
@@ -212,7 +125,8 @@ class _DesktopArtistDiscographyViewState
                         }
                       },
                       onPlay: () {
-                        final tracks = _tracksByEntry[i]
+                        final tracks = _model
+                                .tracksOf(i)
                                 ?.where((t) => t.local != null)
                                 .map((t) => t.local!)
                                 .toList() ??
@@ -223,7 +137,7 @@ class _DesktopArtistDiscographyViewState
                       },
                     ),
                   ),
-                  if (_tracksByEntry[i] == null)
+                  if (_model.tracksOf(i) == null)
                     const SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -241,7 +155,7 @@ class _DesktopArtistDiscographyViewState
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, trackIndex) {
-                          final rt = _tracksByEntry[i]![trackIndex];
+                          final rt = _model.tracksOf(i)![trackIndex];
                           return Selector<AppState, Track?>(
                             selector: (_, s) => s.displayTrack,
                             builder: (context, currentTrack, __) {
@@ -250,31 +164,31 @@ class _DesktopArtistDiscographyViewState
                                   track: rt.local!,
                                   isPlaying: currentTrack?.id == rt.local!.id,
                                   onTap: () {
-                                    final localTracks = _tracksByEntry[i]!
+                                    final localTracks = _model
+                                        .tracksOf(i)!
                                         .where((t) => t.local != null)
                                         .map((t) => t.local!)
                                         .toList();
                                     state.playTrack(rt.local!,
                                         trackList: localTracks);
                                   },
-                                  onLike: () =>
-                                      state.toggleLike(rt.local!.id),
+                                  onLike: () => state.toggleLike(rt.local!.id),
                                   onMore: () {},
                                 );
                               }
                               return _MissingReleaseTrackRow(
                                 track: rt,
                                 downloadState: rt.discovered != null
-                                    ? _downloadStates[rt.discovered!.id]
+                                    ? _model.downloadStateOf(rt.discovered!.id)
                                     : null,
-                                showDownloadButton:
-                                    _downloadWorker.isConfigured,
-                                onDownloadTap: () => _downloadTrack(rt),
+                                showDownloadButton: _model.canDownload,
+                                onDownloadTap: () => _model.downloadRelease(rt,
+                                    wait: waitWithProgressDialog(context)),
                               );
                             },
                           );
                         },
-                        childCount: _tracksByEntry[i]!.length,
+                        childCount: _model.tracksOf(i)!.length,
                       ),
                     ),
                   const SliverToBoxAdapter(child: SizedBox(height: 28)),
@@ -349,8 +263,7 @@ class _ReleaseHeader extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '$type${year != null ? ' • $year' : ''} • ${entry.trackCount} titre${entry.trackCount > 1 ? 's' : ''}',
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 12),
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
                   ),
                 ],
               ),
@@ -396,8 +309,7 @@ class _MissingReleaseTrackRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text(track.artistName,
-                    style: const TextStyle(
-                        color: Colors.white24, fontSize: 12),
+                    style: const TextStyle(color: Colors.white24, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
               ],

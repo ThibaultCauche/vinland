@@ -8,7 +8,13 @@ Map<String, dynamic> _serverPlaylist({
   bool public = false,
   String comment = '',
 }) =>
-    {'id': id, 'name': name, 'owner': 'me', 'public': public, 'comment': comment};
+    {
+      'id': id,
+      'name': name,
+      'owner': 'me',
+      'public': public,
+      'comment': comment
+    };
 
 void main() {
   group('planPlaylistSync', () {
@@ -31,9 +37,11 @@ void main() {
       expect(plan.discovered.single.serverId, 'srv-1');
     });
 
-    test('rafraichit une playlist deja connue localement au lieu de la redecouvrir',
+    test(
+        'rafraichit une playlist deja connue localement au lieu de la redecouvrir',
         () {
-      final local = Playlist(id: 'local-1', name: 'Ancien nom', serverId: 'srv-1');
+      final local =
+          Playlist(id: 'local-1', name: 'Ancien nom', serverId: 'srv-1');
       final plan = planPlaylistSync(
         [_serverPlaylist(id: 'srv-1', name: 'Nouveau nom', public: true)],
         [local],
@@ -49,7 +57,8 @@ void main() {
       expect(local.isPublic, isTrue);
     });
 
-    test('ignore les playlists miroir (likes/ecoutes recentes/now playing)', () {
+    test('ignore les playlists miroir (likes/ecoutes recentes/now playing)',
+        () {
       final plan = planPlaylistSync(
         [_serverPlaylist(id: 'mirror-1')],
         [],
@@ -61,7 +70,8 @@ void main() {
       expect(plan.discovered, isEmpty);
     });
 
-    test('ignore les sous-listes de playlist collaborative (mergees ailleurs)', () {
+    test('ignore les sous-listes de playlist collaborative (mergees ailleurs)',
+        () {
       final plan = planPlaylistSync(
         [_serverPlaylist(id: 'collab-1', comment: 'vinland:collab:abc123')],
         [],

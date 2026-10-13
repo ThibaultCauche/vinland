@@ -22,11 +22,15 @@ class SecureStorage {
 
   static Future<void> clear() async => await _storage.deleteAll();
 
-  /// Salt Subsonic persiste : reutilise le meme salt entre les sessions pour
-  /// que les URLs de stream/cover restent identiques (sinon le cache image
-  /// de Flutter ne sert jamais et chaque redemarrage recharge tout a vide).
-  static Future<String?> getSalt() => _storage.read(key: 'navidrome_salt');
+  /// Sel Subsonic fixe des versions <= 1.2.x : le sel est maintenant
+  /// regenere a chaque demarrage (voir NavidromeService._newSession), on ne
+  /// fait plus que supprimer l'ancien.
+  static Future<void> deleteSalt() => _storage.delete(key: 'navidrome_salt');
 
-  static Future<void> saveSalt(String salt) =>
-      _storage.write(key: 'navidrome_salt', value: salt);
+  /// Cle d'API OpenSubsonic optionnelle (voir NavidromeService.setApiKey).
+  static Future<String?> getApiKey() => _storage.read(key: 'navidrome_api_key');
+
+  static Future<void> saveApiKey(String? apiKey) => apiKey == null
+      ? _storage.delete(key: 'navidrome_api_key')
+      : _storage.write(key: 'navidrome_api_key', value: apiKey);
 }

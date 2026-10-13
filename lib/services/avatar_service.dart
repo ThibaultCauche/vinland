@@ -2,8 +2,8 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../config/avatar_config.dart';
 
-/// Client du petit service d'avatars maison (voir avatar-server/ a la racine
-/// du repo) : Navidrome n'a aucune notion de photo de profil, ce service la
+/// Client du petit service d'avatars maison (voir services/avatar-server/
+/// dans le repo) : Navidrome n'a aucune notion de photo de profil, ce service la
 /// remplace, un fichier par utilisateur. Voir feedback_service.dart pour le
 /// meme principe applique au webhook Discord (cle partagee cote config
 /// gitignoree, service tiers/maison fait le reste).

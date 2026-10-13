@@ -1,60 +1,29 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 class StreamingImportService {
   // ===================== CSV STREAMING =====================
 
   static Stream<Map<String, String>> parseCsvStream(String filePath) async* {
-    final file = File(filePath);
-    final stream = file.openRead();
-    var buffer = '';
-    var isFirstLine = true;
+    // Le fichier est lu d'un bloc puis decode une seule fois : decoder bloc
+    // par bloc (64 Ko) coupait parfois un caractere accentue en deux, ce qui
+    // faisait basculer tout le bloc en latin1 et donnait des titres en
+    // « Ã© » sur les grosses playlists. Un export fait au plus quelques Mo.
+    final text = decodeImportBytes(await File(filePath).readAsBytes());
     List<String>? headers;
 
-    await for (final chunk in stream) {
-      // Gérer le BOM UTF-8 sur le premier chunk
-      var bytes = chunk;
-      if (isFirstLine && bytes.length >= 3) {
-        if (bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
-          bytes = bytes.sublist(3);
-        }
+    for (final raw in const LineSplitter().convert(text)) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+
+      if (headers == null) {
+        headers = _parseCsvLine(line);
+        continue;
       }
-      var decoded = utf8.decode(bytes, allowMalformed: true);
-      if (decoded.contains('�')) {
-        decoded = latin1.decode(bytes);
-      }
-      buffer += decoded;
 
-      var lineEnd = buffer.indexOf('\n');
-      while (lineEnd != -1) {
-        final line = buffer.substring(0, lineEnd).trim();
-        buffer = buffer.substring(lineEnd + 1);
-
-        if (line.isEmpty) {
-          lineEnd = buffer.indexOf('\n');
-          continue;
-        }
-
-        if (isFirstLine) {
-          headers = _parseCsvLine(line);
-          isFirstLine = false;
-          lineEnd = buffer.indexOf('\n');
-          continue;
-        }
-
-        if (headers != null) {
-          final result = _parseCsvLineWithHeaders(line, headers);
-          if (result['title']?.isNotEmpty == true) {
-            yield result;
-          }
-        }
-
-        lineEnd = buffer.indexOf('\n');
-      }
-    }
-
-    if (buffer.trim().isNotEmpty && headers != null) {
-      final result = _parseCsvLineWithHeaders(buffer.trim(), headers);
+      final result = _parseCsvLineWithHeaders(line, headers);
       if (result['title']?.isNotEmpty == true) {
         yield result;
       }
@@ -134,7 +103,12 @@ class StreamingImportService {
                 'title': (t['name'] ?? t['track']?['name'] ?? '').toString(),
                 'artist':
                     (t['artist'] ?? t['artists']?[0]?['name'] ?? '').toString(),
-                'album': (t['album'] ?? t['album']?['name'] ?? '').toString(),
+                // album est soit un nom, soit un objet {name: ...} (export
+                // Spotify) : sans ce test on affichait « {name: ...} ».
+                'album': (t['album'] is Map
+                        ? t['album']['name'] ?? ''
+                        : t['album'] ?? '')
+                    .toString(),
                 'dateAdded': _parseDate(t['added_at'] ?? t['dateAdded']),
               })
           .where((t) => t['title']!.isNotEmpty)
@@ -185,6 +159,24 @@ class StreamingImportService {
   }
 
   // ===================== UTILITAIRES =====================
+
+  /// UTF-8 (avec ou sans BOM) si le fichier est de l'UTF-8 valide, sinon
+  /// latin1 : les exports Excel sous Windows sortent souvent en latin1.
+  @visibleForTesting
+  static String decodeImportBytes(List<int> bytes) {
+    var data = bytes;
+    if (data.length >= 3 &&
+        data[0] == 0xEF &&
+        data[1] == 0xBB &&
+        data[2] == 0xBF) {
+      data = data.sublist(3);
+    }
+    try {
+      return utf8.decode(data);
+    } on FormatException {
+      return latin1.decode(data);
+    }
+  }
 
   static String _parseDate(dynamic dateValue) {
     if (dateValue == null) return '';

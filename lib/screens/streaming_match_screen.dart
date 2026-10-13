@@ -148,7 +148,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
           for (final candidate in entry.value) {
             final candCoreArtist = MatchingService.coreArtist(candidate.artist);
             if (!MatchingService.artistsMatch(coreArtist, candCoreArtist,
-                strict: true)) continue;
+                strict: true)) {
+              continue;
+            }
 
             final candCoreTitle = MatchingService.coreTitle(candidate.title);
             final sim = MatchingService.jaroWinkler(
@@ -164,7 +166,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                   ? candCoreTitle
                   : coreTitle;
               if (longer.contains(shorter) &&
-                  shorter.length < longer.length * 0.8) continue;
+                  shorter.length < longer.length * 0.8) {
+                continue;
+              }
 
               match = candidate;
               confidence = 0.85;
@@ -509,9 +513,10 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
         borderRadius: BorderRadius.circular(8),
         border: isMatched
             ? isDuplicate
-                ? Border.all(color: Colors.blue.withOpacity(0.3))
-                : Border.all(color: const Color(0xFF1DB954).withOpacity(0.3))
-            : Border.all(color: Colors.orange.withOpacity(0.2)),
+                ? Border.all(color: Colors.blue.withValues(alpha: 0.3))
+                : Border.all(
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.3))
+            : Border.all(color: Colors.orange.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
@@ -521,9 +526,9 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
             decoration: BoxDecoration(
               color: isMatched
                   ? isDuplicate
-                      ? Colors.blue.withOpacity(0.1)
-                      : const Color(0xFF1DB954).withOpacity(0.1)
-                  : Colors.orange.withOpacity(0.1),
+                      ? Colors.blue.withValues(alpha: 0.1)
+                      : const Color(0xFF1DB954).withValues(alpha: 0.1)
+                  : Colors.orange.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -569,8 +574,8 @@ class _StreamingMatchScreenState extends State<StreamingMatchScreen> {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: isDuplicate
-                          ? Colors.blue.withOpacity(0.1)
-                          : const Color(0xFF1DB954).withOpacity(0.1),
+                          ? Colors.blue.withValues(alpha: 0.1)
+                          : const Color(0xFF1DB954).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(

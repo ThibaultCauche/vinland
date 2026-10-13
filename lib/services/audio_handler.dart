@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
+import 'deck_player_engine.dart';
 import 'player_engine.dart';
 
-class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
+class VinlandAudioHandler extends BaseAudioHandler
+    with SeekHandler
+    implements PlaybackOutput {
   final PlayerEngine _engine;
+  @override
   PlayerEngine get player => _engine;
 
   final _customActionController = StreamController<String>.broadcast();
@@ -75,8 +79,8 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
 
   // Ne pilotent PAS _engine.seekToNext()/seekToPrevious() (ancien
   // comportement) : le moteur ne reçoit jamais qu'UN SEUL titre a la fois
-  // (voir AppState._playSingle), la file d'attente entiere vit cote Dart
-  // dans AppState.queue -- seekToNext/Previous du moteur natif n'avaient
+  // (voir PlayerController._playSingle), la file d'attente entiere vit cote Dart
+  // dans PlayQueue -- seekToNext/Previous du moteur natif n'avaient
   // donc litteralement rien a faire dans une file d'un seul element. Ca
   // rendait les boutons suivant/precedent inertes depuis la notification/
   // l'ecran verrouille et les gestes du casque Bluetooth (seul play/pause
@@ -107,18 +111,41 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Retourne false si le chargement echoue apres toutes les tentatives
-  /// (appelant responsable de reagir -- voir AppState._advanceQueue, qui
+  /// (appelant responsable de reagir -- voir PlayerController._advanceQueue, qui
   /// saute au titre suivant plutot que de rester bloque en silence).
-  Future<bool> loadAndPlay(List<MediaItem> items, int startIndex) async {
+  @override
+  Future<bool> loadAndPlay(
+    List<MediaItem> items,
+    int startIndex, {
+    Duration crossfade = Duration.zero,
+    double gain = 1.0,
+  }) async {
     queue.add(items);
     if (startIndex >= 0 && startIndex < items.length) {
       mediaItem.add(items[startIndex]);
     }
 
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) {
+      if (items.length == 1 && engine.isPreloaded(items.first.id)) {
+        debugPrint('⏭️ Titre précharge : bascule'
+            '${crossfade > Duration.zero ? ' en fondu (${crossfade.inSeconds}s)' : ''}');
+        try {
+          await engine.playPreloaded(fade: crossfade, gain: gain);
+          return true;
+        } catch (e) {
+          // Platine prechargee dans un mauvais etat : chargement classique.
+          debugPrint('❌ ERREUR bascule préchargée: $e');
+        }
+      }
+      await engine.setTrackGain(gain);
+    }
+
     final sources = items.map((item) {
       final isRemote = item.id.startsWith('http');
       debugPrint(
-          '🎵 AUDIO SOURCE: id=${item.id.substring(0, item.id.length > 60 ? 60 : item.id.length)}... isRemote=$isRemote');
+          // Le titre, pas item.id : pour un stream c'est l'URL avec jeton.
+          '🎵 AUDIO SOURCE: ${item.title} isRemote=$isRemote');
       return PlayerQueueItem(path: item.id, isRemote: isRemote);
     }).toList();
 
@@ -152,10 +179,35 @@ class VinlandAudioHandler extends BaseAudioHandler with SeekHandler {
     return false;
   }
 
+  @override
+  Future<bool> preload(MediaItem item, {double gain = 1.0}) async {
+    final engine = _engine;
+    // Moteur simple (reprise Bluetooth en arriere-plan) : pas de seconde
+    // platine, le titre suivant sera charge a la fin du titre en cours.
+    if (engine is! DeckPlayerEngine) return false;
+    debugPrint('⏳ Préchargement: ${item.title}');
+    return engine.preload(
+      PlayerQueueItem(path: item.id, isRemote: item.id.startsWith('http')),
+      gain: gain,
+    );
+  }
+
+  @override
+  void cancelPreload() {
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) engine.cancelPreload();
+  }
+
+  @override
+  Future<void> setTrackGain(double gain) async {
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) await engine.setTrackGain(gain);
+  }
+
   PlaybackState _transformState() {
     return PlaybackState(
       controls: [
-        MediaControl(
+        const MediaControl(
           androidIcon: 'drawable/ic_notification_add',
           label: 'Ajouter aux favoris',
           action: MediaAction.custom,

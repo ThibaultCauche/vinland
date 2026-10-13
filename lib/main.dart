@@ -11,15 +11,24 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'providers/app_state.dart';
+import 'controllers/jam_controller.dart';
+import 'controllers/party_controller.dart';
+import 'controllers/party_environment.dart';
+import 'services/discovery_service.dart';
+import 'services/jam_service.dart';
+import 'services/navidrome_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_screen.dart';
 import 'screens/friends_screen.dart';
 import 'services/audio_handler.dart';
+import 'services/log_redaction.dart';
 import 'services/player_engine.dart';
+import 'services/deck_player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
 import 'services/deep_link_service.dart';
+import 'widgets/sharing_consent_dialog.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
@@ -43,13 +52,17 @@ bool _isDesktopLayout(double width) =>
     (kIsWeb && width >= 900);
 
 Future<void> main() async {
-  runZonedGuarded(() async {
+  unawaited(runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Avant tout log : debugPrint reste actif en release, et les erreurs
+    // reseau recopient l'URL complete (jeton Subsonic compris).
+    installRedactingDebugPrint();
 
     // Requis avant tout appel a MetadataGod.readMetadata (lecture des tags
     // ID3/Vorbis d'un fichier local) : sans cet appel, chaque lecture leve
     // "Bad state: MetadataGod not initialized" -- capture silencieuse par
-    // les try/catch appelants (MusicService.parseFile, AppState._readLocalTags
+    // les try/catch appelants (MusicService.parseFile, readLocalTags
     // pour la detection de doublon a l'import), donc le symptome n'etait
     // qu'un repli permanent sur le nom de fichier, jamais une erreur visible.
     MetadataGod.initialize();
@@ -65,7 +78,7 @@ Future<void> main() async {
       return true;
     };
 
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
@@ -124,12 +137,11 @@ Future<void> main() async {
         (defaultTargetPlatform == TargetPlatform.windows ||
             defaultTargetPlatform == TargetPlatform.linux);
 
-    final PlayerEngine engine;
-    if (useMediaKit) {
-      MediaKit.ensureInitialized();
-      engine = MediaKitPlayerEngine();
-    } else {
-      engine = JustAudioPlayerEngine(ja.AudioPlayer(
+    // Deux moteurs : pendant que l'un joue, l'autre precharge le titre
+    // suivant (voir DeckPlayerEngine) -- plus de blanc entre deux titres.
+    PlayerEngine createEngine() {
+      if (useMediaKit) return MediaKitPlayerEngine();
+      return JustAudioPlayerEngine(ja.AudioPlayer(
         // Buffers plus genereux : absorbe les micro-coupures dues a la
         // latence variable du lien Tailscale vers le NAS au lieu de couper
         // le son.
@@ -143,6 +155,10 @@ Future<void> main() async {
         ),
       ));
     }
+
+    if (useMediaKit) MediaKit.ensureInitialized();
+    final PlayerEngine engine =
+        DeckPlayerEngine(createEngine(), createEngine());
 
     final audioHandler = await AudioService.init(
       builder: () => VinlandAudioHandler(engine),
@@ -167,21 +183,48 @@ Future<void> main() async {
       ),
     );
 
-    final appState = AppState(audioHandler: audioHandler);
-    appState.initialize();
-    DeepLinkService(appState).init();
+    // Services crees une seule fois ici puis injectes (plus de singletons
+    // `factory X() => _instance`) : AppState et les widgets partagent les
+    // memes instances, fournies par le MultiProvider de VinlandApp.
+    final navidrome = NavidromeService();
+    final music = MusicService(navidrome);
+    final discovery = DiscoveryService(music);
+    final appState = AppState(
+      audioHandler: audioHandler,
+      music: music,
+      navidrome: navidrome,
+      jamService: WebSocketJamService(navidrome),
+      discovery: discovery,
+    );
+    unawaited(appState.initialize());
+    unawaited(DeepLinkService(appState).init());
 
-    runApp(VinlandApp(audioHandler: audioHandler, appState: appState));
+    runApp(VinlandApp(
+      audioHandler: audioHandler,
+      appState: appState,
+      music: music,
+      navidrome: navidrome,
+      discovery: discovery,
+    ));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');
-  });
+  }));
 }
 
 class VinlandApp extends StatelessWidget {
   final VinlandAudioHandler audioHandler;
   final AppState appState;
-  const VinlandApp(
-      {super.key, required this.audioHandler, required this.appState});
+  final MusicService music;
+  final NavidromeService navidrome;
+  final DiscoveryService discovery;
+  const VinlandApp({
+    super.key,
+    required this.audioHandler,
+    required this.appState,
+    required this.music,
+    required this.navidrome,
+    required this.discovery,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +238,12 @@ class VinlandApp extends StatelessWidget {
       child: MultiProvider(
         providers: [
           ChangeNotifierProvider<AppState>.value(value: appState),
-          Provider<MusicService>.value(value: MusicService()),
+          ChangeNotifierProvider<JamController>.value(value: appState.jam),
+          ChangeNotifierProvider<PartyController>.value(value: appState.party),
+          Provider<PartyEnvironment>.value(value: appState.partyEnvironment),
+          Provider<MusicService>.value(value: music),
+          Provider<NavidromeService>.value(value: navidrome),
+          Provider<DiscoveryService>.value(value: discovery),
           Provider<VinlandAudioHandler>.value(value: audioHandler),
         ],
         child: MaterialApp(
@@ -256,17 +304,19 @@ class AppShell extends StatelessWidget {
         // Récupère state ICI, avant de l'utiliser
         final state = context.read<AppState>();
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            if (_isDesktopLayout(constraints.maxWidth)) {
-              return const DesktopAppShell();
-            }
-            return _MobileAppShell(
-              currentTab: currentTab,
-              currentOverlay: currentOverlay,
-              state: state,
-            );
-          },
+        return SharingConsentGate(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (_isDesktopLayout(constraints.maxWidth)) {
+                return const DesktopAppShell();
+              }
+              return _MobileAppShell(
+                currentTab: currentTab,
+                currentOverlay: currentOverlay,
+                state: state,
+              );
+            },
+          ),
         );
       },
     );
@@ -376,9 +426,9 @@ class _MobileAppShell extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.0),
-                            Colors.black.withOpacity(0.85),
-                            Colors.black.withOpacity(1.0),
+                            Colors.black.withValues(alpha: 0.0),
+                            Colors.black.withValues(alpha: 0.85),
+                            Colors.black.withValues(alpha: 1.0),
                           ],
                           stops: const [0.0, 0.3, 1.0],
                         ),

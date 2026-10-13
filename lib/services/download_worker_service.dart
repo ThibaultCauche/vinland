@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import '../config/download_worker_config.dart';
 
 /// Statut d'un job de telechargement, tel que renvoye par
-/// GET /downloads/<job_id> (voir download-worker/server.py).
+/// GET /downloads/<job_id> (voir services/download-worker/server.py).
 enum DownloadJobState { queued, running, done, failed, unknown }
 
 /// Etat d'affichage d'une ligne de titre non possede (album/artiste,
@@ -89,7 +89,7 @@ String downloadStageLabel(String? stage) {
 }
 
 /// Statut d'un fichier au sein d'un import local (voir POST /imports dans
-/// download-worker/server.py) : song_id est l'id Subsonic retrouve apres
+/// services/download-worker/server.py) : song_id est l'id Subsonic retrouve apres
 /// scan (prefixe 'navidrome_' pour matcher Track.id cote app), ou null si le
 /// worker n'a pas reussi a le retrouver (tags illisibles, non trouve...).
 class ImportedFile {
@@ -159,8 +159,8 @@ class LocalImportResult {
   });
 }
 
-/// Client du service de telechargement automatique (voir download-worker/ a
-/// la racine du repo) : recoit "artiste - titre" pour un morceau trouve via
+/// Client du service de telechargement automatique (voir
+/// services/download-worker/ dans le repo) : recoit "artiste - titre" pour un morceau trouve via
 /// DiscoveryService (Deezer) mais absent du NAS, le telecharge et le range
 /// dans la bibliotheque Navidrome partagee. Meme principe que AvatarService :
 /// cle partagee cote config gitignoree, service maison fait le reste.
@@ -208,9 +208,9 @@ class DownloadWorkerService {
     if (!isConfigured) return null;
     final uri = Uri.parse('$kDownloadWorkerServiceBaseUrl/downloads/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       debugPrint(
           '[DownloadWorker] GET $uri -> ${response.statusCode} ${response.body}');
       if (response.statusCode != 200) return null;
@@ -234,9 +234,9 @@ class DownloadWorkerService {
     final uri =
         Uri.parse('$kDownloadWorkerServiceBaseUrl/maintenance/run-tag-scan');
     try {
-      final response = await http
-          .post(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.post(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       debugPrint(
           '[DownloadWorker] POST $uri -> ${response.statusCode} ${response.body}');
       if (response.statusCode != 202) return null;
@@ -252,12 +252,12 @@ class DownloadWorkerService {
   /// "summary" une fois termine -- voir GET /maintenance/tag-scan/<job_id>.
   Future<DownloadJobStatus?> getTagScanStatus(String jobId) async {
     if (!isConfigured) return null;
-    final uri = Uri.parse(
-        '$kDownloadWorkerServiceBaseUrl/maintenance/tag-scan/$jobId');
+    final uri =
+        Uri.parse('$kDownloadWorkerServiceBaseUrl/maintenance/tag-scan/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
       return DownloadJobStatus.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,
@@ -308,9 +308,11 @@ class DownloadWorkerService {
       final request = http.MultipartRequest('POST', uri)
         ..headers['X-Api-Key'] = kDownloadWorkerServiceApiKey;
       for (final file in files) {
-        request.files.add(await http.MultipartFile.fromPath('files', file.path));
+        request.files
+            .add(await http.MultipartFile.fromPath('files', file.path));
       }
-      final streamed = await request.send().timeout(const Duration(minutes: 10));
+      final streamed =
+          await request.send().timeout(const Duration(minutes: 10));
       final response = await http.Response.fromStream(streamed);
       debugPrint(
           '[DownloadWorker] POST $uri (${files.length} fichiers) -> ${response.statusCode}');
@@ -327,9 +329,9 @@ class DownloadWorkerService {
     if (!isConfigured) return null;
     final uri = Uri.parse('$kDownloadWorkerServiceBaseUrl/imports/$jobId');
     try {
-      final response = await http
-          .get(uri, headers: {'X-Api-Key': kDownloadWorkerServiceApiKey})
-          .timeout(const Duration(seconds: 15));
+      final response = await http.get(uri, headers: {
+        'X-Api-Key': kDownloadWorkerServiceApiKey
+      }).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
       return ImportJobStatus.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,

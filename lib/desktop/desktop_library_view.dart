@@ -164,8 +164,8 @@ class _SegmentButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: active
-          ? Colors.white.withOpacity(0.16)
-          : Colors.white.withOpacity(0.05),
+          ? Colors.white.withValues(alpha: 0.16)
+          : Colors.white.withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
@@ -232,9 +232,8 @@ class _GridTile extends StatelessWidget {
                       )
                     : null,
               ),
-              child: !exists
-                  ? Icon(icon, color: Colors.white54, size: 40)
-                  : null,
+              child:
+                  !exists ? Icon(icon, color: Colors.white54, size: 40) : null,
             ),
             const SizedBox(height: 8),
             Text(title,

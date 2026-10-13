@@ -1,7 +1,7 @@
 name: vinland
 description: Lecteur de musique personnel
 publish_to: 'none'
-version: 1.2.2+18
+version: 2.0.0+19
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -40,6 +40,11 @@ dependencies:
   open_file: ^4.0.0
   share_plus: ^12.0.2
   app_links: ^7.2.1
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
+  # Verification ed25519/BLAKE2b des signatures minisign des releases
+  # (release_signature.dart), en Dart pur : rien de natif a compiler.
+  cryptography: ^2.9.0
 
 dependency_overrides:
   # VS 2026's MSVC now hard-errors on the deprecated /await experimental
@@ -48,6 +53,7 @@ dependency_overrides:
   permission_handler_windows: ^0.2.2
 
 dev_dependencies:
+  fake_async: ^1.3.3
   flutter_test:
     sdk: flutter
   integration_test:

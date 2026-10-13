@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../navigation/shared_item_opener.dart';
 import '../models/friend_profile.dart';
 import '../models/track.dart';
 import '../services/share_inbox_service.dart';
@@ -161,7 +162,7 @@ class _ReceivedShareTile extends StatelessWidget {
       onTap: () async {
         final state = context.read<AppState>();
         final ok =
-            await state.openSharedItem(type: share.type, id: share.itemId);
+            await openSharedItem(state, type: share.type, id: share.itemId);
         if (ok) await state.dismissShare(share);
       },
       trailing: IconButton(
@@ -181,9 +182,10 @@ class _FriendTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final likedCount = friend.likesPlaylist?.trackIds.length ?? 0;
     final parts = <String>[];
-    if (likedCount > 0)
+    if (likedCount > 0) {
       parts.add(
           '$likedCount titre${likedCount > 1 ? 's' : ''} lik${likedCount > 1 ? 'es' : 'e'}');
+    }
     if (friend.playlists.isNotEmpty) {
       parts.add(
           '${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}');

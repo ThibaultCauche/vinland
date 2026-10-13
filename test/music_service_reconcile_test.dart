@@ -75,7 +75,9 @@ void main() {
       expect(recovery, isEmpty);
     });
 
-    test('le cache local peut retirer un like que le serveur ne connait plus (unlike)', () {
+    test(
+        'le cache local peut retirer un like que le serveur ne connait plus (unlike)',
+        () {
       final t = _track(isLiked: true, dateAdded: DateTime(2026, 1, 1));
       final recovery = <String>{};
 
@@ -92,7 +94,8 @@ void main() {
       expect(recovery, isEmpty);
     });
 
-    test('superLiked est toujours purement local, jamais deduit du serveur', () {
+    test('superLiked est toujours purement local, jamais deduit du serveur',
+        () {
       final t = _track(isLiked: true);
       final recovery = <String>{};
 

@@ -52,7 +52,8 @@ void main() {
 
     test('matche normalement quand l\'artiste Deezer est connu', () {
       final local = [
-        _localTrack(title: 'One More Time', artist: 'Daft Punk', album: 'Discovery'),
+        _localTrack(
+            title: 'One More Time', artist: 'Daft Punk', album: 'Discovery'),
       ];
       final discovered = _discoveredTrack(
         title: 'One More Time',
@@ -63,11 +64,12 @@ void main() {
       expect(findLocalTrackMatch(discovered, local), isNotNull);
     });
 
-    test('ne matche pas un titre different meme si l\'artiste est inconnu',
-        () {
+    test('ne matche pas un titre different meme si l\'artiste est inconnu', () {
       final local = [
         _localTrack(
-            title: 'Un tout autre titre', artist: 'Un autre artiste', album: 'Inconnu'),
+            title: 'Un tout autre titre',
+            artist: 'Un autre artiste',
+            album: 'Inconnu'),
       ];
       final discovered = _discoveredTrack(
         title: 'Kissing the machine',
