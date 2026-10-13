@@ -29,6 +29,8 @@ commit.
   lancement, même pour un titre que l'appareil ne connaissait pas encore.
 - Lecture : après une coupure (autre appli qui prend le son, réseau), un
   titre mp3 ne repart plus du début pendant que le compteur continue.
+- Accueil : section « Ton mood » (Chill, Rock, Rap, Électro, Pop, BO &
+  classique) qui lance en aléatoire les titres du genre choisi.
 
 ## [2.0.0] - 2026-10-13
 

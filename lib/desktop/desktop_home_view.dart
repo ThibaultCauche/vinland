@@ -12,6 +12,7 @@ import '../widgets/playlist_cover.dart';
 import '../widgets/smooth_scroll.dart';
 import '../widgets/sync_status_banner.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/mood_chips.dart';
 import '../widgets/user_avatar.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'desktop_see_all_view.dart';
@@ -140,6 +141,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
               _recentPlayGrid(context, state, recentPlays),
               const SizedBox(height: 8),
             ],
+            const MoodChips(),
             _sectionTitle('Écoutés cette semaine',
                 onSeeAll: weeklyTracks.isEmpty
                     ? null
