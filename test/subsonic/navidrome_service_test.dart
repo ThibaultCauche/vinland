@@ -258,6 +258,11 @@ void main() {
       expect(tracks.keys, ['navidrome_tr-1']);
       expect(tracks['navidrome_tr-1'], DateTime.utc(2026, 4, 1, 10));
       expect(await navidrome.fetchStarredAlbumIds(), {'navidrome_al-2'});
+      final full = await navidrome.fetchStarredTracks();
+      expect(full.single.id, 'navidrome_tr-1');
+      expect(full.single.title, 'Enemy');
+      expect(full.single.isLiked, isTrue);
+      expect(full.single.dateAdded, DateTime.utc(2026, 4, 1, 10));
     });
 
     test('scrobble envoie l id sans prefixe', () async {

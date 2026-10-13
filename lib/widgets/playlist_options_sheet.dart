@@ -54,9 +54,34 @@ void showPlaylistOptions(BuildContext context, Playlist playlist,
             SheetTile(
               icon: Icons.delete_outline,
               label: 'Supprimer la playlist',
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(ctx);
-                state.deletePlaylist(playlist.id);
+                // Meme confirmation que sur desktop (DesktopAppShell) : un
+                // appui de trop supprimait la playlist sans retour possible.
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dctx) => AlertDialog(
+                    backgroundColor: const Color(0xFF1E1E1E),
+                    title: const Text('Supprimer la playlist ?',
+                        style: TextStyle(color: Colors.white)),
+                    content: Text(
+                        '"${playlist.name}" sera supprimée définitivement.',
+                        style: const TextStyle(color: Colors.white70)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, false),
+                        child: const Text('Annuler'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dctx, true),
+                        child: const Text('Supprimer',
+                            style: TextStyle(color: Colors.redAccent)),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed != true) return;
+                await state.deletePlaylist(playlist.id);
                 onDeleted?.call();
               },
             ),

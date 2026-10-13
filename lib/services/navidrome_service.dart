@@ -30,6 +30,8 @@ class NavidromeService {
       // Les modeles (Track, Album...) ne stockent que des references sans
       // jeton : c'est ce service qui les transforme en URL a l'affichage.
       SubsonicRefs.streamUrlBuilder = getStreamUrl;
+      SubsonicRefs.rawStreamUrlBuilder =
+          (id) => getStreamUrl(id, format: 'raw');
       SubsonicRefs.coverUrlBuilder = getCoverUrl;
     }
   }
@@ -430,7 +432,7 @@ class NavidromeService {
       ..._authParams,
       'v': '1.16.1',
       'c': 'vinland',
-      'maxBitRate': '$effectiveBitRate',
+      if (effectiveFormat != 'raw') 'maxBitRate': '$effectiveBitRate',
       'format': effectiveFormat,
     }).toString();
   }
@@ -502,6 +504,27 @@ class NavidromeService {
     } on SubsonicException catch (e) {
       debugPrint('fetchStarred error: $e');
       return {};
+    }
+  }
+
+  /// Titres likes du serveur avec leurs infos completes (getStarred2 les
+  /// renvoie deja) : permet d'adopter un like fait sur un autre appareil
+  /// pour un titre que cet appareil ne connait pas encore (voir
+  /// MusicService.lightSync).
+  Future<List<Track>> fetchStarredTracks() async {
+    if (!isConnected) return [];
+    try {
+      final starred = await _client.starred2();
+      return [
+        for (final s in starred['song']!)
+          trackFromSubsonic(s)
+            ..dateAdded = s['starred'] != null
+                ? DateTime.tryParse(s['starred'].toString())
+                : null
+      ];
+    } on SubsonicException catch (e) {
+      debugPrint('fetchStarredTracks error: $e');
+      return [];
     }
   }
 
