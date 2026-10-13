@@ -91,7 +91,7 @@ Future<void> _run() async {
     );
 
     final items = effectiveQueue.map((t) {
-      final path = music.getOfflinePath(t.id) ?? t.filePath!;
+      final path = music.getOfflinePath(t.id) ?? t.playbackPath!;
       Uri? artUri;
       if (t.coverPath != null) {
         artUri = t.coverPath!.startsWith('http')

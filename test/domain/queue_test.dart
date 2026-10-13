@@ -75,6 +75,11 @@ void main() {
       expect(ids(q.sourceOrder), ids(album), reason: 'ordre d\'origine garde');
     });
 
+    test('en aleatoire, inclut aussi les titres avant celui tape', () {
+      q.start(e, album, shuffled: true);
+      expect(ids(q.upcoming).toSet(), {'a', 'b', 'c', 'd'});
+    });
+
     test('vide l\'historique du contexte precedent', () {
       q.start(a, album, shuffled: false);
       q.advance(a, shuffled: false);

@@ -12,6 +12,20 @@ commit.
 - « Lancer la radio » sur un titre (menu du lecteur, des titres likés et des
   titres sur PC) : joue le titre puis une trentaine de titres proches de ta
   bibliothèque.
+- Lecture aléatoire : lancer un titre d'une liste mélange maintenant toute la
+  liste, pas seulement les titres placés après lui (la file restait vide en
+  lançant le dernier titre).
+- Recherche : un titre déjà sur le NAS dont l'artiste principal a un nom
+  court (« Gotye/Kimbra », « Muse/… ») n'apparaissait plus comme lisible.
+- Mobile : supprimer une playlist demande maintenant confirmation, comme sur
+  PC.
+- Téléchargement : l'app attend maintenant toute la durée possible côté NAS
+  (25 min). Un titre tout juste sorti, que le NAS met longtemps à récupérer,
+  n'était plus introuvable jusqu'au lendemain.
+- Un like fait sur un autre appareil (ex. le PC) apparaît au prochain
+  lancement, même pour un titre que l'appareil ne connaissait pas encore.
+- Lecture : après une coupure (autre appli qui prend le son, réseau), un
+  titre mp3 ne repart plus du début pendant que le compteur continue.
 
 ## [2.0.0] - 2026-10-13
 

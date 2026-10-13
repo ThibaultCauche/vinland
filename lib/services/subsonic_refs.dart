@@ -26,6 +26,9 @@ class SubsonicRefs {
   static String Function(String id)? streamUrlBuilder;
   static String Function(String id)? coverUrlBuilder;
 
+  /// Meme flux, fichier d'origine sans conversion (voir Track.playbackPath).
+  static String Function(String id)? rawStreamUrlBuilder;
+
   static String cover(String id) => '$coverPrefix$id';
   static String stream(String id) => '$streamPrefix$id';
 
