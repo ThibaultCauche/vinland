@@ -81,13 +81,12 @@ void main() {
 
     test(
         "le sondage de la synchro perso s'espace quand aucun autre appareil "
-        "n'est la, sans depasser 5 min", () {
+        "n'est la, sans depasser 1 min", () {
       expect(personalSyncRetryDelay(0), const Duration(seconds: 20));
       expect(personalSyncRetryDelay(1), const Duration(seconds: 20));
       expect(personalSyncRetryDelay(2), const Duration(seconds: 40));
-      expect(personalSyncRetryDelay(4), const Duration(seconds: 160));
-      expect(personalSyncRetryDelay(5), const Duration(minutes: 5));
-      expect(personalSyncRetryDelay(100), const Duration(minutes: 5));
+      expect(personalSyncRetryDelay(3), const Duration(minutes: 1));
+      expect(personalSyncRetryDelay(100), const Duration(minutes: 1));
     });
   });
 

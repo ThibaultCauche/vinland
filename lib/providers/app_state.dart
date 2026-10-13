@@ -809,8 +809,12 @@ class AppState extends ChangeNotifier
   /// l'hote quand on est un participant de synchro perso (voir
   /// isPersonalSyncParticipant) -- rien ne joue localement dans ce cas, donc
   /// currentTrack/isPlaying/position locaux seraient perimes ou vides.
-  Track? get displayTrack =>
-      isPersonalSyncParticipant ? _jamCtl.remoteTrack : currentTrack;
+  // Sans etat recu de l'autre appareil (ou titre absent de la
+  // bibliotheque), on garde le titre local : null vidait l'ecran de lecture
+  // (ecran noir) et cachait le mini-lecteur.
+  Track? get displayTrack => isPersonalSyncParticipant
+      ? (_jamCtl.remoteTrack ?? currentTrack)
+      : currentTrack;
   bool get displayIsPlaying =>
       isPersonalSyncParticipant ? _jamCtl.remoteIsPlaying : isPlaying;
   Duration get displayPosition => isPersonalSyncParticipant

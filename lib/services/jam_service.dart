@@ -7,11 +7,12 @@ import 'navidrome_service.dart';
 
 /// Delai avant la prochaine tentative de rejoindre la synchro perso apres
 /// [failures] echecs consecutifs (voir JamController._pollPersonalSync) :
-/// [base] (20 s), puis double a chaque echec, plafonne a 15 fois [base]
-/// (5 min).
+/// [base] (20 s), puis double a chaque echec, plafonne a 3 fois [base]
+/// (1 min). 5 min faisait attendre trop longtemps avant qu'un appareil voie
+/// l'autre (test du 2026-10-13).
 Duration personalSyncRetryDelay(int failures,
     {Duration base = const Duration(seconds: 20)}) {
-  final max = base * 15;
+  final max = base * 3;
   if (failures <= 1) return base;
   final shift = failures - 1 > 4 ? 4 : failures - 1;
   final delay = base * (1 << shift);
