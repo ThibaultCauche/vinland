@@ -210,9 +210,18 @@ class FakePlaybackOutput implements PlaybackOutput {
   Future<void> play() async => calls.add('play');
   @override
   Future<void> pause() async => calls.add('pause');
+
+  /// Seeks a ignorer, comme media_kit sous Windows juste apres un
+  /// chargement (flux pas encore pret).
+  int seeksToIgnore = 0;
+
   @override
   Future<void> seek(Duration position) async {
     calls.add('seek:$position');
+    if (seeksToIgnore > 0) {
+      seeksToIgnore--;
+      return;
+    }
     engine.position = position;
   }
 

@@ -317,7 +317,7 @@ class AppState extends ChangeNotifier
       this.party,
       PlayerPartyPlayback(
         player: _player,
-        playTrack: playTrack,
+        playTrack: _playPartyTrack,
         findTrack: _findTrackById,
       ),
       radio: PartyRadio([
@@ -720,6 +720,19 @@ class AppState extends ChangeNotifier
     await _player.playTrack(track, trackList: trackList);
   }
 
+  /// Titre lance par la soiree (bouton lecture de la file, enchainement) :
+  /// l'hote de la soiree joue toujours lui-meme. Spectateur de la synchro
+  /// perso, playTrack envoyait le titre a l'autre appareil du compte, qui
+  /// ne le lancait pas : le bouton ne faisait rien (test du 2026-10-13).
+  /// Jouer ici prend la main sur l'autre appareil, qui se met en pause.
+  Future<void> _playPartyTrack(Track track) async {
+    if (_jamCtl.isPersonalSyncParticipant) {
+      await _player.playTrack(track);
+      return;
+    }
+    await playTrack(track);
+  }
+
   /// Republie l'etat "now playing" (MusicService.updateNowPlaying) a chaque
   /// vrai changement lecture/pause -- pas seulement au changement de titre
   /// (voir _onTrackStarted) -- pour que l'onglet Amis d'un ami reflete une pause
@@ -809,8 +822,12 @@ class AppState extends ChangeNotifier
   /// l'hote quand on est un participant de synchro perso (voir
   /// isPersonalSyncParticipant) -- rien ne joue localement dans ce cas, donc
   /// currentTrack/isPlaying/position locaux seraient perimes ou vides.
-  Track? get displayTrack =>
-      isPersonalSyncParticipant ? _jamCtl.remoteTrack : currentTrack;
+  // Sans etat recu de l'autre appareil (ou titre absent de la
+  // bibliotheque), on garde le titre local : null vidait l'ecran de lecture
+  // (ecran noir) et cachait le mini-lecteur.
+  Track? get displayTrack => isPersonalSyncParticipant
+      ? (_jamCtl.remoteTrack ?? currentTrack)
+      : currentTrack;
   bool get displayIsPlaying =>
       isPersonalSyncParticipant ? _jamCtl.remoteIsPlaying : isPlaying;
   Duration get displayPosition => isPersonalSyncParticipant

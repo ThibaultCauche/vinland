@@ -202,7 +202,8 @@ void main() {
       await pumpEventQueue();
 
       expect(bob.jam.isActive, isFalse);
-      expect(relay.sessionIds, isEmpty);
+      expect(relay.sessionIds, ['perso-alice'],
+          reason: 'alice ecoute encore : seule sa synchro perso reste');
       bob.output.loadedTitles.clear();
       await bob.play(c);
       expect(bob.output.loadedTitles, ['c'],
@@ -320,6 +321,7 @@ void main() {
         '"Reprendre ici" joue le titre sur cet appareil au lieu de le '
         'redemander a l\'hote', () async {
       final (pc, phone) = await personalSync();
+      relay.nowMs = 1000000;
       pc.engine.position = const Duration(seconds: 30);
       pc.jam.broadcastState();
 
@@ -332,6 +334,93 @@ void main() {
       expect(pc.jam.isPersonalSyncParticipant, isTrue,
           reason: 'le PC reste en synchro perso, pas en suiveur de Jam muet');
       expect(phone.jamService.sentCommands, isNot(contains('play_track:a')));
+    });
+
+    test(
+        '"Reprendre ici" : l\'ancien appareil se tait, le nouveau repart '
+        'la ou il en etait meme si le premier seek est ignore', () async {
+      final (pc, phone) = await personalSync();
+      pc.engine.emitPlaying(true);
+      relay.nowMs = 1000000;
+      pc.engine.position = const Duration(seconds: 30);
+      pc.jam.broadcastState();
+      relay.nowMs = 1000000 + 1500; // 1,5 s plus tard, on appuie
+      phone.output.seeksToIgnore = 1;
+
+      await phone.jam
+          .takeOverPersonalSync(retryEvery: const Duration(milliseconds: 1));
+      await pumpEventQueue();
+
+      expect(phone.output.calls.where((c) => c == 'seek:0:00:31.500000'),
+          hasLength(2),
+          reason: 'le seek ignore est renvoye');
+      expect(phone.engine.position, const Duration(milliseconds: 31500));
+      expect(pc.output.calls.last, 'pause',
+          reason: 'les deux appareils ne jouent plus en meme temps');
+      expect(pc.jam.isPersonalSyncParticipant, isTrue);
+    });
+
+    test(
+        'la soiree lance un titre sur le PC spectateur : il joue lui-meme et '
+        'le telephone se met en pause', () async {
+      final (phone, pc) = await personalSync();
+      phone.engine.emitPlaying(true);
+      await pumpEventQueue();
+
+      // Ce que fait AppState._playPartyTrack : le lecteur directement.
+      await pc.player.playTrack(c);
+      await pumpEventQueue();
+
+      expect(pc.output.loadedTitles, ['c']);
+      expect(pc.jam.isPersonalSyncHost, isTrue);
+      expect(phone.output.calls.last, 'pause');
+    });
+
+    test(
+        'un appareil qui joue sa propre musique ne devient pas spectateur '
+        'muet de l\'autre (ecran noir)', () async {
+      final pc = device('thibault', label: 'PC');
+      await pc.play(a, list: library);
+      await pumpEventQueue();
+      expect(pc.jam.isPersonalSyncHost, isTrue);
+      // Le telephone suit le Jam d'un ami, qui s'arrete : sa musique continue.
+      final ami = device('ami');
+      final phone = device('thibault', label: 'Téléphone');
+      final id = await ami.jam.startSession();
+      await phone.jam.joinSession(id!);
+      await ami.play(b, list: library);
+      await pumpEventQueue();
+      phone.engine.emitPlaying(true);
+
+      await ami.jam.leaveSession();
+      await pumpEventQueue();
+
+      expect(phone.jam.isActive, isFalse);
+      expect(phone.jam.isPersonalSyncParticipant, isFalse);
+      expect(phone.player.currentTrack, b);
+    });
+
+    test(
+        'quitter son Jam entre amis en pleine ecoute : les autres appareils '
+        'du compte voient tout de suite la musique', () async {
+      final phone = device('thibault', label: 'Téléphone');
+      final ami = device('ami');
+      final id = await phone.jam.startSession();
+      await ami.jam.joinSession(id!);
+      await phone.play(a, list: library);
+      phone.engine.emitPlaying(true);
+      await pumpEventQueue();
+      expect(phone.jam.isPersonalSyncHost, isFalse);
+
+      await phone.jam.leaveSession();
+      await pumpEventQueue();
+      expect(phone.jam.isPersonalSyncHost, isTrue);
+
+      final pc = device('thibault', label: 'PC');
+      pc.jam.startPersonalSyncPolling();
+      await pumpEventQueue();
+      expect(pc.jam.isPersonalSyncParticipant, isTrue);
+      expect(pc.jam.remoteTrack, a);
     });
 
     test(

@@ -250,12 +250,16 @@ class JamController extends ChangeNotifier {
   void _wireAsHost() {
     _countSub?.cancel();
     _countSub = _jam.participantCountStream.listen((count) {
+      final joined = count > participantCount;
       participantCount = count;
       // Un participant qui vient de rejoindre n'a jamais reçu la file
-      // d'attente : force son renvoi au prochain battement (voir
-      // broadcastState) meme si son contenu n'a pas change depuis le
-      // dernier envoi aux participants deja presents.
+      // d'attente : force son renvoi (voir broadcastState) meme si son
+      // contenu n'a pas change depuis le dernier envoi aux participants
+      // deja presents.
       _lastBroadcastQueueIds = null;
+      // Et il recoit l'etat tout de suite plutot qu'au prochain battement :
+      // sans titre recu, l'autre appareil n'affichait rien.
+      if (joined) broadcastState();
       // Plus personne connecte : oublie l'appareil annonce precedemment
       // (voir connectedParticipantDeviceName) -- sinon showDeviceMenu
       // continuait d'afficher "Connecte : Téléphone" longtemps apres sa
@@ -354,6 +358,10 @@ class JamController extends ChangeNotifier {
       final wasPersonalHost = _personalSyncMode;
       _unwireHost();
       if (wasPersonalHost) {
+        // Un autre appareil du compte vient de « reprendre ici » : celui-ci
+        // se tait, sinon les deux jouaient en meme temps (test du
+        // 2026-10-13, le telephone continuait apres la reprise sur le PC).
+        unawaited(_playback.setPlaying(false));
         _followPersonalHost();
       } else {
         _personalSyncMode = false;
@@ -379,9 +387,19 @@ class JamController extends ChangeNotifier {
 
   Future<void> leaveSession() async {
     final wasHost = isHost;
+    final wasFriendJam = isFriendJamActive;
     await _closeSession();
     if (wasHost && _playback.currentTrack != null) onHostingChanged?.call();
     _notify();
+    if (!wasFriendJam || _disposed) return;
+    if (wasHost && _playback.isPlaying) {
+      // La musique continue ici : on redevient tout de suite l'hote de la
+      // synchro perso, sinon les autres appareils du compte ne voyaient
+      // plus rien avant le titre suivant.
+      await onLocalTrackStarted();
+    } else {
+      startPersonalSyncPolling();
+    }
   }
 
   /// Coupe tout (abonnements, battement, connexion) sans prevenir AppState :
@@ -571,6 +589,11 @@ class JamController extends ChangeNotifier {
   /// Vrai si cet appareil suit (ou heberge deja) une session apres l'appel.
   Future<bool> _tryJoinPersonalSync() async {
     if (isActive) return true;
+    // Cet appareil joue sa propre musique : en devenir le spectateur muet
+    // cachait son lecteur (ecran noir, mini-lecteur disparu) alors que le
+    // son continuait. Il redeviendra l'hote au prochain titre, ou rejoindra
+    // l'autre appareil une fois en pause.
+    if (_playback.isPlaying) return false;
     final username = _username();
     if (username == null) return false;
     final ids = await _personalSyncIdsFor(username);
@@ -601,14 +624,21 @@ class JamController extends ChangeNotifier {
     remoteIsPlaying = msg.isPlaying;
     remoteDeviceName = msg.deviceName;
     remotePosition = Duration(milliseconds: msg.positionMs);
+    _remoteStateTs = msg.ts;
     _notify();
   }
+
+  /// Heure relais (voir JamService.relayNowMs) du dernier etat recu de
+  /// l'autre appareil : sert a « Reprendre ici » pour savoir de combien la
+  /// lecture a avance depuis.
+  int? _remoteStateTs;
 
   void _clearRemote() {
     remoteTrack = null;
     remoteIsPlaying = false;
     remoteDeviceName = null;
     remotePosition = null;
+    _remoteStateTs = null;
   }
 
   Future<void> _leavePersonalSync() async {
@@ -635,12 +665,30 @@ class JamController extends ChangeNotifier {
   /// Passe directement par le lecteur, sans les gardes intercept* : en tant
   /// que participant, playTrack etait renvoye a l'hote (remotePlayTrack),
   /// qui rejouait son propre titre, et "Reprendre ici" ne reprenait rien.
-  Future<void> takeOverPersonalSync() async {
+  ///
+  /// Sous Windows, le moteur ignore un seek envoye juste apres le chargement
+  /// (le flux n'est pas encore pret) : la reprise repartait du debut. On
+  /// verifie donc que la position a bien suivi et on recommence sinon.
+  Future<void> takeOverPersonalSync({
+    Duration retryEvery = const Duration(milliseconds: 250),
+    int maxRetries = 16,
+  }) async {
     final track = remoteTrack;
     if (track == null) return;
-    final resumePosition = remotePosition;
+    var resumePosition = remotePosition;
+    final stateTs = _remoteStateTs;
+    if (resumePosition != null && remoteIsPlaying && stateTs != null) {
+      final elapsed = (_jam.relayNowMs() - stateTs).clamp(0, 10000).toInt();
+      resumePosition += Duration(milliseconds: elapsed);
+    }
     await _playback.playTrack(track);
-    if (resumePosition != null && resumePosition > Duration.zero) {
+    if (resumePosition == null || resumePosition <= Duration.zero) return;
+    _playback.seek(resumePosition);
+    for (var i = 0; i < maxRetries; i++) {
+      await Future<void>.delayed(retryEvery);
+      if (_disposed || _playback.currentTrack?.id != track.id) return;
+      final behind = resumePosition - _playback.livePosition;
+      if (behind < const Duration(seconds: 2)) return;
       _playback.seek(resumePosition);
     }
   }
@@ -735,6 +783,9 @@ class JamController extends ChangeNotifier {
         // pilote rien, juste pour que l'hote sache quel appareil le
         // controle deja (retour utilisateur).
         connectedParticipantDeviceName = cmd.deviceName;
+        // Envoye juste apres son abonnement aux etats : c'est le bon moment
+        // pour lui donner le titre en cours sans attendre le battement.
+        broadcastState();
         _notify();
         break;
     }

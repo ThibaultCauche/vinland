@@ -9,6 +9,19 @@ commit.
 
 ## [Non publié]
 
+### Corrigé
+
+- « Reprendre ici » reprend à l'endroit où en était l'autre appareil (sous
+  Windows, la lecture repartait du début), et l'autre appareil se met en
+  pause au lieu de continuer à jouer en même temps.
+- Après « Quitter la session Jam » en pleine écoute, l'écran de lecture ne
+  devient plus noir et le mini-lecteur ne disparaît plus ; les autres
+  appareils du compte voient tout de suite la musique en cours.
+- Un appareil retrouve l'autre en 1 minute au plus (contre 5) quand rien
+  ne joue au moment où il cherche.
+- Mode soirée : le bouton lecture d'un titre proposé joue bien sur
+  l'appareil de l'hôte, même s'il suivait un autre appareil du compte.
+
 ## [2.0.0] - 2026-10-13
 
 Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
