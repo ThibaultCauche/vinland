@@ -111,6 +111,13 @@ void main() {
       );
     });
 
+    test('artiste au nom court, principal ou en featuring', () {
+      expect(
+          MatchingService.artistFieldContains('Gotye/Kimbra', 'Gotye'), isTrue);
+      expect(MatchingService.artistFieldContains('Gotye/Kimbra', 'Kimbra'),
+          isTrue);
+    });
+
     test('renvoie faux pour un champ vide ou nul', () {
       expect(MatchingService.artistFieldContains(null, 'Queen'), isFalse);
       expect(MatchingService.artistFieldContains('', 'Queen'), isFalse);

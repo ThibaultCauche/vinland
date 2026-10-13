@@ -393,7 +393,11 @@ class MatchingService {
     // seul un vrai nom "en entier" dans le champ (ex: "David Bowie" dans
     // "Queen/David Bowie") est un signal fiable.
     if (s.length >= 6 && f.contains(s)) return true;
-    if (f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s)) return true;
+    // Decoupe le champ BRUT : normalize() a deja remplace / & , par des
+    // espaces dans f, ce qui laissait "Gotye" introuvable dans "Gotye/Kimbra".
+    if (artistField.split(RegExp(r'[/&,;]')).any((p) => normalize(p) == s)) {
+      return true;
+    }
     return artistsMatch(artistField, search);
   }
 }
