@@ -73,7 +73,7 @@ class _DesktopFriendsViewState extends State<DesktopFriendsView> {
                     child: _ReceivedShareCard(share: share),
                   ),
                 const SizedBox(height: 10),
-                Divider(color: Colors.white.withOpacity(0.12), height: 1),
+                Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
                 const SizedBox(height: 20),
               ],
               Expanded(
@@ -171,7 +171,7 @@ class _ReceivedShareCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor: Colors.white.withOpacity(0.08),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
               child: Icon(_icon, color: Colors.white70, size: 18),
             ),
             const SizedBox(width: 14),
@@ -316,8 +316,8 @@ class _FriendCard extends StatelessWidget {
                       // on le force explicitement plutot que de compter sur
                       // MaterialStateMouseCursor.
                       mouseCursor: SystemMouseCursors.click,
-                      hoverColor: Colors.white.withOpacity(0.18),
-                      splashColor: Colors.white.withOpacity(0.12),
+                      hoverColor: Colors.white.withValues(alpha: 0.18),
+                      splashColor: Colors.white.withValues(alpha: 0.12),
                       onTap: () async {
                         final messenger = ScaffoldMessenger.of(context);
                         final ok = await context

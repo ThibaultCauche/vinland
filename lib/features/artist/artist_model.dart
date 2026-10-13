@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/album.dart';
 import '../../models/discovered_album.dart';
 import '../../models/discovered_artist.dart';
@@ -94,8 +96,8 @@ class ArtistModel extends ScreenModel {
       albums: _albums,
       topTracks: _topTracks,
     );
-    _deepMatchAlbums();
-    _loadTrueTrackCounts();
+    unawaited(_deepMatchAlbums());
+    unawaited(_loadTrueTrackCounts());
   }
 
   // Memoise le filtrage artiste : allTracks/albums restent la meme instance

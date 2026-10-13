@@ -80,8 +80,9 @@ class SearchHistoryService {
 
   Future<void> add(SearchHistoryItem item) async {
     await ensureLoaded();
-    if (item.type == 'query')
+    if (item.type == 'query') {
       return; // on n'enregistre plus les requêtes brutes
+    }
     _history.removeWhere((h) => h == item);
     _history.insert(0, item);
     if (_history.length > 20) _history = _history.sublist(0, 20);

@@ -207,7 +207,7 @@ class VinlandAudioHandler extends BaseAudioHandler
   PlaybackState _transformState() {
     return PlaybackState(
       controls: [
-        MediaControl(
+        const MediaControl(
           androidIcon: 'drawable/ic_notification_add',
           label: 'Ajouter aux favoris',
           action: MediaAction.custom,

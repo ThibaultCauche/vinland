@@ -28,6 +28,7 @@ const List<String> userDataKeys = [
   'recentPlaysMirrorServerId',
   'shareNowPlayingWithFriends',
   'nowPlayingMirrorServerId',
+  'sharingConsentAsked',
   'pinnedMirrorServerId',
 ];
 

@@ -201,8 +201,8 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E1E1E),
                         borderRadius: BorderRadius.circular(8),
-                        border:
-                            Border.all(color: Colors.orange.withOpacity(0.2)),
+                        border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.2)),
                       ),
                       child: Row(
                         children: [
@@ -210,7 +210,7 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.1),
+                              color: Colors.orange.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
@@ -342,7 +342,7 @@ class _TrackPickerSheetState extends State<_TrackPickerSheet> {
                   hintStyle: const TextStyle(color: Colors.white38),
                   prefixIcon: const Icon(Icons.search, color: Colors.white38),
                   filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
+                  fillColor: Colors.white.withValues(alpha: 0.05),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,

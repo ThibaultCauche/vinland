@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -47,7 +49,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
 
   final messenger = ScaffoldMessenger.of(context);
 
-  showDialog(
+  unawaited(showDialog(
     context: context,
     barrierDismissible: false,
     builder: (_) => const AlertDialog(
@@ -65,7 +67,7 @@ Future<bool> runLocalImportFlow(BuildContext context, List<File> files) async {
         ],
       ),
     ),
-  );
+  ));
 
   final result = await state.importLocalFiles(
     files: files,

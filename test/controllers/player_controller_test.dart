@@ -287,7 +287,7 @@ void main() {
       player.playNext(d);
       player.removeFromQueue(1); // retire b
       player.removeFromQueue(7); // ignore
-      player.reorderQueue(0, 2); // d apres c
+      player.reorderQueue(0, 1); // d apres c
       expect(player.queue.map((t) => t.id), ['c', 'd']);
       await pumpEventQueue();
       final prefs = await SharedPreferences.getInstance();

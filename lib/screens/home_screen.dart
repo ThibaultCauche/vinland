@@ -507,8 +507,9 @@ class HomeScreen extends StatelessWidget {
         break;
       case RecentPlayType.friend:
         state.resolveFriend(entry.id).then((friend) {
-          if (friend != null)
+          if (friend != null) {
             state.pushOverlay(FriendProfileScreen(friend: friend));
+          }
         });
         break;
     }

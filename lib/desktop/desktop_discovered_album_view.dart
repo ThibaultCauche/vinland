@@ -155,7 +155,7 @@ class _DesktopDiscoveredAlbumViewState
                   borderRadius: BorderRadius.circular(DesktopGlass.radiusMd),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         blurRadius: 24,
                         offset: const Offset(0, 12)),
                   ],

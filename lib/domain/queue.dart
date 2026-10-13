@@ -114,12 +114,15 @@ class PlayQueue {
     upcoming.removeAt(index);
   }
 
-  /// `newIndex` suit la convention de ReorderableListView.onReorder (index
-  /// cible avant le retrait de l'element deplace).
+  /// [newIndex] est la position finale du titre (convention de
+  /// ReorderableListView.onReorderItem, utilisee par QueueScreen et
+  /// DesktopQueuePanel depuis le passage a Flutter 3.47) : pas de
+  /// "newIndex -= 1" a faire ici, sinon un titre glisse vers le bas
+  /// atterrit une place trop haut.
   void reorder(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) newIndex -= 1;
+    if (oldIndex < 0 || oldIndex >= upcoming.length) return;
     final item = upcoming.removeAt(oldIndex);
-    upcoming.insert(newIndex, item);
+    upcoming.insert(newIndex.clamp(0, upcoming.length), item);
   }
 
   /// Regenere la partie "contexte" de la file (ce qui reste de l'ordre

@@ -112,7 +112,7 @@ class _BluetoothTrustedDevicesScreenState
                                 subtitle: Text(d.address,
                                     style: const TextStyle(
                                         color: Colors.white38, fontSize: 12)),
-                                activeColor: const Color(0xFF1DB954),
+                                activeThumbColor: const Color(0xFF1DB954),
                                 value: _trusted.contains(d.address),
                                 onChanged: (v) => _toggle(d.address, v),
                               )),

@@ -305,7 +305,7 @@ class SettingsScreen extends StatelessWidget {
           : null,
       value: value,
       onChanged: onChanged,
-      activeColor: const Color(0xFF1DB954),
+      activeThumbColor: const Color(0xFF1DB954),
     );
   }
 
@@ -393,13 +393,18 @@ class SettingsScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               final state = context.read<AppState>();
+              // Capturés avant l'await : si l'écran est fermé pendant la
+              // connexion, relire Navigator/ScaffoldMessenger depuis un
+              // context démonté ferait planter l'app.
+              final navigator = Navigator.of(ctx);
+              final messenger = ScaffoldMessenger.of(context);
               final ok = await state.configureNavidrome(
                 urlCtrl.text.trim(),
                 userCtrl.text.trim(),
                 passCtrl.text.trim(),
               );
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
+              if (navigator.mounted) navigator.pop();
+              messenger.showSnackBar(
                 SnackBar(
                   content:
                       Text(ok ? 'Connecté à Navidrome' : 'Échec de connexion'),

@@ -35,7 +35,7 @@ class PinnedCoverSection extends StatelessWidget {
             ),
             Switch(
               value: pinned,
-              activeColor: const Color(0xFF1DB954),
+              activeThumbColor: const Color(0xFF1DB954),
               onChanged: (v) {
                 if (!v) {
                   onChanged(null);

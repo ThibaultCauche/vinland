@@ -34,7 +34,7 @@ class TrackTile extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF3E3E3E).withOpacity(0.5),
+            color: const Color(0xFF3E3E3E).withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(4),
           ),
           child: const Icon(Icons.music_note, color: Colors.white24),

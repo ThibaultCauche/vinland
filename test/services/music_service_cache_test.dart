@@ -205,4 +205,44 @@ void main() {
     expect(File(p.join(dir.path, 'userdata', 'userdata_u1.json')).existsSync(),
         isTrue);
   });
+
+  group('consentement de partage', () {
+    test(
+        'la reponse a la question de partage n\'est pas reposee au '
+        'lancement suivant', () async {
+      final first = await launchApp();
+      expect(first.needsSharingConsent, isTrue,
+          reason: 'nouveau compte : la question est posee');
+      expect(first.shareLikesWithFriends, isFalse,
+          reason: 'rien n\'est partage tant qu\'il n\'a pas repondu');
+      await first.confirmSharingConsent(
+          likes: true, recentPlays: false, nowPlaying: false);
+
+      final relaunched = await launchApp();
+      expect(relaunched.needsSharingConsent, isFalse);
+      expect(relaunched.shareLikesWithFriends, isTrue);
+      expect(relaunched.shareRecentPlaysWithFriends, isFalse);
+    });
+
+    test(
+        'un compte 1.2.x garde ses partages apres la mise a jour mais on lui '
+        'pose la question une fois', () async {
+      final legacy = File(p.join(dir.path, 'cache', 'library_u1.json'));
+      await legacy.create(recursive: true);
+      await legacy.writeAsString(jsonEncode({
+        'navidromeTracks': [],
+        'albums': [],
+        'playlists': [],
+        'shareLikesWithFriends': true,
+        'shareRecentPlaysWithFriends': true,
+        'shareNowPlayingWithFriends': false,
+      }));
+
+      final music = await launchApp();
+      expect(music.needsSharingConsent, isTrue);
+      expect(music.shareLikesWithFriends, isTrue);
+      expect(music.shareRecentPlaysWithFriends, isTrue);
+      expect(music.shareNowPlayingWithFriends, isFalse);
+    });
+  });
 }

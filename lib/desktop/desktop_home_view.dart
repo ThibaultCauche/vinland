@@ -272,8 +272,9 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
   }
 
   Widget _trackShelf(BuildContext context, List<Track> tracks) {
-    if (tracks.isEmpty)
+    if (tracks.isEmpty) {
       return _emptyShelf('Pas encore assez d\'écoutes cette semaine');
+    }
     final state = context.read<AppState>();
     return DesktopHorizontalShelf(
       height: 210,
@@ -437,7 +438,7 @@ class _RecentPlayTile extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
+              color: Colors.white.withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(DesktopGlass.radiusSm),
             ),
             child: Row(

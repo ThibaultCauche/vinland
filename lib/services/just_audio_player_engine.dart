@@ -68,10 +68,7 @@ class JustAudioPlayerEngine implements PlayerEngine {
     try {
       await _player.stop();
     } catch (_) {}
-    await _player.setAudioSource(
-      ja.ConcatenatingAudioSource(children: sources),
-      initialIndex: initialIndex,
-    );
+    await _player.setAudioSources(sources, initialIndex: initialIndex);
   }
 
   @override

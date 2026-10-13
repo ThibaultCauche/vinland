@@ -195,12 +195,16 @@ void main() {
       expect(ids(q.upcoming), ['c']);
     });
 
-    test('reorder suit la convention de ReorderableListView.onReorder', () {
+    test(
+        'un titre glisse vers le bas atterrit a la place visee, pas une '
+        'place au-dessus (convention onReorderItem)', () {
       q.add(d); // b c d
-      q.reorder(0, 3); // b vers la fin : index cible avant retrait
+      q.reorder(0, 2); // b vers la fin : position finale
       expect(ids(q.upcoming), ['c', 'd', 'b']);
+      q.reorder(0, 1); // c sous d
+      expect(ids(q.upcoming), ['d', 'c', 'b']);
       q.reorder(2, 0);
-      expect(ids(q.upcoming), ['b', 'c', 'd']);
+      expect(ids(q.upcoming), ['b', 'd', 'c']);
     });
 
     test('les petites modifications gardent la meme liste (Selector)', () {

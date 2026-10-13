@@ -317,8 +317,8 @@ class _Header extends StatelessWidget {
                               // curseur/hover explicites, le comportement par
                               // defaut d'InkWell n'etait pas fiable ici.
                               mouseCursor: SystemMouseCursors.click,
-                              hoverColor: Colors.white.withOpacity(0.18),
-                              splashColor: Colors.white.withOpacity(0.12),
+                              hoverColor: Colors.white.withValues(alpha: 0.18),
+                              splashColor: Colors.white.withValues(alpha: 0.12),
                               onTap: () async {
                                 final messenger = ScaffoldMessenger.of(context);
                                 final ok = await context

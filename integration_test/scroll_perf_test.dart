@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -13,7 +15,7 @@ void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('desktop home scroll performance', (tester) async {
-    app.main();
+    unawaited(app.main());
 
     // Le login (identifiants caches) + la premiere synchro NAS peuvent
     // prendre plusieurs secondes avant que la home desktop n'apparaisse.

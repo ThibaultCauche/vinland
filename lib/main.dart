@@ -28,6 +28,7 @@ import 'services/deck_player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
 import 'services/deep_link_service.dart';
+import 'widgets/sharing_consent_dialog.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/player_screen.dart';
@@ -51,7 +52,7 @@ bool _isDesktopLayout(double width) =>
     (kIsWeb && width >= 900);
 
 Future<void> main() async {
-  runZonedGuarded(() async {
+  unawaited(runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
     // Avant tout log : debugPrint reste actif en release, et les erreurs
@@ -77,7 +78,7 @@ Future<void> main() async {
       return true;
     };
 
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
@@ -195,8 +196,8 @@ Future<void> main() async {
       jamService: WebSocketJamService(navidrome),
       discovery: discovery,
     );
-    appState.initialize();
-    DeepLinkService(appState).init();
+    unawaited(appState.initialize());
+    unawaited(DeepLinkService(appState).init());
 
     runApp(VinlandApp(
       audioHandler: audioHandler,
@@ -207,7 +208,7 @@ Future<void> main() async {
     ));
   }, (error, stack) {
     debugPrint('ZONE ERROR: $error\n$stack');
-  });
+  }));
 }
 
 class VinlandApp extends StatelessWidget {
@@ -303,17 +304,19 @@ class AppShell extends StatelessWidget {
         // Récupère state ICI, avant de l'utiliser
         final state = context.read<AppState>();
 
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            if (_isDesktopLayout(constraints.maxWidth)) {
-              return const DesktopAppShell();
-            }
-            return _MobileAppShell(
-              currentTab: currentTab,
-              currentOverlay: currentOverlay,
-              state: state,
-            );
-          },
+        return SharingConsentGate(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (_isDesktopLayout(constraints.maxWidth)) {
+                return const DesktopAppShell();
+              }
+              return _MobileAppShell(
+                currentTab: currentTab,
+                currentOverlay: currentOverlay,
+                state: state,
+              );
+            },
+          ),
         );
       },
     );
@@ -423,9 +426,9 @@ class _MobileAppShell extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withOpacity(0.0),
-                            Colors.black.withOpacity(0.85),
-                            Colors.black.withOpacity(1.0),
+                            Colors.black.withValues(alpha: 0.0),
+                            Colors.black.withValues(alpha: 0.85),
+                            Colors.black.withValues(alpha: 1.0),
                           ],
                           stops: const [0.0, 0.3, 1.0],
                         ),

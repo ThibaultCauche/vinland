@@ -159,7 +159,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [topColor.withOpacity(0.6), Colors.transparent],
+            colors: [topColor.withValues(alpha: 0.6), Colors.transparent],
             stops: const [0.0, 0.45],
           ),
         ),
@@ -170,7 +170,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
               pinned: true,
               backgroundColor: appBarOpacity == 0
                   ? Colors.transparent
-                  : appBarColor.withOpacity(appBarOpacity),
+                  : appBarColor.withValues(alpha: appBarOpacity),
               elevation: 0,
               shadowColor: Colors.transparent,
               surfaceTintColor: Colors.transparent,
@@ -276,7 +276,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
                 borderRadius: BorderRadius.circular(4),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
+                    color: Colors.black.withValues(alpha: 0.5),
                     blurRadius: 24,
                     offset: const Offset(0, 12),
                   ),
@@ -706,11 +706,11 @@ class _AlbumTrackTile extends StatelessWidget {
               ),
             ),
             if (track.isLiked)
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
+              const Padding(
+                padding: EdgeInsets.only(right: 4),
                 child: Icon(
                   Icons.favorite,
-                  color: const Color(0xFF1DB954),
+                  color: Color(0xFF1DB954),
                   size: 16,
                 ),
               ),

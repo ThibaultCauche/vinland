@@ -160,9 +160,9 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -217,11 +217,12 @@ class _ImportReviewScreenState extends State<ImportReviewScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: hasIssue
-            ? Colors.orange.withOpacity(0.05)
+            ? Colors.orange.withValues(alpha: 0.05)
             : const Color(0xFF1E1E1E),
         borderRadius: BorderRadius.circular(8),
-        border:
-            hasIssue ? Border.all(color: Colors.orange.withOpacity(0.2)) : null,
+        border: hasIssue
+            ? Border.all(color: Colors.orange.withValues(alpha: 0.2))
+            : null,
       ),
       child: Row(
         children: [

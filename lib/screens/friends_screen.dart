@@ -182,9 +182,10 @@ class _FriendTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final likedCount = friend.likesPlaylist?.trackIds.length ?? 0;
     final parts = <String>[];
-    if (likedCount > 0)
+    if (likedCount > 0) {
       parts.add(
           '$likedCount titre${likedCount > 1 ? 's' : ''} lik${likedCount > 1 ? 'es' : 'e'}');
+    }
     if (friend.playlists.isNotEmpty) {
       parts.add(
           '${friend.playlists.length} playlist${friend.playlists.length > 1 ? 's' : ''}');

@@ -79,6 +79,12 @@ commit.
 - Relais Jam : messages de 256 Ko max, 200 sessions, 50 participants par
   session, 1 000 connexions, ping toutes les 20 s, fermeture des connexions
   qui ne rejoignent rien en 30 s, journal sans contenu.
+- Au premier lancement, l'app demande ce que tu partages avec tes amis
+  (likes, écoutes récentes, titre en cours). Un nouveau compte ne partage
+  plus rien par défaut ; un compte existant retrouve ses réglages
+  actuels, à confirmer.
+- Documentation : architecture, décisions d'architecture (ADR), sécurité,
+  confidentialité, liens et badges dans le README.
 
 ### Modifié
 - La synchro perso ne sonde plus le relais toutes les 20 s pour toujours :
@@ -100,6 +106,10 @@ commit.
   discographie et profil d'ami partagent leur logique entre mobile et
   Windows (`lib/features/`, testée sans NAS ni Deezer) ; les deux versions
   ne gardent que leur mise en page.
+- La CI refuse toute remarque de `flutter analyze`, même « info » (91
+  remarques historiques corrigées, règles `unawaited_futures`,
+  `avoid_print`, `prefer_final_locals` et `always_declare_return_types`
+  activées).
 - Tout le code Dart est formaté avec `dart format`.
 - Le jeton Subsonic n'est plus écrit sur le disque : le cache de
   bibliothèque, les albums, l'historique de recherche et la pochette
@@ -131,6 +141,10 @@ commit.
   du blocage quand GitHub limite les requêtes (soirées derrière une même
   box).
 - Les actions GitHub sont épinglées par SHA.
+
+### Corrigé
+- Plus de plantage possible si on quitte l'écran pendant une connexion à
+  Navidrome, une recherche ou le choix d'un fichier à importer.
 
 ### Supprimé
 - Variante « compacte » des cartes d'album de la page artiste, qui n'était

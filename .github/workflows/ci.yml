@@ -46,11 +46,10 @@ jobs:
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed lib test
 
-      # --no-fatal-infos : les ~90 remarques "info" historiques seront
-      # traitees en session 08 ; d'ici la, seuls les warnings et erreurs
-      # font echouer la CI.
+      # --fatal-infos : l'analyse est a zero depuis la session 08, toute
+      # nouvelle remarque (meme "info") fait echouer la CI.
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --fatal-infos
 
       - name: Test
         run: flutter test --coverage
