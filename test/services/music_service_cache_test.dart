@@ -109,7 +109,8 @@ void main() {
       if (!firstBatch.isCompleted) firstBatch.complete();
     });
     await firstBatch.future;
-    expect(first.allTracks, hasLength(500));
+    expect(first.allTracks, hasLength(totalSongs),
+        reason: 'les titres pas encore re-recus restent visibles et lisibles');
 
     // Pendant la synchro : un like, puis une sauvegarde (debounce ou
     // saveToCache, peu importe), puis Android tue l'app.
@@ -136,6 +137,21 @@ void main() {
     holdSecondPage!.complete();
     expect(await sync, isTrue);
     await first.saveToCache();
+  });
+
+  test('un titre retire du NAS disparait a la fin de la synchro', () async {
+    final first = await launchApp();
+    await first.syncWithNavidrome();
+    first.allTracks.add(Track(
+      id: 'navidrome_supprime',
+      title: 'Supprime',
+      artist: 'Artiste',
+      album: 'Album',
+      duration: const Duration(minutes: 3),
+    ));
+    await first.syncWithNavidrome();
+    expect(first.allTracks.any((t) => t.id == 'navidrome_supprime'), isFalse);
+    expect(first.allTracks, hasLength(totalSongs));
   });
 
   test('un like sur un titre absent de la bibliotheque revient a la synchro',

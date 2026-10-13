@@ -9,6 +9,10 @@ commit.
 
 ## [Non publié]
 
+- Synchro complète (au plus une fois toutes les 6 h) : ta bibliothèque reste
+  visible et lisible pendant qu'elle tourne, au lieu de se vider puis se
+  remplir petit à petit.
+
 ## [2.0.0] - 2026-10-13
 
 Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
