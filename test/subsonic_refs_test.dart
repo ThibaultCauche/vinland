@@ -75,6 +75,26 @@ void main() {
       expect(track.filePath, contains('t=autre'));
     });
 
+    test('un mp3 leger est lu tel quel, un FLAC reste converti', () {
+      SubsonicRefs.rawStreamUrlBuilder =
+          (id) => 'https://nas.example/rest/stream.view?id=$id&format=raw';
+      addTearDown(() => SubsonicRefs.rawStreamUrlBuilder = null);
+      Track t(String suffix, int bitRate) => Track.fromJson(Track(
+            id: 'navidrome_42',
+            title: 'Titre',
+            artist: 'Artiste',
+            album: 'Album',
+            duration: const Duration(minutes: 3),
+            filePath: SubsonicRefs.stream('42'),
+            suffix: suffix,
+            bitRate: bitRate,
+          ).toJson());
+
+      expect(t('mp3', 320).playbackPath, contains('format=raw'));
+      expect(t('flac', 1000).playbackPath, t('flac', 1000).filePath);
+      expect(t('mp3', 1411).playbackPath, isNot(contains('format=raw')));
+    });
+
     test('un fichier local garde son chemin tel quel', () {
       final track = Track(
         id: '/musique/a.mp3',

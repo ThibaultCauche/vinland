@@ -268,14 +268,20 @@ class DownloadWorkerService {
     }
   }
 
+  /// Duree max d'un job cote worker : Lidarr (LIDARR_TIMEOUT_SECONDS, 900s)
+  /// puis repli spotdl (DOWNLOAD_TIMEOUT_SECONDS, 300s), puis scan Navidrome
+  /// (jusqu'a 120s), plus une marge. Attendre moins faisait abandonner l'app
+  /// sur un titre tout juste sorti (album connu de Lidarr mais aucun torrent
+  /// encore : il attend ses 15 min) alors que le worker le recuperait ensuite
+  /// via spotdl -- titre introuvable jusqu'a la synchro complete suivante.
+  static const maxJobDuration = Duration(minutes: 25);
+
   /// Interroge le job jusqu'a ce qu'il soit termine (done/failed), ou que
-  /// [timeout] soit atteint. Doit rester superieur au DOWNLOAD_TIMEOUT_SECONDS
-  /// cote serveur (defaut 300s) : sinon l'app abandonne et affiche un echec
-  /// alors que le job continue normalement cote NAS.
+  /// [timeout] soit atteint (voir [maxJobDuration]).
   Future<DownloadJobStatus> waitForCompletion(
     String jobId, {
     Duration pollInterval = const Duration(seconds: 3),
-    Duration timeout = const Duration(minutes: 6),
+    Duration timeout = maxJobDuration,
   }) async {
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {

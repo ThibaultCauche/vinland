@@ -62,10 +62,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
   }
 
   Future<void> _poll() async {
-    // Meme duree que le timeout Lidarr par defaut cote worker
-    // (LIDARR_TIMEOUT_SECONDS=900) plus une marge pour spotdl -- un job qui
-    // depasse ca cote worker a de toute facon deja echoue la-bas.
-    final deadline = DateTime.now().add(const Duration(minutes: 20));
+    final deadline = DateTime.now().add(DownloadWorkerService.maxJobDuration);
     while (mounted && !_finished && DateTime.now().isBefore(deadline)) {
       final status = await widget.fetchStatus();
       if (!mounted) return;

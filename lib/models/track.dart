@@ -54,6 +54,31 @@ class Track {
   /// Null si le fichier n'a pas de tags ReplayGain (ou serveur trop ancien).
   final ReplayGain? replayGain;
 
+  /// Format et debit du fichier sur le NAS (Subsonic `suffix`/`bitRate`).
+  final String? suffix;
+  final int? bitRate;
+
+  static const _lossySuffixes = {'mp3', 'm4a', 'aac', 'ogg', 'opus'};
+
+  /// URL de lecture. Un fichier deja compresse et leger est lu tel quel :
+  /// converti a la volee, le flux n'a ni taille ni reprise possible, et une
+  /// reconnexion apres une coupure (autre appli qui prend le son, reseau)
+  /// le faisait repartir du debut pendant que le compteur continuait
+  /// (retour utilisateur). Le reste (FLAC...) reste converti en 192 kbps
+  /// pour la 4G (voir NavidromeService.streamMaxBitRateKbps).
+  String? get playbackPath {
+    final id = subsonicId;
+    final raw = SubsonicRefs.rawStreamUrlBuilder;
+    if (id != null &&
+        raw != null &&
+        _lossySuffixes.contains(suffix?.toLowerCase()) &&
+        (bitRate ?? 0) > 0 &&
+        bitRate! <= 320) {
+      return raw(id);
+    }
+    return filePath;
+  }
+
   /// Vrai pour un titre "fantome" affiche dans les Titres likes qui n'a pas
   /// ete retrouve dans la bibliotheque NAS lors d'un import CSV (voir
   /// AppState.likedTracksWithMissing) : jamais de fichier reel pour un titre
@@ -82,6 +107,8 @@ class Track {
     this.trackNumber,
     this.discNumber,
     this.replayGain,
+    this.suffix,
+    this.bitRate,
   })  : _fileRef = SubsonicRefs.toStorable(filePath),
         _coverRef = SubsonicRefs.toStorable(coverPath);
 
@@ -109,6 +136,8 @@ class Track {
         if (trackNumber != null) 'trackNumber': trackNumber,
         if (discNumber != null) 'discNumber': discNumber,
         if (replayGain != null) 'replayGain': replayGain!.toJson(),
+        if (suffix != null) 'suffix': suffix,
+        if (bitRate != null) 'bitRate': bitRate,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -179,6 +208,8 @@ class Track {
       trackNumber: (json['trackNumber'] as num?)?.toInt(),
       discNumber: (json['discNumber'] as num?)?.toInt(),
       replayGain: ReplayGain.fromJson(json['replayGain']),
+      suffix: json['suffix']?.toString(),
+      bitRate: (json['bitRate'] as num?)?.toInt(),
     );
   }
 }

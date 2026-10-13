@@ -331,6 +331,13 @@ class MatchingService {
     final b = coreArtist(rawB);
     if (a.isEmpty || b.isEmpty) return false;
     if (a == b) return true;
+    // Champ multi-artiste du NAS ("Gotye/Kimbra") : l'artiste principal
+    // seul suffit, meme court -- l'inclusion ci-dessous exige 6 lettres, et
+    // un titre like n'etait alors pas reconnu dans la recherche.
+    if (coreArtist(rawA.split('/').first) == b ||
+        coreArtist(rawB.split('/').first) == a) {
+      return true;
+    }
 
     // minLen >= 2 laissait passer un artiste "June" des qu'il apparaissait
     // comme sous-chaine de n'importe quel autre nom ("Jace June", "Cloudy
@@ -386,7 +393,11 @@ class MatchingService {
     // seul un vrai nom "en entier" dans le champ (ex: "David Bowie" dans
     // "Queen/David Bowie") est un signal fiable.
     if (s.length >= 6 && f.contains(s)) return true;
-    if (f.split(RegExp(r'[/&,]')).any((p) => p.trim() == s)) return true;
+    // Decoupe le champ BRUT : normalize() a deja remplace / & , par des
+    // espaces dans f, ce qui laissait "Gotye" introuvable dans "Gotye/Kimbra".
+    if (artistField.split(RegExp(r'[/&,;]')).any((p) => normalize(p) == s)) {
+      return true;
+    }
     return artistsMatch(artistField, search);
   }
 }
