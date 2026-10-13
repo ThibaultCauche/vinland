@@ -9,6 +9,10 @@ commit.
 
 ## [Non publié]
 
+- Lecture aléatoire : lancer un titre d'une liste mélange maintenant toute la
+  liste, pas seulement les titres placés après lui (la file restait vide en
+  lançant le dernier titre).
+
 ## [2.0.0] - 2026-10-13
 
 Version du mode Soirée, et de tout ce qu'il a fallu remettre d'aplomb
