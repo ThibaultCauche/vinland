@@ -19,6 +19,9 @@ commit.
   court (« Gotye/Kimbra », « Muse/… ») n'apparaissait plus comme lisible.
 - Mobile : supprimer une playlist demande maintenant confirmation, comme sur
   PC.
+- Synchro complète (au plus une fois toutes les 6 h) : ta bibliothèque reste
+  visible et lisible pendant qu'elle tourne, au lieu de se vider puis se
+  remplir petit à petit.
 - Téléchargement : l'app attend maintenant toute la durée possible côté NAS
   (25 min). Un titre tout juste sorti, que le NAS met longtemps à récupérer,
   n'était plus introuvable jusqu'au lendemain.

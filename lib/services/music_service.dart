@@ -1431,7 +1431,12 @@ class MusicService {
     }
 
     final previousTracks = _navidromeTracks;
-    final merged = <Track>[];
+    // Chaque lot recu remplace sa version en cache, sans retirer le reste :
+    // repartir de zero rendait toute la bibliotheque pas encore re-recue
+    // invisible et injouable le temps de la synchro (retour utilisateur :
+    // "faire le plus important d'abord, mes sons"). Les titres disparus du
+    // NAS ne partent qu'a la fin, avec la liste complete.
+    final merged = {for (final t in previousTracks) t.id: t};
     final List<Track> fresh;
     // Les titres en memoire vont etre remplaces lot par lot : leur etat perso
     // est mis de cote avant, pour qu'une sauvegarde pendant la synchro ne
@@ -1442,9 +1447,9 @@ class MusicService {
       fresh = await _navidrome.fetchAllTracks(onBatch: (batch) {
         for (final t in batch) {
           reconcile(t);
+          merged[t.id] = t;
         }
-        merged.addAll(batch);
-        _navidromeTracks = List.of(merged);
+        _navidromeTracks = merged.values.toList();
         _navidromeTracksView = null;
         _allTracks = List.from(_navidromeTracks);
         rebuildAlbums();
