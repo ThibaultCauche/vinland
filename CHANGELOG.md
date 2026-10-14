@@ -15,6 +15,9 @@ commit.
   prend la couleur de la pochette et se coupe dans Paramètres > Lecture.
   Android demande une fois l'accès au son (« micro ») ; sans lui, le
   visuel pulse tout seul.
+- Windows : boutons précédent, lecture/pause et suivant dans l'aperçu qui
+  s'affiche au survol de l'icône Vinland dans la barre des tâches, comme
+  Spotify.
 
 ### Modifié
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du

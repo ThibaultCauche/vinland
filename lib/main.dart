@@ -39,6 +39,7 @@ import 'services/music_service.dart';
 import 'models/track.dart';
 import 'desktop/desktop_app_shell.dart';
 import 'desktop/desktop_theme.dart';
+import 'desktop/taskbar_controls.dart';
 import 'widgets/app_background.dart';
 
 /// Vinland tourne en shell "verre" desktop sur Windows/macOS/Linux (visuel
@@ -208,6 +209,11 @@ Future<void> main() async {
           : AudioVisualizer.disabled(),
     );
     unawaited(appState.initialize());
+    // Boutons precedent / lecture / suivant au survol de l'icone dans la
+    // barre des taches.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      TaskbarControls(AppStateTaskbarPlayback(appState));
+    }
     unawaited(DeepLinkService(appState).init());
 
     runApp(VinlandApp(
