@@ -10,6 +10,12 @@ class JustAudioPlayerEngine implements PlayerEngine {
 
   JustAudioPlayerEngine(this._player);
 
+  /// Session audio Android de cette platine, pour le visuel du lecteur
+  /// (voir AudioVisualizer). Hors interface PlayerEngine : media_kit n'a
+  /// pas d'equivalent.
+  Stream<int?> get androidAudioSessionIdStream =>
+      _player.androidAudioSessionIdStream;
+
   @override
   Stream<Duration> get positionStream => _player.positionStream;
   @override

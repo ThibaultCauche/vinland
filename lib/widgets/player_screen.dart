@@ -15,6 +15,7 @@ import 'player/play_pause_button.dart';
 import 'player/player_slider.dart';
 import 'player/player_cover.dart';
 import 'player/player_options_sheet.dart';
+import 'visualizer/player_visualizer.dart';
 
 class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
   const PlayerScreen({super.key});
@@ -97,103 +98,118 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
                 ],
               ),
             ),
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    const Spacer(flex: 2),
-                    PlayerCover(coverPath: track.coverPath),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  final state = context.read<AppState>();
-                                  state.pushOverlay(AlbumScreen(
-                                    album: resolveTrackAlbum(state, track),
-                                    scrollToTrackId: track.id,
-                                  ));
-                                },
-                                child: Text(
-                                  track.title,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              GestureDetector(
-                                onTap: () =>
-                                    showArtistAlbumPicker(context, track),
-                                child: Text(
-                                  track.artist,
-                                  style: const TextStyle(
-                                      color: Colors.white54, fontSize: 14),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PlayerLikeButton(trackId: track.id),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    const RepaintBoundary(child: PlayerSlider()),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        IconButton(
-                          icon: Icon(
-                            Icons.shuffle,
-                            color: isShuffled
-                                ? const Color(0xFF1DB954)
-                                : Colors.white54,
-                            size: 28,
-                          ),
-                          onPressed: () =>
-                              context.read<AppState>().toggleShuffle(),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.skip_previous,
-                              color: Colors.white, size: 36),
-                          onPressed: () =>
-                              context.read<AppState>().previousTrack(),
-                        ),
-                        const PlayPauseButton(),
-                        IconButton(
-                          icon: const Icon(Icons.skip_next,
-                              color: Colors.white, size: 36),
-                          onPressed: () => context.read<AppState>().nextTrack(),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            loopMode == LoopMode.one
-                                ? Icons.repeat_one
-                                : Icons.repeat,
-                            color: loopMode != LoopMode.off
-                                ? const Color(0xFF1DB954)
-                                : Colors.white54,
-                            size: 28,
-                          ),
-                          onPressed: () =>
-                              context.read<AppState>().toggleLoopMode(),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                  ],
+            child: Stack(
+              children: [
+                // Grille d'hexagones derriere tout le lecteur ; les vagues
+                // partent de la pochette.
+                const Positioned.fill(
+                  child: PlayerVisualizer(
+                    origin: Alignment(0, -0.35),
+                    cellRadius: 18,
+                    intensity: 0.8,
+                    askPermission: true,
+                  ),
                 ),
-              ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        const Spacer(flex: 2),
+                        PlayerCover(coverPath: track.coverPath),
+                        const Spacer(),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      final state = context.read<AppState>();
+                                      state.pushOverlay(AlbumScreen(
+                                        album: resolveTrackAlbum(state, track),
+                                        scrollToTrackId: track.id,
+                                      ));
+                                    },
+                                    child: Text(
+                                      track.title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  GestureDetector(
+                                    onTap: () =>
+                                        showArtistAlbumPicker(context, track),
+                                    child: Text(
+                                      track.artist,
+                                      style: const TextStyle(
+                                          color: Colors.white54, fontSize: 14),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            PlayerLikeButton(trackId: track.id),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        const RepaintBoundary(child: PlayerSlider()),
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                Icons.shuffle,
+                                color: isShuffled
+                                    ? const Color(0xFF1DB954)
+                                    : Colors.white54,
+                                size: 28,
+                              ),
+                              onPressed: () =>
+                                  context.read<AppState>().toggleShuffle(),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.skip_previous,
+                                  color: Colors.white, size: 36),
+                              onPressed: () =>
+                                  context.read<AppState>().previousTrack(),
+                            ),
+                            const PlayPauseButton(),
+                            IconButton(
+                              icon: const Icon(Icons.skip_next,
+                                  color: Colors.white, size: 36),
+                              onPressed: () =>
+                                  context.read<AppState>().nextTrack(),
+                            ),
+                            IconButton(
+                              icon: Icon(
+                                loopMode == LoopMode.one
+                                    ? Icons.repeat_one
+                                    : Icons.repeat,
+                                color: loopMode != LoopMode.off
+                                    ? const Color(0xFF1DB954)
+                                    : Colors.white54,
+                                size: 28,
+                              ),
+                              onPressed: () =>
+                                  context.read<AppState>().toggleLoopMode(),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
