@@ -137,7 +137,12 @@ class SettingsScreen extends StatelessWidget {
                     onTap: () => _runLibraryTagScan(context, downloadWorker),
                   ),
                 _buildSection('Lecture'),
-                PlaybackSettingsTiles(settings: state.playbackSettings),
+                PlaybackSettingsTiles(
+                  settings: state.playbackSettings,
+                  // Le visuel n'existe que dans le lecteur mobile Android.
+                  visualizer:
+                      state.visualizer.supported ? state.visualizer : null,
+                ),
                 _buildSection('Amis'),
                 _buildSwitchTile(
                   icon: Icons.people_outline,

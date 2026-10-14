@@ -10,6 +10,11 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Android : visuel animé dans le mini lecteur et le grand lecteur, une
+  grille d'hexagones qui s'allume par vagues au rythme des basses. Il
+  prend la couleur de la pochette et se coupe dans Paramètres > Lecture.
+  Android demande une fois l'accès au son (« micro ») ; sans lui, le
+  visuel pulse tout seul.
 - Windows : boutons précédent, lecture/pause et suivant dans l'aperçu qui
   s'affiche au survol de l'icône Vinland dans la barre des tâches, comme
   Spotify.
