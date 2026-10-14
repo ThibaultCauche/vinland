@@ -45,6 +45,7 @@ dependencies:
   # Verification ed25519/BLAKE2b des signatures minisign des releases
   # (release_signature.dart), en Dart pur : rien de natif a compiler.
   cryptography: ^2.9.0
+  bonsoir: ^7.1.5
 
 dependency_overrides:
   # VS 2026's MSVC now hard-errors on the deprecated /await experimental

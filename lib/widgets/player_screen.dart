@@ -7,6 +7,7 @@ import '../models/track.dart';
 import '../screens/album_screen.dart';
 import '../screens/queue_screen.dart';
 import 'album_options_sheet.dart';
+import 'player/cast_devices_section.dart';
 import 'player/jam_controls.dart';
 import 'player/like_button.dart';
 import 'player/play_pause_button.dart';
@@ -55,12 +56,19 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
                 selector: (_, state) =>
                     state.isPersonalSyncParticipant ||
                     state.connectedParticipantDeviceName != null,
-                builder: (context, isConnected, __) => IconButton(
-                  icon: Icon(Icons.devices,
-                      color:
-                          isConnected ? const Color(0xFF1DB954) : Colors.white),
-                  tooltip: 'Périphériques',
-                  onPressed: () => showDeviceMenu(context),
+                builder: (context, isConnected, __) => ListenableBuilder(
+                  listenable: context.read<AppState>().cast,
+                  builder: (context, _) {
+                    final cast = context.read<AppState>().cast;
+                    return IconButton(
+                      icon: Icon(deviceMenuIcon(cast),
+                          color: isConnected || cast.isCasting
+                              ? const Color(0xFF1DB954)
+                              : Colors.white),
+                      tooltip: deviceMenuTooltip(cast),
+                      onPressed: () => showDeviceMenu(context),
+                    );
+                  },
                 ),
               ),
               IconButton(

@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Chromecast : le menu « Périphériques » liste les Chromecast du Wi-Fi.
+  Un tap envoie la musique sur la télé ou l'enceinte, au même endroit du
+  titre ; la file, les boutons et le volume continuent de se piloter
+  depuis l'app (téléphone et PC).
+
 ## [2.0.2] - 2026-10-14
 
 ### Ajouté

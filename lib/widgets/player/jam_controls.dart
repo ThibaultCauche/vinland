@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:provider/provider.dart';
+import '../../controllers/cast_controller.dart';
 import '../../controllers/jam_sync_settings.dart';
 import '../../controllers/party_controller.dart';
 import '../../providers/app_state.dart';
 import '../../screens/jam_sync_debug_screen.dart';
 import '../../screens/party/party_home_screen.dart';
+import 'cast_devices_section.dart';
 
 /// Menu Jam partage entre mobile (player_options_sheet.dart) et desktop
 /// (desktop_player_bar.dart) : demarrer/rejoindre/quitter une session
@@ -215,56 +217,64 @@ void showDeviceMenu(BuildContext context) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
+    // La liste des Chromecast peut s'allonger : defile au besoin.
+    isScrollControlled: true,
     builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (state.isPersonalSyncParticipant && state.remoteTrack != null)
-            ListTile(
-              leading: const Icon(Icons.devices, color: Colors.white, size: 26),
-              title: Text(
-                'Reprendre ici (${state.remoteDeviceName ?? 'autre appareil'})',
-                style: const TextStyle(color: Colors.white, fontSize: 16),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (state.isPersonalSyncParticipant && state.remoteTrack != null)
+              ListTile(
+                leading:
+                    const Icon(Icons.devices, color: Colors.white, size: 26),
+                title: Text(
+                  'Reprendre ici (${state.remoteDeviceName ?? 'autre appareil'})',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                subtitle: Text(
+                  '${state.remoteTrack!.title} - ${state.remoteTrack!.artist}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  state.takeOverPersonalSync();
+                },
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              )
+            else if (state.isPersonalSyncHost &&
+                state.connectedParticipantDeviceName != null)
+              ListTile(
+                leading:
+                    const Icon(Icons.devices, color: Colors.white, size: 26),
+                title: Text(
+                  'Connecté : ${state.connectedParticipantDeviceName}',
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                subtitle: const Text(
+                  'Peut déjà piloter la lecture ici',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                minLeadingWidth: 24,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              )
+            else
+              const ListTile(
+                leading:
+                    Icon(Icons.devices_other, color: Colors.white38, size: 26),
+                title: Text('Aucun autre appareil connecté',
+                    style: TextStyle(color: Colors.white38, fontSize: 16)),
+                minLeadingWidth: 24,
+                contentPadding: EdgeInsets.symmetric(horizontal: 20),
               ),
-              subtitle: Text(
-                '${state.remoteTrack!.title} - ${state.remoteTrack!.artist}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 13),
-              ),
-              onTap: () {
-                Navigator.pop(ctx);
-                state.takeOverPersonalSync();
-              },
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            )
-          else if (state.isPersonalSyncHost &&
-              state.connectedParticipantDeviceName != null)
-            ListTile(
-              leading: const Icon(Icons.devices, color: Colors.white, size: 26),
-              title: Text(
-                'Connecté : ${state.connectedParticipantDeviceName}',
-                style: const TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              subtitle: const Text(
-                'Peut déjà piloter la lecture ici',
-                style: TextStyle(color: Colors.white54, fontSize: 13),
-              ),
-              minLeadingWidth: 24,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-            )
-          else
-            const ListTile(
-              leading:
-                  Icon(Icons.devices_other, color: Colors.white38, size: 26),
-              title: Text('Aucun autre appareil connecté',
-                  style: TextStyle(color: Colors.white38, fontSize: 16)),
-              minLeadingWidth: 24,
-              contentPadding: EdgeInsets.symmetric(horizontal: 20),
-            ),
-          const SizedBox(height: 8),
-        ],
+            if (CastController.isSupportedPlatform)
+              CastDevicesSection(cast: state.cast),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     ),
   );

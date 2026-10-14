@@ -9,9 +9,20 @@ class PlayerQueueItem {
   final String path;
   final bool isRemote;
 
+  /// Fiche du titre, pour les moteurs qui l'affichent eux-memes (la
+  /// Chromecast la montre sur la tele). Ignoree par just_audio et media_kit.
+  final String? title;
+  final String? artist;
+  final String? album;
+  final Uri? artUri;
+
   const PlayerQueueItem({
     required this.path,
     required this.isRemote,
+    this.title,
+    this.artist,
+    this.album,
+    this.artUri,
   });
 }
 
