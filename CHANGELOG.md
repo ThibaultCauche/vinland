@@ -10,6 +10,11 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
+  barre de lecture (PC). La ligne en cours est mise en avant et suit la
+  musique, un tap sur une ligne y saute. Les paroles viennent de Navidrome
+  (tags du fichier ou `.lrc` à côté), sinon de LRCLIB ; à défaut de
+  minutage, le texte s'affiche simplement.
 - Mode Soirée : blind test (menu de l'hôte > « Blind test »). Un extrait
   d'un titre de la bibliothèque passe sur l'enceinte, les invités
   choisissent parmi 4 réponses colorées sur leur téléphone. Plus on répond
