@@ -14,6 +14,10 @@ commit.
   sur la Chromecast (lus depuis le serveur). Avant, le blind test, qui
   pioche surtout dans les titres likés, n'arrivait pas à jouer l'extrait
   sur la télé.
+- Chromecast : une coupure de connexion (téléphone qui perd le Wi-Fi un
+  instant, mise en veille) ne fait plus repartir la musique sur le
+  téléphone pendant qu'elle continue sur la télé : l'app reprend la main
+  sur la Chromecast toute seule.
 
 ## [2.1.0] - 2026-10-14
 

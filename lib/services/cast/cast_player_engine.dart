@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 
 import '../player_engine.dart';
 import 'cast_channel.dart';
@@ -19,7 +20,7 @@ import 'cast_message.dart';
 class CastPlayerEngine implements PlayerEngine {
   CastPlayerEngine._(this._channel, this._transportId, this._sessionId) {
     _sub = _channel.messages.listen(_onMessage);
-    unawaited(_channel.done.then((_) => _end()));
+    unawaited(_channel.done.then((_) => _end(CastEndReason.connectionLost)));
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) => _tick());
   }
 
@@ -43,6 +44,40 @@ class CastPlayerEngine implements PlayerEngine {
     final engine =
         CastPlayerEngine._(channel, transportId, app['sessionId'] as String?);
     engine._readVolume(reply.json);
+    return engine;
+  }
+
+  /// Reprend la main sur la session [sessionId] deja ouverte sur la
+  /// Chromecast au bout de [channel] (apres une coupure de connexion) :
+  /// le titre continue sans etre recharge.
+  static Future<CastPlayerEngine> join(
+    CastChannel channel,
+    String sessionId,
+  ) async {
+    channel.send(CastNamespace.connection, 'receiver-0', {'type': 'CONNECT'});
+    final reply = await channel.request(
+      CastNamespace.receiver,
+      'receiver-0',
+      {'type': 'GET_STATUS'},
+    );
+    final app = _receiverApp(reply.json);
+    if (app == null || app['sessionId'] != sessionId) {
+      throw StateError('Le lecteur n\'est plus ouvert sur la Chromecast');
+    }
+    final transportId = app['transportId'] as String;
+    channel.send(CastNamespace.connection, transportId, {'type': 'CONNECT'});
+    final engine = CastPlayerEngine._(channel, transportId, sessionId);
+    engine._readVolume(reply.json);
+    // L'etat du titre en cours arrive par le flux des messages.
+    await channel
+        .request(CastNamespace.media, transportId, {'type': 'GET_STATUS'});
+    final media = engine._mediaSessionId;
+    if (media != null) {
+      engine
+        .._loadedSession = media
+        .._hasSource = true;
+      engine._indexCtrl.add(0);
+    }
     return engine;
   }
 
@@ -94,6 +129,13 @@ class CastPlayerEngine implements PlayerEngine {
   LoopMode _loop = LoopMode.off;
   int _ticks = 0;
 
+  /// Pourquoi la diffusion s'est arretee (null tant qu'elle continue).
+  CastEndReason? get endReason => _endReason;
+  CastEndReason? _endReason;
+
+  /// Session du lecteur sur la Chromecast, pour la reprendre (voir [join]).
+  String? get sessionId => _sessionId;
+
   /// La session s'est arretee sans nous : Chromecast eteinte, Wi-Fi perdu,
   /// ou quelqu'un d'autre a pris la main dessus.
   Stream<void> get ended => _endedCtrl.stream;
@@ -111,7 +153,7 @@ class CastPlayerEngine implements PlayerEngine {
     if (message.namespace == CastNamespace.connection &&
         message.sourceId == _transportId &&
         payload['type'] == 'CLOSE') {
-      _end();
+      _end(CastEndReason.sessionClosed);
       return;
     }
     if (message.namespace == CastNamespace.receiver &&
@@ -121,7 +163,7 @@ class CastPlayerEngine implements PlayerEngine {
       final app = _receiverApp(payload);
       if (app == null ||
           (_sessionId != null && app['sessionId'] != _sessionId)) {
-        _end();
+        _end(CastEndReason.sessionClosed);
       }
       return;
     }
@@ -209,9 +251,11 @@ class CastPlayerEngine implements PlayerEngine {
     if (++_ticks % 10 == 0) _media({'type': 'GET_STATUS'});
   }
 
-  void _end() {
+  void _end(CastEndReason reason) {
     if (_ended) return;
     _ended = true;
+    _endReason = reason;
+    debugPrint('Chromecast : diffusion arretee (${reason.name})');
     _setPlaying(false);
     _endedCtrl.add(null);
   }
@@ -401,7 +445,7 @@ class CastPlayerEngine implements PlayerEngine {
         // Chromecast deja injoignable : rien a arreter.
       }
     }
-    _end();
+    _end(CastEndReason.disconnected);
     _ticker.cancel();
     await _sub.cancel();
     await _channel.close();
@@ -409,4 +453,17 @@ class CastPlayerEngine implements PlayerEngine {
 
   @override
   Future<void> dispose() => disconnect();
+}
+
+/// Pourquoi une diffusion s'est arretee.
+enum CastEndReason {
+  /// Connexion perdue avec la Chromecast : le lecteur peut tourner encore
+  /// sur la tele, on essaie de le reprendre.
+  connectionLost,
+
+  /// Le lecteur a ete ferme sur la tele (autre appli, arret).
+  sessionClosed,
+
+  /// On a coupe nous-memes.
+  disconnected,
 }
