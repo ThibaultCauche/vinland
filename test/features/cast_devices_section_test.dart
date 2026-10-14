@@ -26,6 +26,8 @@ class _Output implements OutputSwitch {
   PlayerEngine get activeEngine => localEngine;
   @override
   Future<void> switchOutput(PlayerEngine target, {bool resume = true}) async {}
+  @override
+  void adoptOutput(PlayerEngine target) {}
 }
 
 void main() {

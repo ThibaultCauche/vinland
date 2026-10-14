@@ -10,10 +10,24 @@ import '../services/routed_player_engine.dart';
 /// Ouvre la lecture sur une Chromecast ; remplace par un faux en test.
 typedef CastConnector = Future<CastPlayerEngine> Function(CastDevice device);
 
+/// Reprend une session deja ouverte sur la Chromecast ; faux en test.
+typedef CastJoiner = Future<CastPlayerEngine> Function(
+    CastDevice device, String sessionId);
+
 Future<CastPlayerEngine> _connect(CastDevice device) async {
   final channel = await CastChannel.connect(device.host, device.port);
   try {
     return await CastPlayerEngine.launch(channel);
+  } catch (_) {
+    await channel.close();
+    rethrow;
+  }
+}
+
+Future<CastPlayerEngine> _join(CastDevice device, String sessionId) async {
+  final channel = await CastChannel.connect(device.host, device.port);
+  try {
+    return await CastPlayerEngine.join(channel, sessionId);
   } catch (_) {
     await channel.close();
     rethrow;
@@ -28,13 +42,24 @@ class CastController extends ChangeNotifier {
     required OutputSwitch output,
     CastScanner? scanner,
     CastConnector? connector,
+    CastJoiner? joiner,
+    this.reconnectDelays = const [
+      Duration.zero,
+      Duration(seconds: 1),
+      Duration(seconds: 3),
+    ],
   })  : _output = output,
         _scanner = scanner ?? BonsoirCastScanner(),
-        _connector = connector ?? _connect;
+        _connector = connector ?? _connect,
+        _joiner = joiner ?? _join;
 
   final OutputSwitch _output;
   final CastScanner _scanner;
   final CastConnector _connector;
+  final CastJoiner _joiner;
+
+  /// Attentes avant chaque essai de reprise apres une coupure.
+  final List<Duration> reconnectDelays;
 
   /// Android et Windows (bonsoir y passe par le systeme). iOS demanderait
   /// une autorisation reseau local et un build signe qu'on n'a pas.
@@ -164,9 +189,46 @@ class CastController extends ChangeNotifier {
 
   Future<void> _onEnded(CastPlayerEngine engine) async {
     if (!identical(engine, _engine)) return;
-    _message = 'La diffusion sur ${_device?.name ?? 'la Chromecast'} '
-        's\'est arrêtée.';
+    // Connexion perdue (Wi-Fi du telephone, mise en veille...) : la tele
+    // joue sans doute encore. On reprend la session plutot que de revenir
+    // sur le telephone, ou la musique serait repartie en double.
+    if (engine.endReason == CastEndReason.connectionLost &&
+        await _rejoin(engine)) {
+      return;
+    }
+    if (!identical(engine, _engine)) return;
+    final name = _device?.name ?? 'la Chromecast';
+    _message = engine.endReason == CastEndReason.connectionLost
+        ? 'Connexion perdue avec $name. Si la musique continue sur la télé, '
+            'reconnecte-toi depuis Périphériques.'
+        : 'La diffusion sur $name s\'est arrêtée.';
     await _backToLocal(resume: false);
+  }
+
+  Future<bool> _rejoin(CastPlayerEngine lost) async {
+    final device = _device;
+    final sessionId = lost.sessionId;
+    if (device == null || sessionId == null) return false;
+    for (final delay in reconnectDelays) {
+      if (delay > Duration.zero) await Future<void>.delayed(delay);
+      // Deconnexion ou autre Chromecast choisie entre-temps.
+      if (_disposed || !identical(_engine, lost)) return true;
+      try {
+        final engine = await _joiner(device, sessionId);
+        if (_disposed || !identical(_engine, lost)) {
+          await _release(engine, stopReceiver: false);
+          return true;
+        }
+        _attach(engine);
+        _output.adoptOutput(engine);
+        await _release(lost, stopReceiver: false);
+        _notify();
+        return true;
+      } catch (e) {
+        debugPrint('Reprise Chromecast impossible: $e');
+      }
+    }
+    return false;
   }
 
   Future<void> _backToLocal({required bool resume}) async {

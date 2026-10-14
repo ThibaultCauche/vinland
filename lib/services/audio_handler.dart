@@ -249,6 +249,7 @@ class VinlandAudioHandler extends BaseAudioHandler
         artist: item.artist,
         album: item.album,
         artUri: item.artUri,
+        streamUrl: item.extras?['streamUrl'] as String?,
       );
 
   // --- Sortie (appareil ou Chromecast) ------------------------------------
@@ -299,6 +300,14 @@ class VinlandAudioHandler extends BaseAudioHandler
     } else {
       _pushState();
     }
+  }
+
+  @override
+  void adoptOutput(PlayerEngine target) {
+    final router = _engine;
+    if (router is! RoutedPlayerEngine) return;
+    router.route(target);
+    _pushState();
   }
 
   PlaybackState _transformState() {

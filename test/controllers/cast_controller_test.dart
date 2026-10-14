@@ -44,6 +44,12 @@ class _FakeOutput implements OutputSwitch {
       throw StateError('titre refuse');
     }
   }
+
+  @override
+  void adoptOutput(PlayerEngine target) {
+    activeEngine = target;
+    log.add('reprise');
+  }
 }
 
 const _salon = CastDevice(id: 'Chromecast-1', name: 'Salon', host: '10.0.0.5');
@@ -53,8 +59,12 @@ void main() {
   late _FakeOutput output;
   late List<FakeCastReceiver> receivers;
   late CastController cast;
+  late List<FakeCastReceiver> joined;
+  var joinFails = 0;
 
   setUp(() {
+    joined = [];
+    joinFails = 0;
     scanner = _FakeScanner();
     output = _FakeOutput(FakePlayerEngine());
     receivers = [];
@@ -66,6 +76,18 @@ void main() {
         receivers.add(receiver);
         return CastPlayerEngine.launch(receiver.channel);
       },
+      joiner: (device, sessionId) async {
+        if (joinFails > 0) {
+          joinFails--;
+          throw const SocketLikeError();
+        }
+        final receiver = FakeCastReceiver()
+          ..mediaSessionId = 1
+          ..playerState = 'PLAYING';
+        joined.add(receiver);
+        return CastPlayerEngine.join(receiver.channel, sessionId);
+      },
+      reconnectDelays: const [Duration.zero, Duration(milliseconds: 5)],
     );
   });
 
@@ -123,6 +145,34 @@ void main() {
     expect(cast.isCasting, isFalse);
     expect(output.log, ['cast', 'local (pause)']);
     expect(cast.message, contains('arrêtée'));
+  });
+
+  test(
+      'une coupure de connexion reprend la session sur la tele au lieu de '
+      'relancer la musique sur le telephone (musique en double)', () async {
+    await cast.connect(_salon);
+    await receivers.single.disconnectSocket();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(cast.isCasting, isTrue);
+    expect(cast.device, _salon);
+    expect(output.log, ['cast', 'reprise']);
+    final engine = output.activeEngine as CastPlayerEngine;
+    expect(engine.hasSource, isTrue);
+    expect(engine.playing, isTrue);
+    // Rien n'est recharge sur la tele.
+    expect(joined.single.types, isNot(contains('LOAD')));
+    expect(joined.single.types, isNot(contains('LAUNCH')));
+  });
+
+  test('si la tele reste injoignable, retour sur le telephone en pause',
+      () async {
+    joinFails = 5;
+    await cast.connect(_salon);
+    await receivers.single.disconnectSocket();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(cast.isCasting, isFalse);
+    expect(output.log, ['cast', 'local (pause)']);
+    expect(cast.message, contains('Connexion perdue'));
   });
 
   test('le volume part vers la Chromecast', () async {
