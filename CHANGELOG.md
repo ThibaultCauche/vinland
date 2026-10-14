@@ -20,6 +20,12 @@ commit.
   Tes classiques, Likés oubliés, À redécouvrir, et une par décennie
   (Années 80, Années 2000...). Elles se mettent à jour d'elles-mêmes ;
   « Ajouter à ma bibliothèque » en fait une vraie playlist.
+- Bilan musical (« Ton année en musique ») depuis l'accueil, sur mobile et
+  PC : minutes écoutées, artiste n°1, top titres, albums et genres, mois et
+  jour records, premier titre de l'année, et « Écouter ton top ». L'app
+  tient maintenant un journal des écoutes de l'appareil pour le bilan par
+  année ; avant lui, « Depuis toujours » part des compteurs d'écoute.
+- Récap de soirée : durée, DJ de la soirée et artiste le plus joué.
 - Mode Soirée : blind test (menu de l'hôte > « Blind test »). Un extrait
   d'un titre de la bibliothèque passe sur l'enceinte, les invités
   choisissent parmi 4 réponses colorées sur leur téléphone. Plus on répond
