@@ -4,13 +4,27 @@ import 'package:flutter/foundation.dart';
 import 'deck_player_engine.dart';
 import 'media_browser.dart';
 import 'player_engine.dart';
+import 'routed_player_engine.dart';
 
 class VinlandAudioHandler extends BaseAudioHandler
     with SeekHandler
-    implements PlaybackOutput {
+    implements PlaybackOutput, OutputSwitch {
   final PlayerEngine _engine;
   @override
   PlayerEngine get player => _engine;
+
+  /// Les platines locales, si elles jouent en ce moment (pas pendant une
+  /// diffusion Chromecast, ni avec le moteur simple de la reprise
+  /// Bluetooth) : prechargement et fondu n'existent que la.
+  DeckPlayerEngine? get _deck {
+    final engine = _engine;
+    if (engine is DeckPlayerEngine) return engine;
+    if (engine is RoutedPlayerEngine) {
+      final active = engine.active;
+      if (active is DeckPlayerEngine) return active;
+    }
+    return null;
+  }
 
   /// Bibliotheque vue par Android Auto (voir VinlandMediaBrowser), branchee
   /// par AppState. Null : rien a parcourir (entree Bluetooth en
@@ -153,8 +167,8 @@ class VinlandAudioHandler extends BaseAudioHandler
       mediaItem.add(items[startIndex]);
     }
 
-    final engine = _engine;
-    if (engine is DeckPlayerEngine) {
+    final engine = _deck;
+    if (engine != null) {
       if (items.length == 1 && engine.isPreloaded(items.first.id)) {
         debugPrint('⏭️ Titre précharge : bascule'
             '${crossfade > Duration.zero ? ' en fondu (${crossfade.inSeconds}s)' : ''}');
@@ -170,11 +184,11 @@ class VinlandAudioHandler extends BaseAudioHandler
     }
 
     final sources = items.map((item) {
-      final isRemote = item.id.startsWith('http');
+      final source = _queueItem(item);
       debugPrint(
           // Le titre, pas item.id : pour un stream c'est l'URL avec jeton.
-          '🎵 AUDIO SOURCE: ${item.title} isRemote=$isRemote');
-      return PlayerQueueItem(path: item.id, isRemote: isRemote);
+          '🎵 AUDIO SOURCE: ${item.title} isRemote=${source.isRemote}');
+      return source;
     }).toList();
 
     // Un blip reseau mobile (Tailscale en exterieur) faisait echouer le
@@ -209,10 +223,11 @@ class VinlandAudioHandler extends BaseAudioHandler
 
   @override
   Future<bool> preload(MediaItem item, {double gain = 1.0}) async {
-    final engine = _engine;
-    // Moteur simple (reprise Bluetooth en arriere-plan) : pas de seconde
-    // platine, le titre suivant sera charge a la fin du titre en cours.
-    if (engine is! DeckPlayerEngine) return false;
+    final engine = _deck;
+    // Moteur simple (reprise Bluetooth en arriere-plan) ou Chromecast : pas
+    // de seconde platine, le titre suivant sera charge a la fin du titre en
+    // cours.
+    if (engine == null) return false;
     debugPrint('⏳ Préchargement: ${item.title}');
     return engine.preload(
       PlayerQueueItem(path: item.id, isRemote: item.id.startsWith('http')),
@@ -221,15 +236,69 @@ class VinlandAudioHandler extends BaseAudioHandler
   }
 
   @override
-  void cancelPreload() {
+  void cancelPreload() => _deck?.cancelPreload();
+
+  @override
+  Future<void> setTrackGain(double gain) async =>
+      await _deck?.setTrackGain(gain);
+
+  static PlayerQueueItem _queueItem(MediaItem item) => PlayerQueueItem(
+        path: item.id,
+        isRemote: item.id.startsWith('http'),
+        title: item.title,
+        artist: item.artist,
+        album: item.album,
+        artUri: item.artUri,
+      );
+
+  // --- Sortie (appareil ou Chromecast) ------------------------------------
+
+  @override
+  PlayerEngine get localEngine {
     final engine = _engine;
-    if (engine is DeckPlayerEngine) engine.cancelPreload();
+    return engine is RoutedPlayerEngine ? engine.local : engine;
   }
 
   @override
-  Future<void> setTrackGain(double gain) async {
+  PlayerEngine get activeEngine {
     final engine = _engine;
-    if (engine is DeckPlayerEngine) await engine.setTrackGain(gain);
+    return engine is RoutedPlayerEngine ? engine.active : engine;
+  }
+
+  @override
+  Future<void> switchOutput(PlayerEngine target, {bool resume = true}) async {
+    final router = _engine;
+    if (router is! RoutedPlayerEngine || identical(router.active, target)) {
+      return;
+    }
+    final previous = router.active;
+    final item = mediaItem.value;
+    final hadSource = previous.hasSource;
+    final position = previous.position;
+    final wasPlaying = previous.playing;
+    cancelPreload();
+    try {
+      await previous.pause();
+    } catch (e) {
+      // Chromecast deja perdue : rien a mettre en pause.
+      debugPrint('Sortie precedente injoignable: $e');
+    }
+    router.route(target);
+    if (item != null && hadSource) {
+      try {
+        await target.setAudioSources([_queueItem(item)], initialIndex: 0);
+        if (position > Duration.zero) await target.seek(position);
+        if (resume && wasPlaying) {
+          unawaited(target.play().catchError((Object e) {
+            debugPrint('❌ ERREUR play(): $e');
+          }));
+        }
+      } finally {
+        _pushState();
+      }
+    } else {
+      _pushState();
+    }
   }
 
   PlaybackState _transformState() {

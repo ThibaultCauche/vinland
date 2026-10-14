@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import '../widgets/cover_image.dart';
+import '../widgets/player/cast_devices_section.dart';
 import '../widgets/player/jam_controls.dart';
 import 'desktop_lyrics_panel.dart';
 import 'desktop_queue_panel.dart';
@@ -587,12 +588,18 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
           selector: (_, state) =>
               state.isPersonalSyncParticipant ||
               state.connectedParticipantDeviceName != null,
-          builder: (context, isConnected, __) => GlassIconButton(
-            icon: Icons.devices,
-            active: isConnected,
-            size: 18,
-            tooltip: 'Périphériques',
-            onPressed: () => showDeviceMenu(context),
+          builder: (context, isConnected, __) => ListenableBuilder(
+            listenable: context.read<AppState>().cast,
+            builder: (context, _) {
+              final cast = context.read<AppState>().cast;
+              return GlassIconButton(
+                icon: deviceMenuIcon(cast),
+                active: isConnected || cast.isCasting,
+                size: 18,
+                tooltip: deviceMenuTooltip(cast),
+                onPressed: () => showDeviceMenu(context),
+              );
+            },
           ),
         ),
       ],

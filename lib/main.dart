@@ -24,6 +24,7 @@ import 'screens/friends_screen.dart';
 import 'services/audio_handler.dart';
 import 'services/log_redaction.dart';
 import 'services/player_engine.dart';
+import 'services/routed_player_engine.dart';
 import 'services/deck_player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
@@ -157,8 +158,10 @@ Future<void> main() async {
     }
 
     if (useMediaKit) MediaKit.ensureInitialized();
+    // Enveloppe routable : la lecture peut partir sur une Chromecast (voir
+    // CastController) sans que le reste de l'app change de moteur.
     final PlayerEngine engine =
-        DeckPlayerEngine(createEngine(), createEngine());
+        RoutedPlayerEngine(DeckPlayerEngine(createEngine(), createEngine()));
 
     final audioHandler = await AudioService.init(
       builder: () => VinlandAudioHandler(engine),

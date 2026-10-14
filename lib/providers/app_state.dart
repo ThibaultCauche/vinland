@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../controllers/cast_controller.dart';
 import '../controllers/jam_controller.dart';
 import '../controllers/jam_sync_settings.dart';
 import '../controllers/party_controller.dart';
@@ -91,6 +92,11 @@ class AppState extends ChangeNotifier
   // Mode Soiree : voir PartyController (protocole) et PartyHostDj (la file
   // de la soiree jouee par le lecteur de l'hote).
   late final PartyController party;
+
+  /// Diffusion sur Chromecast, creee a la premiere ouverture de la liste
+  /// des appareils.
+  CastController get cast => _cast ??= CastController(output: _audioHandler);
+  CastController? _cast;
   late final PartyHostDj _partyDj;
   // Partagee entre le mode Soiree et « Lancer la radio » (voir startRadio).
   late final PartyRadio _radio;
@@ -732,6 +738,7 @@ class AppState extends ChangeNotifier
     _notifyDebounce?.cancel();
     _nowPlayingHeartbeat?.cancel();
     _jamCtl.dispose();
+    _cast?.dispose();
     party.dispose();
     _player.dispose();
     _theme.dispose();
@@ -748,6 +755,7 @@ class AppState extends ChangeNotifier
   Future<void> logout() async {
     // Voir PlayerController.stopOutput : ne doit jamais empecher la
     // deconnexion, meme si le service audio est dans un mauvais etat.
+    await _cast?.disconnect();
     await _player.stopOutput();
     // Voir JamController.disconnect : la session Jam ne doit pas survivre a
     // la deconnexion du compte.
