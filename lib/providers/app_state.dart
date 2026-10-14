@@ -48,6 +48,8 @@ import '../services/download_worker_service.dart';
 import '../services/local_import_planner.dart';
 import '../services/share_inbox_service.dart';
 import '../services/lyrics_service.dart';
+import '../services/cast/cast_receiver.dart';
+import '../domain/lyrics.dart';
 import '../services/media_browser.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
@@ -95,7 +97,11 @@ class AppState extends ChangeNotifier
 
   /// Diffusion sur Chromecast, creee a la premiere ouverture de la liste
   /// des appareils.
-  CastController get cast => _cast ??= CastController(output: _audioHandler);
+  CastController get cast => _cast ??= CastController(output: _audioHandler)
+    ..onReceiverReady = () {
+      final track = currentTrack;
+      if (track != null) unawaited(_sendCastExtras(track));
+    };
   CastController? _cast;
   late final PartyHostDj _partyDj;
   // Partagee entre le mode Soiree et « Lancer la radio » (voir startRadio).
@@ -475,6 +481,24 @@ class AppState extends ChangeNotifier
     unawaited(_jamCtl.onLocalTrackStarted());
     final partySong = partySongForTrack(track);
     if (partySong != null) _partyDj.onTrackStarted(partySong);
+    if (_cast?.isCasting ?? false) unawaited(_sendCastExtras(track));
+  }
+
+  /// Paroles et couleur de la pochette pour l'ecran tele (recepteur
+  /// Chromecast de Vinland). Les paroles arrivent du reseau : le temps
+  /// qu'elles arrivent, la couleur de la pochette est en general calculee.
+  Future<void> _sendCastExtras(Track track) async {
+    Lyrics? found;
+    try {
+      found = await lyrics.lyricsFor(track);
+    } catch (e) {
+      debugPrint('Paroles pour la Chromecast: $e');
+    }
+    if (currentTrack?.id != track.id) return;
+    _cast?.sendExtras(
+      accent: castAccentHex(dominantColor),
+      lyrics: castLyricLines(found),
+    );
   }
 
   /// Un seul notifyListeners() au bout de 50ms, meme s'il y en a 10 d'affilee

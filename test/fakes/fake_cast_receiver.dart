@@ -8,7 +8,11 @@ import 'package:vinland/services/cast/cast_message.dart';
 /// lecteur et aux chargements comme le recepteur media par defaut, et
 /// laisse le test envoyer ses propres etats.
 class FakeCastReceiver {
-  FakeCastReceiver({this.failLoad = false, this.refuseLaunch = false}) {
+  FakeCastReceiver({
+    this.failLoad = false,
+    this.refuseLaunch = false,
+    this.apps = const {'CC1AD845'},
+  }) {
     channel = CastChannel(
       _toSender.stream,
       _onSenderBytes,
@@ -19,6 +23,11 @@ class FakeCastReceiver {
 
   bool failLoad;
   bool refuseLaunch;
+
+  /// Recepteurs que cette Chromecast sait lancer (les autres : LAUNCH_ERROR,
+  /// comme un recepteur pas encore autorise sur l'appareil).
+  final Set<String> apps;
+  String _runningApp = 'CC1AD845';
   late final CastChannel channel;
   final _toSender = StreamController<List<int>>();
   final _decoder = CastFrameDecoder();
@@ -41,7 +50,14 @@ class FakeCastReceiver {
       final payload = message.json ?? const {};
       final requestId = payload['requestId'] as int? ?? 0;
       switch (payload['type']) {
+        case 'LAUNCH' when !apps.contains(payload['appId']):
+          send(CastNamespace.receiver, 'receiver-0', {
+            'type': 'LAUNCH_ERROR',
+            'requestId': requestId,
+            'reason': 'NOT_FOUND',
+          });
         case 'LAUNCH':
+          _runningApp = payload['appId'] as String;
           send(CastNamespace.receiver, 'receiver-0', {
             'type': 'RECEIVER_STATUS',
             'requestId': requestId,
@@ -49,7 +65,7 @@ class FakeCastReceiver {
               'applications': [
                 if (!refuseLaunch)
                   {
-                    'appId': 'CC1AD845',
+                    'appId': _runningApp,
                     'transportId': transportId,
                     'sessionId': sessionId,
                   },
@@ -64,7 +80,7 @@ class FakeCastReceiver {
             'status': {
               'applications': [
                 {
-                  'appId': 'CC1AD845',
+                  'appId': _runningApp,
                   'transportId': transportId,
                   'sessionId': sessionId,
                 },

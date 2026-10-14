@@ -1,9 +1,12 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vinland/services/cast/cast_channel.dart';
+import 'package:vinland/domain/lyrics.dart';
 import 'package:vinland/services/cast/cast_player_engine.dart';
+import 'package:vinland/services/cast/cast_receiver.dart';
 import 'package:vinland/services/player_engine.dart';
 
 import '../../fakes/fake_cast_receiver.dart';
@@ -19,6 +22,8 @@ const _track = PlayerQueueItem(
 Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
 void main() {
+  group('recepteur Vinland', vinlandReceiverTests);
+
   test('lance le lecteur media par defaut et s\'y connecte', () async {
     final receiver = FakeCastReceiver();
     final engine = await CastPlayerEngine.launch(receiver.channel);
@@ -185,5 +190,85 @@ void main() {
     await _settle();
     expect(receiver.types, contains('PONG'));
     await receiver.channel.close();
+  });
+}
+
+void vinlandReceiverTests() {
+  const vinland = 'VINLAND1';
+
+  test('lance le recepteur Vinland quand la Chromecast le connait', () async {
+    final receiver = FakeCastReceiver(apps: {vinland, 'CC1AD845'});
+    final engine = await CastPlayerEngine.launch(receiver.channel,
+        appIds: [vinland, CastPlayerEngine.defaultReceiverAppId]);
+    expect(engine.isVinlandReceiver, isTrue);
+    final launches =
+        receiver.received.where((m) => m.type == 'LAUNCH').toList();
+    expect(launches, hasLength(1));
+    expect(launches.single.json!['appId'], vinland);
+    await engine.disconnect(stopReceiver: false);
+  });
+
+  test('retombe sur le recepteur de Google si celui de Vinland est refuse',
+      () async {
+    final receiver = FakeCastReceiver();
+    final engine = await CastPlayerEngine.launch(receiver.channel,
+        appIds: [vinland, CastPlayerEngine.defaultReceiverAppId]);
+    expect(engine.isVinlandReceiver, isFalse);
+    expect(
+      [
+        for (final m in receiver.received.where((m) => m.type == 'LAUNCH'))
+          m.json!['appId'],
+      ],
+      [vinland, CastPlayerEngine.defaultReceiverAppId],
+    );
+    await engine.disconnect(stopReceiver: false);
+  });
+
+  test('envoie paroles et couleur au recepteur Vinland, pas a Google',
+      () async {
+    final vinlandTv = FakeCastReceiver(apps: {vinland});
+    final engine =
+        await CastPlayerEngine.launch(vinlandTv.channel, appIds: [vinland]);
+    engine.sendExtras(accent: '#123456', lyrics: const []);
+    expect(vinlandTv.types, isNot(contains('EXTRAS')),
+        reason: 'aucun titre charge');
+    await engine.setAudioSources([_track], initialIndex: 0);
+    engine.sendExtras(accent: '#123456', lyrics: [
+      {'t': 1000, 'text': 'Like the legend of the phoenix'},
+    ]);
+    final extras = vinlandTv.received.lastWhere((m) => m.type == 'EXTRAS');
+    expect(extras.namespace, kVinlandCastNamespace);
+    expect(extras.destinationId, FakeCastReceiver.transportId);
+    expect(extras.json!['contentId'], _track.path);
+    expect(extras.json!['accent'], '#123456');
+    expect(extras.json!['lines'], hasLength(1));
+    await engine.disconnect(stopReceiver: false);
+
+    final googleTv = FakeCastReceiver();
+    final google = await CastPlayerEngine.launch(googleTv.channel,
+        appIds: [CastPlayerEngine.defaultReceiverAppId]);
+    await google.setAudioSources([_track], initialIndex: 0);
+    google.sendExtras(accent: '#123456', lyrics: const []);
+    expect(googleTv.types, isNot(contains('EXTRAS')));
+    await google.disconnect(stopReceiver: false);
+  });
+
+  test('couleur de l ecran tele : teinte de la pochette, vert sinon', () {
+    expect(castAccentHex(null), '#1db954');
+    expect(castAccentHex(const Color(0xFF808080)), '#1db954');
+    expect(castAccentHex(const Color(0xFF0A2A6A)), matches(r'^#[0-9a-f]{6}$'));
+    expect(castAccentHex(const Color(0xFF0A2A6A)), isNot('#1db954'));
+  });
+
+  test('paroles : minutage en millisecondes, null si non synchronisees', () {
+    expect(castLyricLines(null), isEmpty);
+    final synced =
+        Lyrics.parseLrc('[00:01.50] Un\n[00:03.00] Deux', source: 'LRCLIB');
+    expect(castLyricLines(synced), [
+      {'t': 1500, 'text': 'Un'},
+      {'t': 3000, 'text': 'Deux'},
+    ]);
+    final plain = Lyrics.parseLrc('Un\nDeux', source: 'Navidrome');
+    expect(castLyricLines(plain).first['t'], isNull);
   });
 }

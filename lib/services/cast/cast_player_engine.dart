@@ -6,19 +6,25 @@ import 'package:flutter/foundation.dart';
 import '../player_engine.dart';
 import 'cast_channel.dart';
 import 'cast_message.dart';
+import 'cast_receiver.dart';
 
 /// Lecture sur une Chromecast, vue comme un moteur audio de plus.
 ///
-/// Lance le recepteur media par defaut de Google (pas d'appli a publier :
-/// il lit une URL et affiche titre, artiste et pochette), lui donne l'URL
-/// de stream Navidrome du titre et suit son etat. C'est donc la Chromecast
+/// Lance le recepteur Vinland (voir cast_receiver.dart) ou, a defaut, le
+/// recepteur media par defaut de Google, lui donne l'URL de stream
+/// Navidrome du titre et suit son etat. C'est donc la Chromecast
 /// qui telecharge le titre : elle doit pouvoir joindre le serveur.
 ///
 /// Comme les autres moteurs, il ne recoit qu'un titre a la fois (voir
 /// PlayerController._playSingle) ; la fin du titre est remontee par
 /// [completedStream] et la file avance cote Dart.
 class CastPlayerEngine implements PlayerEngine {
-  CastPlayerEngine._(this._channel, this._transportId, this._sessionId) {
+  CastPlayerEngine._(
+    this._channel,
+    this._transportId,
+    this._sessionId, {
+    String appId = defaultReceiverAppId,
+  }) : _appId = appId {
     _sub = _channel.messages.listen(_onMessage);
     unawaited(_channel.done.then((_) => _end(CastEndReason.connectionLost)));
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) => _tick());
@@ -27,24 +33,46 @@ class CastPlayerEngine implements PlayerEngine {
   /// Recepteur media par defaut de Google (Default Media Receiver).
   static const defaultReceiverAppId = 'CC1AD845';
 
-  /// Ouvre le recepteur sur la Chromecast au bout de [channel].
-  static Future<CastPlayerEngine> launch(CastChannel channel) async {
+  /// Recepteurs que l'app sait piloter : le sien s'il est enregistre, puis
+  /// celui de Google.
+  static List<String> get receiverAppIds => [
+        if (kVinlandReceiverAppId != null) kVinlandReceiverAppId!,
+        defaultReceiverAppId,
+      ];
+
+  /// Ouvre le recepteur sur la Chromecast au bout de [channel] : celui de
+  /// Vinland d'abord, celui de Google s'il refuse.
+  static Future<CastPlayerEngine> launch(
+    CastChannel channel, {
+    List<String>? appIds,
+  }) async {
     channel.send(CastNamespace.connection, 'receiver-0', {'type': 'CONNECT'});
-    final reply = await channel.request(
-      CastNamespace.receiver,
-      'receiver-0',
-      {'type': 'LAUNCH', 'appId': defaultReceiverAppId},
-    );
-    final app = _receiverApp(reply.json);
-    if (app == null) {
-      throw StateError('La Chromecast a refuse de lancer le lecteur');
+    Object? lastError;
+    for (final appId in appIds ?? receiverAppIds) {
+      try {
+        final reply = await channel.request(
+          CastNamespace.receiver,
+          'receiver-0',
+          {'type': 'LAUNCH', 'appId': appId},
+        );
+        final app = _receiverApp(reply.json, appIds: [appId]);
+        if (app == null) {
+          throw StateError('La Chromecast a refuse de lancer le lecteur');
+        }
+        final transportId = app['transportId'] as String;
+        channel
+            .send(CastNamespace.connection, transportId, {'type': 'CONNECT'});
+        final engine = CastPlayerEngine._(
+            channel, transportId, app['sessionId'] as String?,
+            appId: appId);
+        engine._readVolume(reply.json);
+        return engine;
+      } catch (e) {
+        debugPrint('Recepteur $appId indisponible: $e');
+        lastError = e;
+      }
     }
-    final transportId = app['transportId'] as String;
-    channel.send(CastNamespace.connection, transportId, {'type': 'CONNECT'});
-    final engine =
-        CastPlayerEngine._(channel, transportId, app['sessionId'] as String?);
-    engine._readVolume(reply.json);
-    return engine;
+    throw lastError ?? StateError('Aucun recepteur Chromecast');
   }
 
   /// Reprend la main sur la session [sessionId] deja ouverte sur la
@@ -66,7 +94,8 @@ class CastPlayerEngine implements PlayerEngine {
     }
     final transportId = app['transportId'] as String;
     channel.send(CastNamespace.connection, transportId, {'type': 'CONNECT'});
-    final engine = CastPlayerEngine._(channel, transportId, sessionId);
+    final engine = CastPlayerEngine._(channel, transportId, sessionId,
+        appId: app['appId'] as String);
     engine._readVolume(reply.json);
     // L'etat du titre en cours arrive par le flux des messages.
     await channel
@@ -81,13 +110,17 @@ class CastPlayerEngine implements PlayerEngine {
     return engine;
   }
 
-  static Map<String, dynamic>? _receiverApp(Map<String, dynamic>? payload) {
+  static Map<String, dynamic>? _receiverApp(
+    Map<String, dynamic>? payload, {
+    List<String>? appIds,
+  }) {
+    final known = appIds ?? receiverAppIds;
     if (payload?['type'] != 'RECEIVER_STATUS') return null;
     final apps = (payload?['status'] as Map?)?['applications'];
     if (apps is! List) return null;
     for (final app in apps) {
       if (app is Map<String, dynamic> &&
-          app['appId'] == defaultReceiverAppId &&
+          known.contains(app['appId']) &&
           app['transportId'] is String) {
         return app;
       }
@@ -97,6 +130,13 @@ class CastPlayerEngine implements PlayerEngine {
 
   final CastChannel _channel;
   final String _transportId;
+
+  /// Recepteur lance sur la Chromecast (Vinland ou Google).
+  final String _appId;
+  bool get isVinlandReceiver => _appId != defaultReceiverAppId;
+
+  /// URL du dernier titre envoye : les paroles s'y rattachent.
+  String? _contentId;
   final String? _sessionId;
   late final StreamSubscription<CastMessage> _sub;
   late final Timer _ticker;
@@ -160,7 +200,7 @@ class CastPlayerEngine implements PlayerEngine {
         payload['type'] == 'RECEIVER_STATUS') {
       _readVolume(payload);
       // Notre lecteur n'est plus lance (autre appli ouverte sur la tele).
-      final app = _receiverApp(payload);
+      final app = _receiverApp(payload, appIds: [_appId]);
       if (app == null ||
           (_sessionId != null && app['sessionId'] != _sessionId)) {
         _end(CastEndReason.sessionClosed);
@@ -325,6 +365,7 @@ class CastPlayerEngine implements PlayerEngine {
     if (url == null) {
       throw StateError('Fichier local : la Chromecast ne peut pas le lire');
     }
+    _contentId = url;
     _loading = true;
     _state = AudioProcessingState.loading;
     _setPlaying(false);
@@ -369,6 +410,19 @@ class CastPlayerEngine implements PlayerEngine {
     _hasSource = true;
     _finishedSession = null;
     _indexCtrl.add(0);
+  }
+
+  /// Paroles et couleur du titre en cours, pour l'ecran tele du recepteur
+  /// Vinland (le recepteur de Google n'en fait rien : on n'envoie pas).
+  void sendExtras({required String accent, required List<Object?> lyrics}) {
+    final contentId = _contentId;
+    if (!isVinlandReceiver || _ended || contentId == null) return;
+    _channel.send(kVinlandCastNamespace, _transportId, {
+      'type': 'EXTRAS',
+      'contentId': contentId,
+      'accent': accent,
+      'lines': lyrics,
+    });
   }
 
   static bool _isWeb(Uri? uri) =>

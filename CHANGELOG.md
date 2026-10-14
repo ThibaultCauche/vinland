@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Chromecast : écran télé Vinland à la place du « Default Media Receiver »
+  de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
+  et les paroles synchronisées. S'active une fois le récepteur enregistré
+  chez Google (voir `cast-receiver/README.md`) ; d'ici là, rien ne change.
+
 ### Modifié
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du
   blind test, boutons des fenêtres de confirmation) passent au vert
