@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto : Vinland est une app de musique (voir AndroidManifest.xml
+     et lib/services/media_browser.dart). -->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

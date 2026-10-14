@@ -43,6 +43,7 @@ import '../services/avatar_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/local_import_planner.dart';
 import '../services/share_inbox_service.dart';
+import '../services/media_browser.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
 import '../theme/solid_color_effect.dart';
@@ -338,6 +339,32 @@ class AppState extends ChangeNotifier
     _theme.addListener(_notify);
     _navigator.addListener(_notify);
 
+    _audioHandler.browser = VinlandMediaBrowser(
+      likedTracks: () => likedTracks,
+      weeklyTracks: () => homeWeeklyTracks,
+      allTracks: () => allTracks,
+      playlists: () => [
+        for (final p in playlists)
+          if (p.trackIds.isNotEmpty)
+            (
+              id: p.id,
+              title: p.name,
+              tracks:
+                  p.trackIds.map(_findTrackById).whereType<Track>().toList(),
+            ),
+      ],
+      newAlbums: () => [
+        for (final a in homeNewOnServerAlbums)
+          (
+            id: a.id,
+            title: '${a.title} · ${a.artist}',
+            tracks: a.trackIds.map(_findTrackById).whereType<Track>().toList(),
+          ),
+      ],
+      currentTrack: () => currentTrack,
+      play: (track, list) => playTrack(track, trackList: list),
+      search: _music.searchTracks,
+    );
     _audioHandler.customActionStream.listen((action) {
       if (action == 'add_to_likes' && currentTrack != null) {
         toggleLike(currentTrack!.id);

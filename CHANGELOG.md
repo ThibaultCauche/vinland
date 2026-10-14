@@ -9,6 +9,11 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Android Auto : Vinland apparaît dans la voiture avec tes titres likés,
+  tes écoutes de la semaine, un aléatoire, tes playlists et les nouveautés
+  du NAS, plus la commande vocale (« Ok Google, mets … sur Vinland »).
+
 ## [2.0.2] - 2026-10-14
 
 ### Ajouté
