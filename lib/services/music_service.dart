@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:metadata_god/metadata_god.dart';
 import '../data/cache/library_cache.dart';
 import '../data/subsonic/subsonic_exception.dart';
+import '../domain/listening_stats.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -16,6 +17,7 @@ import '../models/pinned_item.dart';
 import '../models/recent_play.dart';
 import '../models/collab_playlist.dart';
 import 'legacy_file_migration.dart';
+import 'listening_log.dart';
 import 'navidrome_service.dart';
 import 'personal_sync_secret.dart';
 import 'sharing_consent.dart';
@@ -1104,11 +1106,29 @@ class MusicService {
       }
     }
     if (track == null) return;
+    final now = DateTime.now();
     track.playCount++;
-    track.lastPlayed = DateTime.now();
+    track.lastPlayed = now;
     _debouncedSave();
     _syncRecentPlaysMirror();
+    // Nom lu avant l'await, comme pour le cache (voir _cacheStore).
+    // Pas attendu : le lecteur attend recordPlay, l'ecriture du journal ne
+    // doit pas le retarder.
+    final logName = _listeningLogFileName;
+    final event = PlayEvent.fromTrack(track, now);
+    unawaited(_listeningLogFor(logName).then((log) => log.append(event)));
   }
+
+  String get _listeningLogFileName => 'plays$_accountSuffix.jsonl';
+
+  Future<ListeningLog> _listeningLogFor(String fileName) async {
+    final root = await (_storageRoot ?? getApplicationSupportDirectory)();
+    return ListeningLog(p.join(root.path, 'userdata', fileName));
+  }
+
+  /// Ecoutes du compte courant sur cet appareil (bilan de l'annee).
+  Future<List<PlayEvent>> listeningHistory() async =>
+      (await _listeningLogFor(_listeningLogFileName)).readAll();
 
   /// Le cache vit dans le dossier support de l'app (AppData\Roaming sous
   /// Windows, dossier prive sous Android) et plus dans Documents, que

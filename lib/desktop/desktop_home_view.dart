@@ -13,6 +13,7 @@ import '../widgets/smooth_scroll.dart';
 import '../widgets/sync_status_banner.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/mood_chips.dart';
+import '../widgets/wrapped_banner.dart';
 import '../widgets/user_avatar.dart';
 import 'desktop_horizontal_shelf.dart';
 import 'desktop_see_all_view.dart';
@@ -26,6 +27,7 @@ class DesktopHomeView extends StatefulWidget {
   final ValueChanged<String> onOpenArtist;
   final VoidCallback onOpenLikedSongs;
   final ValueChanged<Playlist> onOpenPlaylist;
+  final VoidCallback onOpenWrapped;
   final ValueChanged<String> onOpenFriendProfile;
   final void Function(String title, List<DesktopSeeAllItem> items) onSeeAll;
 
@@ -36,6 +38,7 @@ class DesktopHomeView extends StatefulWidget {
     required this.onOpenArtist,
     required this.onOpenLikedSongs,
     required this.onOpenPlaylist,
+    required this.onOpenWrapped,
     required this.onOpenFriendProfile,
     required this.onSeeAll,
   });
@@ -142,6 +145,10 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
               const SizedBox(height: 8),
             ],
             const MoodChips(),
+            WrappedBanner(
+              onTap: widget.onOpenWrapped,
+              margin: const EdgeInsets.fromLTRB(4, 20, 4, 0),
+            ),
             _sectionTitle('Écoutés cette semaine',
                 onSeeAll: weeklyTracks.isEmpty
                     ? null

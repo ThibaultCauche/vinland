@@ -12,6 +12,7 @@ import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
 import '../domain/home_shelves.dart';
+import '../domain/listening_stats.dart';
 import '../domain/liked_tracks.dart';
 import '../models/track.dart';
 import '../models/album.dart';
@@ -217,6 +218,9 @@ class AppState extends ChangeNotifier
   @override
   List<Album> get albums => _music.albums;
   MusicService get musicService => _music;
+
+  /// Ecoutes du compte sur cet appareil, pour le bilan (voir ListeningLog).
+  Future<List<PlayEvent>> listeningHistory() => _music.listeningHistory();
   bool get isLocalMode => false;
 
   // Etageres "suggestions" de l'accueil (voir HomeShelves) : calculees une

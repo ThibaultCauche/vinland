@@ -26,6 +26,7 @@ import 'desktop_friends_view.dart';
 import 'desktop_import_view.dart';
 import 'desktop_friend_profile_view.dart';
 import 'desktop_see_all_view.dart';
+import 'desktop_wrapped_view.dart';
 import 'desktop_title_bar.dart';
 import 'glass.dart';
 import '../models/friend_profile.dart';
@@ -200,6 +201,10 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
     ));
   }
 
+  void _openWrapped() {
+    _push(const DesktopWrappedView(key: ValueKey('wrapped')));
+  }
+
   Future<void> _confirmDeletePlaylist(Playlist playlist) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -313,6 +318,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
           onOpenArtist: _openArtist,
           onOpenLikedSongs: _openLikedSongs,
           onOpenPlaylist: _openPlaylist,
+          onOpenWrapped: _openWrapped,
           onOpenFriendProfile: _openFriendProfileByUsername,
           onSeeAll: _openSeeAll,
         );
