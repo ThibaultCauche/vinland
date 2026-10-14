@@ -23,13 +23,29 @@ class PlaylistScreen extends StatelessWidget {
   /// n'est proposee, seule la lecture et le like des titres restent possibles.
   final bool readOnly;
 
+  /// Vrai pour une playlist intelligente (voir SmartPlaylist) : en lecture
+  /// seule, et dans son propre ordre (« Tes classiques » du plus ecoute au
+  /// moins ecoute), pas celui de la bibliotheque.
+  final bool smart;
+
   const PlaylistScreen(
-      {super.key, required this.playlist, this.readOnly = false});
+      {super.key,
+      required this.playlist,
+      this.readOnly = false,
+      this.smart = false});
 
   @override
   Widget build(BuildContext context) {
+    final isReadOnly = readOnly || smart;
     return Selector<AppState, List<Track>>(
       selector: (_, state) {
+        if (smart) {
+          final byId = {for (final t in state.allTracks) t.id: t};
+          return playlist.trackIds
+              .map((id) => byId[id])
+              .whereType<Track>()
+              .toList();
+        }
         return state.allTracks
             .where((t) => playlist.trackIds.contains(t.id))
             .toList();
@@ -38,6 +54,9 @@ class PlaylistScreen extends StatelessWidget {
         final state = context.read<AppState>();
 
         void recordRecent() {
+          // Une playlist intelligente n'existe pas comme playlist : la
+          // rouvrir depuis « Recemment ecoute » ne trouverait rien.
+          if (smart) return;
           state.recordRecentPlay(RecentPlay(
             type: RecentPlayType.playlist,
             id: playlist.id,
@@ -60,7 +79,7 @@ class PlaylistScreen extends StatelessWidget {
             title: Text(playlist.name,
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
-            actions: readOnly
+            actions: isReadOnly
                 ? [
                     IconButton(
                       icon: const Icon(Icons.playlist_add, color: Colors.white),
@@ -176,7 +195,7 @@ class PlaylistScreen extends StatelessWidget {
                             },
                             onLike: () => state.toggleLike(tracks[i].id),
                             onMore: () => _showTrackOptions(context, tracks[i],
-                                readOnly: readOnly),
+                                readOnly: isReadOnly),
                           ),
                         ),
                       ),
