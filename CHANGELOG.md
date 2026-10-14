@@ -10,6 +10,10 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Chromecast : écran télé Vinland à la place du « Default Media Receiver »
+  de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
+  et les paroles synchronisées. S'active une fois le récepteur enregistré
+  chez Google (voir `cast-receiver/README.md`) ; d'ici là, rien ne change.
 - Android : visuel animé dans le mini lecteur et le grand lecteur, une
   grille d'hexagones qui s'allume par vagues au rythme des basses. Il
   prend la couleur de la pochette et se coupe dans Paramètres > Lecture.

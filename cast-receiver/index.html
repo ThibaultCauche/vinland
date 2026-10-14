@@ -1,0 +1,123 @@
+<!doctype html>
+<!--
+  Recepteur Chromecast de Vinland : remplace le « Default Media Receiver »
+  de Google sur la tele. Grille d'hexagones qui pulse avec la musique,
+  pochette, titre et paroles synchronisees envoyees par l'app.
+
+  A heberger en HTTPS (voir cast-receiver/README.md) puis a enregistrer dans
+  la Google Cast SDK Developer Console ; l'identifiant obtenu va dans
+  lib/services/cast/cast_receiver.dart.
+
+  Protocole avec l'app (lib/services/cast/cast_player_engine.dart) :
+  - LOAD classique (URL de stream Navidrome + metadonnees).
+  - Espace de noms urn:x-cast:fr.vinland.cast, messages JSON :
+    { type: "EXTRAS", contentId, accent: "#rrggbb",
+      lines: [{ t: ms | null, text }] }
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Vinland</title>
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<style>
+  :root {
+    --accent: #1db954;
+    --bg: #0a0e11;
+    --text: #ffffff;
+    --muted: rgba(255, 255, 255, 0.62);
+    --faint: rgba(255, 255, 255, 0.32);
+  }
+  html, body {
+    margin: 0; width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: "Google Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  #hex { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #shade {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, transparent 0%, rgba(10,14,17,0.35) 55%, rgba(10,14,17,0.85) 100%);
+  }
+  .brand {
+    position: absolute; top: 5vh; right: 5vw; display: flex; align-items: center;
+    gap: 1vh; font-size: 2.4vh; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .brand img { width: 3.6vh; height: 3.6vh; border-radius: 0.8vh; }
+
+  #now {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    gap: 6vw; padding: 0 7vw; opacity: 0; transition: opacity 0.6s;
+  }
+  body.playing #now { opacity: 1; }
+  #cover {
+    flex: none; width: 56vh; height: 56vh; border-radius: 2vh;
+    background: #1c2329 center / cover no-repeat;
+    box-shadow: 0 3vh 8vh rgba(0, 0, 0, 0.6), 0 0 10vh -2vh var(--accent);
+    transform: scale(var(--kick, 1)); transition: transform 0.08s linear;
+  }
+  #info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #album {
+    font-size: 2.2vh; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #title {
+    margin-top: 1.2vh; font-size: 7vh; font-weight: 700; line-height: 1.08;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #artist { margin-top: 1.2vh; font-size: 3.4vh; color: var(--muted); }
+  #progress {
+    margin-top: 4vh; display: flex; align-items: center; gap: 1.6vh;
+    font-size: 1.9vh; color: var(--faint); font-variant-numeric: tabular-nums;
+  }
+  #bar { flex: 1; height: 0.5vh; border-radius: 0.5vh; background: rgba(255,255,255,0.14); overflow: hidden; }
+  #fill { height: 100%; width: 0; background: var(--accent); }
+
+  #lyrics {
+    margin-top: 4vh; padding-right: 4%; height: 26vh; overflow: hidden; position: relative;
+    -webkit-mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent);
+    mask-image: linear-gradient(transparent, #000 22%, #000 70%, transparent);
+  }
+  #lyrics.none { display: none; }
+  #lines { position: absolute; left: 0; right: 0; top: 0; transition: transform 0.5s ease; }
+  #lines div {
+    font-size: 3.6vh; line-height: 1.35; padding: 0.5vh 0; color: var(--faint);
+    font-weight: 600; transition: color 0.3s, transform 0.3s; transform-origin: left center;
+  }
+  #lines div.on { color: var(--text); transform: scale(1.03); }
+  #lyrics.plain #lines div { color: var(--muted); }
+
+  #idle {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3vh; transition: opacity 0.6s;
+  }
+  body.playing #idle { opacity: 0; }
+  #idle img { width: 16vh; height: 16vh; border-radius: 3.5vh; box-shadow: 0 0 10vh -2vh var(--accent); }
+  #idle p { margin: 0; font-size: 3vh; color: var(--muted); letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+<canvas id="hex"></canvas>
+<div id="shade"></div>
+
+<div id="idle">
+  <img src="logo.png" alt="">
+  <p>Vinland est prêt à jouer</p>
+</div>
+
+<div id="now">
+  <div id="cover"></div>
+  <div id="info">
+    <div id="album"></div>
+    <div id="title"></div>
+    <div id="artist"></div>
+    <div id="lyrics" class="none"><div id="lines"></div></div>
+    <div id="progress"><span id="pos">0:00</span><div id="bar"><div id="fill"></div></div><span id="dur">0:00</span></div>
+  </div>
+</div>
+
+<div class="brand"><img src="logo.png" alt="">Vinland</div>
+
+<audio id="media"></audio>
+<script src="receiver.js"></script>
+</body>
+</html>

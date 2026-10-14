@@ -83,6 +83,14 @@ class CastController extends ChangeNotifier {
   CastDevice? get device => _device;
   bool get isCasting => _device != null;
 
+  /// Appele quand un recepteur est pret (connexion ou reprise) : l'app y
+  /// renvoie paroles et couleur du titre en cours (voir [sendExtras]).
+  VoidCallback? onReceiverReady;
+
+  /// Paroles et couleur pour l'ecran tele (recepteur Vinland seulement).
+  void sendExtras({required String accent, required List<Object?> lyrics}) =>
+      _engine?.sendExtras(accent: accent, lyrics: lyrics);
+
   CastPlayerEngine? _engine;
   final List<StreamSubscription<Object?>> _engineSubs = [];
 
@@ -145,6 +153,7 @@ class CastController extends ChangeNotifier {
       _device = device;
       await _output.switchOutput(engine);
       if (previous != null) await _release(previous, stopReceiver: true);
+      onReceiverReady?.call();
       return true;
     } catch (e) {
       debugPrint('Connexion Chromecast impossible: $e');
