@@ -87,3 +87,19 @@ ImageProvider coverImageProvider(
     policy: ResizeImagePolicy.fit,
   );
 }
+
+/// Charge d'avance, a la taille ou elles seront affichees, les pochettes
+/// des prochains titres : au changement de titre, la nouvelle pochette est
+/// deja en memoire au lieu de laisser une case vide pendant une seconde.
+void precacheUpcomingCovers(
+  BuildContext context,
+  Iterable<String?> coverPaths, {
+  required double size,
+}) {
+  for (final path in coverPaths) {
+    if (path == null || path.isEmpty) continue;
+    final provider =
+        coverImageProvider(context, path: path, width: size, height: size);
+    precacheImage(provider, context, onError: (_, __) {});
+  }
+}

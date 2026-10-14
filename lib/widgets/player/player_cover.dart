@@ -12,6 +12,14 @@ class PlayerCover extends StatelessWidget {
     final path = coverPath;
     final exists = context.read<AppState>().coverExists(coverPath);
     final side = MediaQuery.of(context).size.width - 48;
+    // Pochettes des deux titres suivants pretes avant leur tour.
+    final upcoming =
+        context.read<AppState>().queue.take(2).map((t) => t.coverPath).toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) {
+        precacheUpcomingCovers(context, upcoming, size: side);
+      }
+    });
 
     if (exists && path != null) {
       return Container(
