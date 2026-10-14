@@ -6,6 +6,7 @@ import 'hex_pulse_visualizer.dart';
 
 /// [HexPulseVisualizer] branche sur l'etat de l'app : lecture en cours,
 /// couleur de la pochette, reglage Parametres > Lecture > Visuel anime.
+/// Rien sur Windows, meme dans une fenetre etroite en affichage mobile.
 class PlayerVisualizer extends StatefulWidget {
   const PlayerVisualizer({
     super.key,
@@ -73,7 +74,10 @@ class _PlayerVisualizerState extends State<PlayerVisualizer> {
     return ListenableBuilder(
       listenable: state.playbackSettings,
       builder: (context, _) {
-        if (!state.playbackSettings.visualizerEnabled) {
+        // Android seulement (demande de Thibault) : une fenetre Windows
+        // etroite passe en affichage mobile, sans visuel pour autant.
+        if (!state.visualizer.supported ||
+            !state.playbackSettings.visualizerEnabled) {
           return const SizedBox.shrink();
         }
         return Selector<AppState, (bool, Color?)>(
