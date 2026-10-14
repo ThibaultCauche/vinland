@@ -24,6 +24,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Visuel du lecteur (AudioVisualizer.kt) : android.media.audiofx.Visualizer
+         exige RECORD_AUDIO meme quand il n'analyse que le son de l'app (jamais
+         le micro), et MODIFY_AUDIO_SETTINGS (permission normale, sans dialogue). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <application
         android:label="vinland"
         android:name="${applicationName}"

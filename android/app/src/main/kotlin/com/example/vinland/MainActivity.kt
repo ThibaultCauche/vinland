@@ -28,6 +28,7 @@ class MainActivity: AudioServiceActivity() {
         // cet engine depuis le receiver, juste sa presence dans le cache.
         FlutterEngineCache.getInstance().put(MAIN_ENGINE_ID, flutterEngine)
         BluetoothTrustedDevices.registerWith(flutterEngine, applicationContext)
+        AudioVisualizer.registerWith(flutterEngine, applicationContext)
     }
 
     companion object {
