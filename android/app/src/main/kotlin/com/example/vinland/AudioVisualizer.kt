@@ -9,6 +9,7 @@ import android.media.audiofx.Visualizer
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -36,6 +37,32 @@ class AudioVisualizer private constructor(private val context: Context) :
     private var sink: EventChannel.EventSink? = null
     private val visualizers = mutableMapOf<Int, Visualizer>()
     private val latest = mutableMapOf<Int, DoubleArray>()
+    private val lastCapture = mutableMapOf<Int, Long>()
+
+    /**
+     * Un Visualizer cree avant que sa session ait une piste (changement de
+     * titre : just_audio annonce la nouvelle session avant de creer
+     * l'AudioTrack) ne capte jamais rien sur certains telephones. On recree
+     * ceux qui se taisent depuis plus de [SILENT_MS].
+     */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            val now = SystemClock.elapsedRealtime()
+            for ((id, last) in lastCapture.toList()) {
+                if (now - last < SILENT_MS) continue
+                release(id)
+                try {
+                    visualizers[id] = create(id)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Visualizer indisponible pour la session $id: $e")
+                    lastCapture[id] = now
+                }
+            }
+            if (visualizers.isNotEmpty() || lastCapture.isNotEmpty()) {
+                main.postDelayed(this, WATCHDOG_MS)
+            }
+        }
+    }
 
     private fun hasPermission(): Boolean =
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
@@ -56,6 +83,8 @@ class AudioVisualizer private constructor(private val context: Context) :
                 Log.w(TAG, "Visualizer indisponible pour la session $id: $e")
             }
         }
+        main.removeCallbacks(watchdog)
+        if (visualizers.isNotEmpty()) main.postDelayed(watchdog, WATCHDOG_MS)
         return visualizers.isNotEmpty()
     }
 
@@ -92,6 +121,7 @@ class AudioVisualizer private constructor(private val context: Context) :
             }
         }, rate, false, true)
         v.setEnabled(true)
+        lastCapture[sessionId] = SystemClock.elapsedRealtime()
         return v
     }
 
@@ -149,6 +179,7 @@ class AudioVisualizer private constructor(private val context: Context) :
     private fun publish(sessionId: Int, levels: DoubleArray) {
         if (!visualizers.containsKey(sessionId)) return
         latest[sessionId] = levels
+        lastCapture[sessionId] = SystemClock.elapsedRealtime()
         // Pendant un fondu les deux platines jouent : on garde la plus forte.
         var bass = 0.0
         var mid = 0.0
@@ -167,9 +198,11 @@ class AudioVisualizer private constructor(private val context: Context) :
             } catch (_: Exception) {}
         }
         latest.remove(sessionId)
+        lastCapture.remove(sessionId)
     }
 
     private fun stop() {
+        main.removeCallbacks(watchdog)
         for (id in visualizers.keys.toList()) release(id)
     }
 
@@ -184,6 +217,8 @@ class AudioVisualizer private constructor(private val context: Context) :
 
     companion object {
         private const val TAG = "VinlandVisualizer"
+        private const val SILENT_MS = 1500L
+        private const val WATCHDOG_MS = 1000L
 
         fun registerWith(engine: FlutterEngine, context: Context) {
             val visualizer = AudioVisualizer(context)
