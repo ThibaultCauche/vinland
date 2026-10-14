@@ -11,24 +11,35 @@ import 'dart:math' as math;
 class BeatPulse {
   BeatPulse({
     this.minBeatGap = const Duration(milliseconds: 280),
-    this.beatRatio = 1.35,
-    this.minBeatLevel = 0.18,
+    this.beatRatio = 1.6,
+    this.minBeatLevel = 0.05,
   });
 
   /// Deux coups plus rapproches que ca n'en font qu'un (≈ 210 BPM max).
   final Duration minBeatGap;
 
-  /// Un coup = basses au-dessus de [beatRatio] fois leur moyenne recente.
+  /// Un coup = montee des basses au-dessus de [beatRatio] fois la montee
+  /// moyenne recente.
   final double beatRatio;
 
-  /// En dessous (niveau normalise), pas de coup : evite les vagues sur le
-  /// souffle d'un passage calme.
+  /// Montee minimale, en part du pic recent des basses : evite les vagues
+  /// sur le souffle d'un passage calme.
   final double minBeatLevel;
 
+  /// Les niveaux arrivent sur une echelle log (0..1, voir AudioVisualizer.kt)
+  /// qui ecrase les coups : une basse continue y reste vers 0,85 et une
+  /// grosse caisse monte a peine a 0,95. On repasse en lineaire (0..128)
+  /// pour que la frappe ressorte.
+  static final double _logScale = math.log(129);
+
   double _peak = 0.05;
-  double _bassPeak = 0.05;
-  double _bassAverage = 0;
   double _level = 0;
+  double _lastBass = -1;
+  double _lastMid = -1;
+  double _bassLin = 0;
+  double _linPeak = 1;
+  double _riseAverage = 0;
+  Duration _sinceSample = Duration.zero;
   Duration _sinceBeat = const Duration(days: 1);
 
   /// Niveau lisse 0..1 : monte vite, redescend doucement.
@@ -36,6 +47,10 @@ class BeatPulse {
 
   /// Ajoute une mesure ; [elapsed] = temps depuis la precedente. Renvoie la
   /// force du coup (0..1) si cette mesure en est un, sinon null.
+  ///
+  /// Peut etre appele a chaque image avec la meme mesure repetee (l'analyse
+  /// en envoie une toutes les ~50 ms) : une valeur identique arrivee moins
+  /// de 40 ms apres la precedente ne compte pas pour reperer les coups.
   double? add({
     required double bass,
     required double mid,
@@ -43,13 +58,12 @@ class BeatPulse {
   }) {
     final dt = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
     _sinceBeat += elapsed;
+    _sinceSample += elapsed;
 
     final b = bass.clamp(0.0, 1.0);
     final raw = b * 0.75 + mid.clamp(0.0, 1.0) * 0.25;
     // Pics recents qui redescendent d'environ moitie toutes les 4 s.
-    final decay = math.pow(0.84, dt).toDouble();
-    _peak = math.max(raw, _peak * decay);
-    _bassPeak = math.max(b, _bassPeak * decay);
+    _peak = math.max(raw, _peak * math.pow(0.84, dt).toDouble());
     final normalized = _peak <= 0.02 ? 0.0 : (raw / _peak).clamp(0.0, 1.0);
 
     // Attaque rapide, relachement lent : le visuel suit le coup sans
@@ -57,24 +71,42 @@ class BeatPulse {
     final k = normalized > _level ? 0.6 : 1 - math.pow(0.02, dt).toDouble();
     _level += (normalized - _level) * k.clamp(0.0, 1.0);
 
-    final bassNorm = _bassPeak <= 0.02 ? 0.0 : b / _bassPeak;
-    final isBeat = bassNorm >= minBeatLevel &&
-        bassNorm > _bassAverage * beatRatio &&
+    final fresh = bass != _lastBass ||
+        mid != _lastMid ||
+        _sinceSample >= const Duration(milliseconds: 40);
+    _lastBass = bass;
+    _lastMid = mid;
+    if (!fresh) return null;
+    final sampleDt =
+        _sinceSample.inMicroseconds / Duration.microsecondsPerSecond;
+    _sinceSample = Duration.zero;
+
+    // Coup = brusque montee de l'energie des basses (pas leur niveau).
+    final lin = math.exp(b * _logScale) - 1;
+    final rise = math.max(0.0, lin - _bassLin);
+    _bassLin = lin;
+    _linPeak = math.max(lin, _linPeak * math.pow(0.84, sampleDt).toDouble());
+    final isBeat = rise >= _linPeak * minBeatLevel &&
+        rise > _riseAverage * beatRatio &&
         _sinceBeat >= minBeatGap;
-    // Moyenne glissante sur ~0,5 s.
-    final a = 1 - math.pow(0.0025, dt).toDouble();
-    _bassAverage += (bassNorm - _bassAverage) * a.clamp(0.0, 1.0);
+    // Moyenne des montees sur ~1 s.
+    final a = 1 - math.pow(0.05, sampleDt).toDouble();
+    _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
 
     if (!isBeat) return null;
     _sinceBeat = Duration.zero;
-    return bassNorm;
+    return (rise / (_linPeak * 0.5)).clamp(0.0, 1.0);
   }
 
   void reset() {
     _peak = 0.05;
-    _bassPeak = 0.05;
-    _bassAverage = 0;
     _level = 0;
+    _lastBass = -1;
+    _lastMid = -1;
+    _bassLin = 0;
+    _linPeak = 1;
+    _riseAverage = 0;
+    _sinceSample = Duration.zero;
     _sinceBeat = const Duration(days: 1);
   }
 }

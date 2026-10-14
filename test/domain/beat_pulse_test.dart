@@ -65,6 +65,26 @@ void main() {
       expect(pulse.level, greaterThan(0));
     });
 
+    test('repere les coups sur des basses ecrasees par l echelle log', () {
+      // Comme mesure sur le telephone : basse continue vers 0,85, grosse
+      // caisse a 0,95, une mesure toutes les 50 ms mais lue a chaque image
+      // (~16 ms), donc la meme valeur repetee trois fois.
+      final pulse = BeatPulse();
+      var beats = 0;
+      for (var i = 0; i < 300; i++) {
+        final sample = i ~/ 3;
+        final bass = sample % 8 == 0 ? 0.95 : 0.85 + (sample % 3) * 0.01;
+        final hit = pulse.add(
+          bass: bass,
+          mid: 0.6,
+          elapsed: const Duration(microseconds: 16667),
+        );
+        if (hit != null) beats++;
+      }
+      // 100 mesures, un coup toutes les 8 : ~12 coups.
+      expect(beats, inInclusiveRange(10, 13));
+    });
+
     test('le niveau reste entre 0 et 1', () {
       final pulse = BeatPulse();
       for (var i = 0; i < 200; i++) {
