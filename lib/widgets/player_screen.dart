@@ -5,6 +5,7 @@ import '../navigation/overlay_navigator.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../screens/album_screen.dart';
+import '../screens/lyrics_screen.dart';
 import '../screens/queue_screen.dart';
 import 'album_options_sheet.dart';
 import 'player/cast_devices_section.dart';
@@ -43,6 +44,12 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
               onPressed: () => context.read<AppState>().popOverlay(),
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.lyrics_outlined, color: Colors.white),
+                tooltip: 'Paroles',
+                onPressed: () =>
+                    context.read<AppState>().pushOverlay(const LyricsScreen()),
+              ),
               IconButton(
                 icon: const Icon(Icons.queue_music, color: Colors.white),
                 tooltip: 'File d\'attente',

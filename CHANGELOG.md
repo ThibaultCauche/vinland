@@ -10,6 +10,11 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
+  barre de lecture (PC). La ligne en cours est mise en avant et suit la
+  musique, un tap sur une ligne y saute. Les paroles viennent de Navidrome
+  (tags du fichier ou `.lrc` à côté), sinon de LRCLIB ; à défaut de
+  minutage, le texte s'affiche simplement.
 - Chromecast : le menu « Périphériques » liste les Chromecast du Wi-Fi.
   Un tap envoie la musique sur la télé ou l'enceinte, au même endroit du
   titre ; la file, les boutons et le volume continuent de se piloter
