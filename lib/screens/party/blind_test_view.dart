@@ -7,19 +7,9 @@ import '../../controllers/party_controller.dart';
 import '../../services/party/party_models.dart';
 import 'party_widgets.dart';
 
-/// Couleurs des 4 reponses, comme sur une telecommande de jeu : on dit
-/// « le rouge ! » plus vite que « la troisieme ».
-const blindTestColors = [
-  Color(0xFFE53935),
-  Color(0xFF1E88E5),
-  Color(0xFFFDD835),
-  Color(0xFF43A047),
-  Color(0xFF8E24AA),
-  Color(0xFFFB8C00),
-];
-
-Color _onColor(Color c) =>
-    c.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+/// Lettre de chaque reponse : on dit « la B ! » plus vite que « la
+/// deuxieme ».
+const blindTestLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 /// Reglages d'un blind test, demandes a l'hote avant de lancer.
 Future<void> showBlindTestSetup(
@@ -222,7 +212,8 @@ class BlindTestScoreboard extends StatelessWidget {
   }
 }
 
-/// Une reponse : couleur, texte, et son etat (choisie, bonne, fausse).
+/// Une reponse : sa lettre, son texte, et son etat (choisie, bonne,
+/// fausse), dans les couleurs de l'app.
 class _ChoiceButton extends StatelessWidget {
   const _ChoiceButton({
     required this.index,
@@ -238,47 +229,77 @@ class _ChoiceButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = blindTestColors[index % blindTestColors.length];
     final answer = state.answer;
     final chosen = state.myChoice == index;
     final revealed = answer != null &&
         (state.phase == BlindTestPhase.reveal ||
             state.phase == BlindTestPhase.over);
     final isAnswer = answer == index;
+    final wrong = revealed && chosen && !isAnswer;
     // Apres la reponse ou la revelation, les autres choix s'effacent.
     final dimmed = (state.myChoice != null && !chosen && !revealed) ||
-        (revealed && !isAnswer);
+        (revealed && !isAnswer && !chosen);
+    final Color background;
+    final Color? border;
+    if (revealed && isAnswer) {
+      background = partyAccent.withValues(alpha: 0.25);
+      border = partyAccent;
+    } else if (wrong) {
+      background = Colors.redAccent.withValues(alpha: 0.18);
+      border = Colors.redAccent;
+    } else if (chosen) {
+      background = partySurface;
+      border = partyAccent;
+    } else {
+      background = partySurface;
+      border = null;
+    }
+    final letter = blindTestLetters[index % blindTestLetters.length];
     return Opacity(
-      opacity: dimmed ? 0.35 : 1,
+      opacity: dimmed ? 0.4 : 1,
       child: Material(
-        color: color,
-        borderRadius: BorderRadius.circular(14),
+        color: background,
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           key: ValueKey('blindtest-choice-$index'),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: Container(
             constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: chosen || (revealed && isAnswer)
-                  ? Border.all(color: Colors.white, width: 3)
-                  : null,
+              borderRadius: BorderRadius.circular(12),
+              border:
+                  border == null ? null : Border.all(color: border, width: 2),
             ),
             child: Row(
               children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: chosen || (revealed && isAnswer)
+                      ? partyAccent
+                      : Colors.white12,
+                  child: Text(letter,
+                      style: TextStyle(
+                          color: chosen || (revealed && isAnswer)
+                              ? Colors.black
+                              : Colors.white,
+                          fontWeight: FontWeight.w800)),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(label,
-                      style: TextStyle(
-                          color: _onColor(color),
+                      style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 16,
-                          fontWeight: FontWeight.w700)),
+                          fontWeight: FontWeight.w600)),
                 ),
                 if (revealed && isAnswer)
-                  Icon(Icons.check_circle, color: _onColor(color))
+                  const Icon(Icons.check_circle, color: partyAccent)
+                else if (wrong)
+                  const Icon(Icons.cancel, color: Colors.redAccent)
                 else if (chosen)
-                  Icon(Icons.touch_app, color: _onColor(color)),
+                  const Icon(Icons.touch_app, color: partyAccent),
               ],
             ),
           ),
@@ -490,7 +511,9 @@ class BlindTestHostPanel extends StatelessWidget {
                 if (host.hasNextRound && state.phase != BlindTestPhase.question)
                   FilledButton.icon(
                     key: const ValueKey('blindtest-next'),
-                    style: FilledButton.styleFrom(backgroundColor: partyAccent),
+                    style: FilledButton.styleFrom(
+                        backgroundColor: partyAccent,
+                        foregroundColor: Colors.black),
                     onPressed: host.nextRound,
                     icon: const Icon(Icons.play_arrow),
                     label: Text(state.round == 0
@@ -501,7 +524,9 @@ class BlindTestHostPanel extends StatelessWidget {
                     !host.hasNextRound &&
                     state.phase == BlindTestPhase.reveal)
                   FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: partyAccent),
+                    style: FilledButton.styleFrom(
+                        backgroundColor: partyAccent,
+                        foregroundColor: Colors.black),
                     onPressed: host.stop,
                     icon: const Icon(Icons.emoji_events),
                     label: const Text('Résultats'),

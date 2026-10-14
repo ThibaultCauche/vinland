@@ -17,7 +17,7 @@ class WrappedBanner extends StatelessWidget {
         child: Ink(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFF1DB954), Color(0xFF8E2DE2)],
+              colors: [Color(0xFF1DB954), Color(0xFF0B5D2A)],
             ),
           ),
           child: InkWell(

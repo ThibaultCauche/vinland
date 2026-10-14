@@ -46,7 +46,8 @@ class _PartyOfflinePackScreenState extends State<PartyOfflinePackScreen> {
   Widget build(BuildContext context) {
     final env = context.read<PartyEnvironment>();
     final playlists = env.packPlaylists?.call() ?? const [];
-    return Scaffold(
+    return PartyBackground(
+        child: Scaffold(
       backgroundColor: partyBackground,
       appBar: partyAppBar('Pack hors-ligne'),
       body: ListView(
@@ -74,7 +75,7 @@ class _PartyOfflinePackScreenState extends State<PartyOfflinePackScreen> {
           for (final playlist in playlists) _tile(env, playlist),
         ],
       ),
-    );
+    ));
   }
 
   Widget _tile(PartyEnvironment env, PartyPackPlaylist playlist) {
