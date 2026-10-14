@@ -9,6 +9,11 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Windows : boutons précédent, lecture/pause et suivant dans l'aperçu qui
+  s'affiche au survol de l'icône Vinland dans la barre des tâches, comme
+  Spotify.
+
 ### Modifié
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du
   blind test, boutons des fenêtres de confirmation) passent au vert

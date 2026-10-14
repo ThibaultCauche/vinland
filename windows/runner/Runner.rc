@@ -54,6 +54,12 @@ END
 // remains consistent on all systems.
 IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 
+// Boutons de l'apercu dans la barre des taches (taskbar_controls.cpp).
+IDI_THUMB_PREVIOUS      ICON                    "resources\\thumb_previous.ico"
+IDI_THUMB_PLAY          ICON                    "resources\\thumb_play.ico"
+IDI_THUMB_PAUSE         ICON                    "resources\\thumb_pause.ico"
+IDI_THUMB_NEXT          ICON                    "resources\\thumb_next.ico"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
