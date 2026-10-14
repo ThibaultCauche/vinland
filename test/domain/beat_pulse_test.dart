@@ -9,12 +9,14 @@ List<double?> _play(BeatPulse pulse,
     {required int frames,
     int beatEvery = 10,
     double kick = 0.8,
-    double floor = 0.2}) {
+    double floor = 0.2,
+    double loudness = 1}) {
   return [
     for (var i = 0; i < frames; i++)
       pulse.add(
         bass: i % beatEvery == 0 ? kick : floor,
         mid: 0.3,
+        loudness: loudness,
         elapsed: _frame,
       ),
   ];
@@ -56,11 +58,14 @@ void main() {
       expect(fast, lessThanOrEqualTo(40 * 50 ~/ 280 + 1));
     });
 
-    test('suit aussi un morceau calme (niveau rapporte au pic recent)', () {
+    test('suit aussi un titre enregistre doucement (volume rapporte au pic)',
+        () {
+      // Tout le titre a -51 dB : c'est son plus fort, les coups passent.
       final pulse = BeatPulse();
-      final beats = _play(pulse, frames: 100, kick: 0.25, floor: 0.06)
-          .map((b) => b ?? 0)
-          .toList();
+      final beats =
+          _play(pulse, frames: 100, kick: 0.9, floor: 0.5, loudness: 0.15)
+              .map((b) => b ?? 0)
+              .toList();
       expect(beats.where((b) => b > 0).length, greaterThanOrEqualTo(8));
       expect(pulse.level, greaterThan(0));
     });
@@ -100,16 +105,24 @@ void main() {
     });
 
     test('pas de vague sur une intro au piano', () {
-      // Notes de piano : graves et mediums montent ensemble, volume reel
-      // faible (-25 dB) meme si Android normalise les bandes.
+      // Valeurs mesurees sur le telephone (BREAKSH!T) : batterie a -45 dB,
+      // puis intro au piano a -51 dB, graves 0,3-0,6, mediums ~0,65.
       final pulse = BeatPulse();
-      var beats = 0;
       for (var i = 0; i < 100; i++) {
+        pulse.add(
+          bass: i % 8 == 0 ? 0.98 : 0.85,
+          mid: 0.65,
+          loudness: 0.25,
+          elapsed: _frame,
+        );
+      }
+      var beats = 0;
+      for (var i = 0; i < 200; i++) {
         final note = i % 8 == 0;
         final hit = pulse.add(
-          bass: note ? 0.9 : 0.6,
-          mid: note ? 0.95 : 0.6,
-          loudness: 0.58,
+          bass: note ? 0.76 : 0.35,
+          mid: note ? 0.72 : 0.62,
+          loudness: note ? 0.17 : 0.14,
           elapsed: _frame,
         );
         if (hit != null) beats++;
@@ -118,15 +131,15 @@ void main() {
       expect(pulse.level, lessThan(0.4));
     });
 
-    test('une grosse caisse forte lance bien des vagues', () {
+    test('une grosse caisse lance bien des vagues', () {
       final pulse = BeatPulse();
       var beats = 0;
       for (var i = 0; i < 100; i++) {
         final kick = i % 8 == 0;
         final hit = pulse.add(
-          bass: kick ? 0.95 : 0.7,
-          mid: 0.6,
-          loudness: 0.88,
+          bass: kick ? 0.98 : 0.85,
+          mid: 0.65,
+          loudness: kick ? 0.26 : 0.24,
           elapsed: _frame,
         );
         if (hit != null) beats++;

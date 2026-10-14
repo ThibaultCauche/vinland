@@ -13,6 +13,7 @@ class BeatPulse {
     this.minBeatGap = const Duration(milliseconds: 280),
     this.beatRatio = 1.6,
     this.minBeatLevel = 0.05,
+    this.minBeatBass = 0.78,
   });
 
   /// Deux coups plus rapproches que ca n'en font qu'un (≈ 210 BPM max).
@@ -25,6 +26,10 @@ class BeatPulse {
   /// Montee minimale, en part du pic recent des basses : evite les vagues
   /// sur le souffle d'un passage calme.
   final double minBeatLevel;
+
+  /// Basses minimales (echelle log 0..1) pour un coup : 0,85-1 sur une
+  /// batterie, 0,3-0,6 sur un piano (mesure sur le telephone).
+  final double minBeatBass;
 
   /// Les niveaux arrivent sur une echelle log (0..1, voir AudioVisualizer.kt)
   /// qui ecrase les coups : une basse continue y reste vers 0,85 et une
@@ -86,8 +91,10 @@ class BeatPulse {
       final decay = math.pow(0.84, sampleDt).toDouble();
       _linPeak = math.max(lin, _linPeak * decay);
       _midPeak = math.max(m, _midPeak * decay);
-      // Plus fort volume recent, qui redescend lentement (~moitie en 20 s).
-      _loudPeak = math.max(loud, _loudPeak * math.pow(0.966, sampleDt));
+      // Plus fort volume recent, qui redescend lentement (~moitie en une
+      // minute) : l'intro calme d'un titre se compare encore au refrain
+      // du precedent.
+      _loudPeak = math.max(loud, _loudPeak * math.pow(0.9885, sampleDt));
 
       // Coup = brusque montee de l'energie des basses (pas leur niveau)...
       rise = math.max(0.0, lin - _bassLin);
@@ -103,9 +110,12 @@ class BeatPulse {
           // monte partout, une grosse caisse surtout dans le grave ...
           rise / math.max(_linPeak, 1) >
               1.5 * midRise / math.max(_midLinPeak, 1) &&
-          // ... et seulement quand la musique est vraiment forte (pas sur
+          // ... sur une vraie basse ...
+          b >= minBeatBass &&
+          // ... et seulement quand la musique est a son plus fort (pas sur
           // une intro au piano, gonflee par la normalisation d'Android).
-          _loudnessGate(loud) > 0.5;
+          loud >= 0.08 &&
+          _loudPeak - loud <= 0.067;
       // Moyenne des montees sur ~1 s.
       final a = 1 - math.pow(0.05, sampleDt).toDouble();
       _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
@@ -126,11 +136,13 @@ class BeatPulse {
     return (rise / (_linPeak * 0.5)).clamp(0.0, 1.0);
   }
 
-  /// 0..1 : 0 pour un passage doux (moins de -27 dB, ou 15 dB sous le
-  /// passage le plus fort recent), 1 quand la musique tape.
+  /// 0..1 : eteint dans le silence, pres de 1 au plus fort recent, ~0,4
+  /// sur un passage 6 dB plus doux. Le volume (0..1 pour -60..0 dB) mesure
+  /// sur le telephone de Thibault : -51 dB sur l'intro piano de BREAKSH!T,
+  /// -45 dB sur sa batterie, jamais au-dessus de -44 dB.
   double _loudnessGate(double loud) {
-    final absolute = ((loud - 0.45) / 0.4).clamp(0.0, 1.0);
-    final relative = (1 - (_loudPeak - loud) / 0.25).clamp(0.0, 1.0);
+    final absolute = ((loud - 0.06) / 0.06).clamp(0.0, 1.0);
+    final relative = (1 - (_loudPeak - loud - 0.03) / 0.12).clamp(0.0, 1.0);
     return math.min(absolute, relative);
   }
 
