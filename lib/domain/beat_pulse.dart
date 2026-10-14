@@ -32,7 +32,7 @@ class BeatPulse {
   /// pour que la frappe ressorte.
   static final double _logScale = math.log(129);
 
-  double _peak = 0.05;
+  double _midPeak = 0.05;
   double _level = 0;
   double _lastBass = -1;
   double _lastMid = -1;
@@ -61,37 +61,47 @@ class BeatPulse {
     _sinceSample += elapsed;
 
     final b = bass.clamp(0.0, 1.0);
-    final raw = b * 0.75 + mid.clamp(0.0, 1.0) * 0.25;
-    // Pics recents qui redescendent d'environ moitie toutes les 4 s.
-    _peak = math.max(raw, _peak * math.pow(0.84, dt).toDouble());
-    final normalized = _peak <= 0.02 ? 0.0 : (raw / _peak).clamp(0.0, 1.0);
-
-    // Attaque rapide, relachement lent : le visuel suit le coup sans
-    // clignoter.
-    final k = normalized > _level ? 0.6 : 1 - math.pow(0.02, dt).toDouble();
-    _level += (normalized - _level) * k.clamp(0.0, 1.0);
-
+    final m = mid.clamp(0.0, 1.0);
     final fresh = bass != _lastBass ||
         mid != _lastMid ||
         _sinceSample >= const Duration(milliseconds: 40);
     _lastBass = bass;
     _lastMid = mid;
-    if (!fresh) return null;
-    final sampleDt =
-        _sinceSample.inMicroseconds / Duration.microsecondsPerSecond;
-    _sinceSample = Duration.zero;
 
-    // Coup = brusque montee de l'energie des basses (pas leur niveau).
+    // Energie des basses en lineaire : c'est elle qui fait la luminosite,
+    // pour qu'une basse qui tape fort se voie vraiment (l'echelle log
+    // l'aplatissait).
     final lin = math.exp(b * _logScale) - 1;
-    final rise = math.max(0.0, lin - _bassLin);
-    _bassLin = lin;
-    _linPeak = math.max(lin, _linPeak * math.pow(0.84, sampleDt).toDouble());
-    final isBeat = rise >= _linPeak * minBeatLevel &&
-        rise > _riseAverage * beatRatio &&
-        _sinceBeat >= minBeatGap;
-    // Moyenne des montees sur ~1 s.
-    final a = 1 - math.pow(0.05, sampleDt).toDouble();
-    _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
+    var isBeat = false;
+    var rise = 0.0;
+    if (fresh) {
+      final sampleDt =
+          _sinceSample.inMicroseconds / Duration.microsecondsPerSecond;
+      _sinceSample = Duration.zero;
+      final decay = math.pow(0.84, sampleDt).toDouble();
+      _linPeak = math.max(lin, _linPeak * decay);
+      _midPeak = math.max(m, _midPeak * decay);
+
+      // Coup = brusque montee de l'energie des basses (pas leur niveau).
+      rise = math.max(0.0, lin - _bassLin);
+      _bassLin = lin;
+      isBeat = rise >= _linPeak * minBeatLevel &&
+          rise > _riseAverage * beatRatio &&
+          _sinceBeat >= minBeatGap;
+      // Moyenne des montees sur ~1 s.
+      final a = 1 - math.pow(0.05, sampleDt).toDouble();
+      _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
+    }
+
+    // Niveau : basses surtout, rapportees au pic recent (un morceau calme
+    // bouge autant qu'un morceau fort), un peu de mediums.
+    final bassNorm = (lin / math.max(_linPeak, 1)).clamp(0.0, 1.0);
+    final midNorm = _midPeak <= 0.02 ? 0.0 : (m / _midPeak).clamp(0.0, 1.0);
+    final target = bassNorm * 0.8 + midNorm * 0.2;
+    // Attaque rapide, relachement doux : le visuel suit le coup sans
+    // clignoter.
+    final k = target > _level ? 0.6 : 1 - math.pow(0.05, dt).toDouble();
+    _level += (target - _level) * k.clamp(0.0, 1.0);
 
     if (!isBeat) return null;
     _sinceBeat = Duration.zero;
@@ -99,7 +109,7 @@ class BeatPulse {
   }
 
   void reset() {
-    _peak = 0.05;
+    _midPeak = 0.05;
     _level = 0;
     _lastBass = -1;
     _lastMid = -1;

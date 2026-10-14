@@ -11,11 +11,15 @@ class PlayerVisualizer extends StatefulWidget {
   const PlayerVisualizer({
     super.key,
     this.origin = Alignment.center,
+    this.originKey,
     this.intensity = 1,
     this.askPermission = false,
   });
 
   final Alignment origin;
+
+  /// Widget dont le centre sert de depart aux vagues (la pochette).
+  final GlobalKey? originKey;
   final double intensity;
 
   /// Grand lecteur : a la premiere ouverture, propose une fois l'acces au
@@ -85,6 +89,7 @@ class _PlayerVisualizerState extends State<PlayerVisualizer> {
             playing: data.$1,
             color: PulseWavesVisualizer.colorFromCover(data.$2),
             origin: widget.origin,
+            originKey: widget.originKey,
             intensity: widget.intensity,
           ),
         );

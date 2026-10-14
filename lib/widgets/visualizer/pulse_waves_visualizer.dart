@@ -20,6 +20,7 @@ class PulseWavesVisualizer extends StatefulWidget {
     required this.playing,
     this.color,
     this.origin = Alignment.center,
+    this.originKey,
     this.intensity = 1,
   });
 
@@ -31,6 +32,10 @@ class PulseWavesVisualizer extends StatefulWidget {
 
   /// D'ou partent les vagues.
   final Alignment origin;
+
+  /// Si donne, les vagues partent du centre de ce widget (la pochette du
+  /// grand lecteur), ou qu'il soit a l'ecran ; sinon de [origin].
+  final GlobalKey? originKey;
 
   /// 0..1 : discret derriere le mini lecteur, plein dans le grand lecteur.
   final double intensity;
@@ -63,6 +68,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
   final ValueNotifier<int> _frame = ValueNotifier(0);
   Duration _last = Duration.zero;
   double _idleLevel = 0;
+  Offset? _center;
 
   @override
   void initState() {
@@ -118,10 +124,22 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
       }
     }
 
+    _center = _originCenter();
     _frame.value++;
     if (!widget.playing && _rings.rings.isEmpty && _beat.level <= 0.01) {
       _ticker.stop();
     }
+  }
+
+  /// Centre du widget [PulseWavesVisualizer.originKey], dans le repere du
+  /// visuel.
+  Offset? _originCenter() {
+    final target = widget.originKey?.currentContext?.findRenderObject();
+    final self = context.findRenderObject();
+    if (target is! RenderBox || self is! RenderBox) return null;
+    if (!target.hasSize || !self.hasSize || !target.attached) return null;
+    return self
+        .globalToLocal(target.localToGlobal(target.size.center(Offset.zero)));
   }
 
   @override
@@ -142,6 +160,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
           level: () => math.max(_beat.level, _idleLevel),
           color: widget.color ?? PulseWavesVisualizer.vinlandGreen,
           origin: widget.origin,
+          center: () => _center,
           intensity: widget.intensity,
         ),
         size: Size.infinite,
@@ -157,6 +176,7 @@ class _WavesPainter extends CustomPainter {
     required this.level,
     required this.color,
     required this.origin,
+    required this.center,
     required this.intensity,
   }) : super(repaint: repaint);
 
@@ -164,6 +184,7 @@ class _WavesPainter extends CustomPainter {
   final double Function() level;
   final Color color;
   final Alignment origin;
+  final Offset? Function() center;
   final double intensity;
 
   /// Epaisseur d'une vague, en part de la distance au bord le plus loin.
@@ -172,7 +193,7 @@ class _WavesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final center = origin.alongSize(size);
+    final center = this.center() ?? origin.alongSize(size);
     final maxDist = [
       Offset.zero,
       Offset(size.width, 0),
@@ -189,9 +210,9 @@ class _WavesPainter extends CustomPainter {
       Paint()
         ..shader = ui.Gradient.radial(
           center,
-          maxDist * (0.55 + lvl * 0.15),
+          maxDist * (0.4 + lvl * 0.3),
           [
-            color.withValues(alpha: (0.10 + lvl * 0.22) * intensity),
+            color.withValues(alpha: (0.06 + lvl * 0.38) * intensity),
             transparent,
           ],
         ),

@@ -17,8 +17,16 @@ import 'player/player_cover.dart';
 import 'player/player_options_sheet.dart';
 import 'visualizer/player_visualizer.dart';
 
-class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
+class PlayerScreen extends StatefulWidget implements SingleInstanceOverlay {
   const PlayerScreen({super.key});
+
+  @override
+  State<PlayerScreen> createState() => _PlayerScreenState();
+}
+
+class _PlayerScreenState extends State<PlayerScreen> {
+  /// Les vagues du visuel partent du centre de la pochette.
+  final _coverKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {
@@ -104,9 +112,10 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
               children: [
                 // Vagues lumineuses derriere tout le lecteur ; elles
                 // partent de la pochette.
-                const Positioned.fill(
+                Positioned.fill(
                   child: PlayerVisualizer(
-                    origin: Alignment(0, -0.35),
+                    origin: const Alignment(0, -0.35),
+                    originKey: _coverKey,
                     intensity: 0.8,
                     askPermission: true,
                   ),
@@ -117,7 +126,7 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
                     child: Column(
                       children: [
                         const Spacer(flex: 2),
-                        PlayerCover(coverPath: track.coverPath),
+                        PlayerCover(key: _coverKey, coverPath: track.coverPath),
                         const Spacer(),
                         Row(
                           children: [

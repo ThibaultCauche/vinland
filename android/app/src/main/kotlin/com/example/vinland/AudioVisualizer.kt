@@ -3,7 +3,10 @@ package com.example.vinland
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.audiofx.Visualizer
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -111,6 +114,25 @@ class AudioVisualizer private constructor(private val context: Context) :
         return doubleArrayOf(scale(bass, bassCount), scale(mid, midCount))
     }
 
+    /**
+     * Retard estime entre l'analyse et le haut-parleur, en ms.
+     *
+     * L'effet Visualizer lit le son avant le grand tampon de sortie
+     * (« deep buffer ») utilise pour la musique : mesure sur le telephone de
+     * Thibault, ~370 ms sur le haut-parleur. Un casque Bluetooth ajoute
+     * encore ~200 ms. Le visuel decale l'affichage d'autant.
+     */
+    private fun outputLatencyMs(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 350
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val bluetooth = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+        }
+        return if (bluetooth) 550 else 350
+    }
+
     private fun publish(sessionId: Int, levels: DoubleArray) {
         if (!visualizers.containsKey(sessionId)) return
         latest[sessionId] = levels
@@ -162,6 +184,7 @@ class AudioVisualizer private constructor(private val context: Context) :
                                 ?: emptyList()
                             result.success(visualizer.start(ids))
                         }
+                        "latency" -> result.success(visualizer.outputLatencyMs())
                         "stop" -> {
                             visualizer.stop()
                             result.success(null)

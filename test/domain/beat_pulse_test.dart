@@ -85,6 +85,20 @@ void main() {
       expect(beats, inInclusiveRange(10, 13));
     });
 
+    test('une basse forte eclaire bien plus qu un passage sans basse', () {
+      final pulse = BeatPulse();
+      for (var i = 0; i < 40; i++) {
+        pulse.add(bass: 0.9, mid: 0.5, elapsed: _frame);
+      }
+      final loud = pulse.level;
+      for (var i = 0; i < 20; i++) {
+        pulse.add(bass: 0.6, mid: 0.5, elapsed: _frame);
+      }
+      // 0,9 contre 0,6 sur l'echelle log : ~20 fois moins d'energie.
+      expect(loud, greaterThan(0.8));
+      expect(pulse.level, lessThan(loud * 0.6));
+    });
+
     test('le niveau reste entre 0 et 1', () {
       final pulse = BeatPulse();
       for (var i = 0; i < 200; i++) {
