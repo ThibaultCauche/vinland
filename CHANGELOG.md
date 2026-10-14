@@ -9,6 +9,11 @@ commit.
 
 ## [Non publié]
 
+### Modifié
+- Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du
+  blind test, boutons des fenêtres de confirmation) passent au vert
+  Vinland : le vert est maintenant la couleur par défaut de toute l'app.
+
 ## [2.1.1] - 2026-10-14
 
 ### Modifié

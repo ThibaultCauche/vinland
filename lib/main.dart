@@ -256,6 +256,13 @@ class VinlandApp extends StatelessWidget {
           scrollBehavior: _VinlandScrollBehavior(),
           theme: ThemeData.dark().copyWith(
             scaffoldBackgroundColor: const Color(0xFF121212),
+            // Vert Vinland pour tout ce qui n'a pas de couleur propre
+            // (boutons, dialogues, curseurs) : sans ca, Material 3 met son
+            // violet par defaut.
+            colorScheme: ThemeData.dark().colorScheme.copyWith(
+                  primary: const Color(0xFF1DB954),
+                  onPrimary: Colors.black,
+                ),
           ),
           // Le shell desktop a des barres a hauteur fixe (sidebar, barre de
           // lecture) : un scaling de texte systeme trop agressif (ex: reglage
