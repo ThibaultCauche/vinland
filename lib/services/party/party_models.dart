@@ -253,3 +253,49 @@ String partyRecapComment(List<PartyPlayed> played) {
   ];
   return parts.isEmpty ? '' : 'Proposé par : ${parts.join(', ')}';
 }
+
+/// Le bilan de la soiree, en quelques lignes : combien de temps elle a
+/// dure, le DJ de la soiree (l'invite qui a fait passer le plus de titres),
+/// l'artiste le plus joue. Rien a dire pour une soiree vide.
+List<String> partyRecapHighlights(List<PartyPlayed> played) {
+  if (played.isEmpty) return const [];
+  final lines = <String>[];
+
+  final times = played.map((p) => p.at).toList()..sort();
+  final span = times.last.difference(times.first);
+  if (span >= const Duration(minutes: 30)) {
+    final h = span.inHours, m = span.inMinutes % 60;
+    lines.add(
+        'Durée : ${h > 0 ? '$h h ${m.toString().padLeft(2, '0')}' : '$m min'}');
+  }
+
+  final byGuest = <String, int>{};
+  final byArtist = <String, int>{};
+  for (final p in played) {
+    if (p.by.isNotEmpty && p.by != 'Radio') {
+      byGuest.update(p.by, (n) => n + 1, ifAbsent: () => 1);
+    }
+    final artist = p.song.artist.trim();
+    if (artist.isNotEmpty) {
+      byArtist.update(artist, (n) => n + 1, ifAbsent: () => 1);
+    }
+  }
+  final dj = _leader(byGuest);
+  if (dj != null && dj.$2 >= 2) {
+    lines.add('DJ de la soirée : ${dj.$1} (${dj.$2} titres)');
+  }
+  final artist = _leader(byArtist);
+  if (artist != null && artist.$2 >= 2) {
+    lines.add('Artiste le plus joué : ${artist.$1} (${artist.$2} fois)');
+  }
+  return lines;
+}
+
+/// Le plus grand compteur ; un ex aequo n'a pas de gagnant.
+(String, int)? _leader(Map<String, int> counts) {
+  final sorted = counts.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  if (sorted.isEmpty) return null;
+  if (sorted.length > 1 && sorted[1].value == sorted[0].value) return null;
+  return (sorted.first.key, sorted.first.value);
+}

@@ -20,6 +20,12 @@ commit.
   Tes classiques, Likés oubliés, À redécouvrir, et une par décennie
   (Années 80, Années 2000...). Elles se mettent à jour d'elles-mêmes ;
   « Ajouter à ma bibliothèque » en fait une vraie playlist.
+- Bilan musical (« Ton année en musique ») depuis l'accueil, sur mobile et
+  PC : minutes écoutées, artiste n°1, top titres, albums et genres, mois et
+  jour records, premier titre de l'année, et « Écouter ton top ». L'app
+  tient maintenant un journal des écoutes de l'appareil pour le bilan par
+  année ; avant lui, « Depuis toujours » part des compteurs d'écoute.
+- Récap de soirée : durée, DJ de la soirée et artiste le plus joué.
 - Chromecast : le menu « Périphériques » liste les Chromecast du Wi-Fi.
   Un tap envoie la musique sur la télé ou l'enceinte, au même endroit du
   titre ; la file, les boutons et le volume continuent de se piloter
