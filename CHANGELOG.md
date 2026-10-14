@@ -9,6 +9,10 @@ commit.
 
 ## [Non publié]
 
+- Accueil : rangée « Humeur » sous « Ton mood » (Triste, Joyeux, Mélancolique,
+  Énervé, Motivé, Romantique, Planant), tirée des tags Last.fm et ramenée
+  aux titres de ta bibliothèque. Visible une fois la clé Last.fm configurée.
+
 ## [2.0.1] - 2026-10-13
 
 Corrections trouvées en testant la 2.0 sur PC et téléphone, plus la radio

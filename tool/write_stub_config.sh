@@ -38,3 +38,5 @@ ecrire download_worker_config.dart \
 ecrire share_inbox_config.dart \
   "const String kShareInboxBaseUrl = '';" \
   "const String kShareInboxApiKey = '';"
+ecrire lastfm_config.dart \
+  "const String kLastfmApiKey = '';"
