@@ -167,6 +167,19 @@ void main() {
       expect(pulse.level, greaterThan(0));
     });
 
+    test('la voix qui arrive allume le cercle des mediums', () {
+      final pulse = BeatPulse();
+      for (var i = 0; i < 80; i++) {
+        pulse.add(bass: 0.85, mid: 0.55, loudness: 0.25, elapsed: _frame);
+      }
+      final before = pulse.midLevel;
+      for (var i = 0; i < 10; i++) {
+        pulse.add(bass: 0.85, mid: 0.7, loudness: 0.25, elapsed: _frame);
+      }
+      expect(before, lessThan(0.2));
+      expect(pulse.midLevel, greaterThan(0.5));
+    });
+
     test('le niveau reste entre 0 et 1', () {
       final pulse = BeatPulse();
       for (var i = 0; i < 200; i++) {

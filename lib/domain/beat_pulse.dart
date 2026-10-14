@@ -54,6 +54,12 @@ class BeatPulse {
   /// Niveau lisse 0..1 : monte vite, redescend doucement.
   double get level => _level;
 
+  /// Mediums (voix, melodie) 0..1, lisse : allume un cercle autour de la
+  /// pochette quand ils montent.
+  double get midLevel => _midLevel;
+  double _midLevel = 0;
+  double _midFloor = 0;
+
   /// Ajoute une mesure ; [elapsed] = temps depuis la precedente. Renvoie la
   /// force du coup (0..1) si cette mesure en est un, sinon null.
   ///
@@ -108,6 +114,15 @@ class BeatPulse {
       final midRise = math.max(0.0, midLin - _midLin);
       _midLin = midLin;
       _midLinPeak = math.max(midLin, _midLinPeak * decay);
+      // Plancher des mediums : suit tout de suite une baisse, remonte
+      // lentement (~3 s). La voix ou la melodie qui arrive se mesure
+      // au-dessus de ce plancher (les mediums bougent peu sur l'echelle
+      // log : 0,55-0,70 sur le telephone).
+      _midFloor = math.min(
+          midLin,
+          _midFloor +
+              (midLin - _midFloor) *
+                  (1 - math.pow(0.4, sampleDt).toDouble()).clamp(0.0, 1.0));
       isBeat = rise >= _linPeak * minBeatLevel &&
           rise > _riseAverage * beatRatio &&
           _sinceBeat >= minBeatGap &&
@@ -136,6 +151,16 @@ class BeatPulse {
     final k = target > _level ? 0.6 : 1 - math.pow(0.05, dt).toDouble();
     _level += (target - _level) * k.clamp(0.0, 1.0);
 
+    // Voix, melodie : mediums au-dessus de leur plancher recent.
+    final span = _midLinPeak - _midFloor;
+    final midTarget = span <= 1
+        ? 0.0
+        : ((_midLin - _midFloor) / span).clamp(0.0, 1.0) * _loudnessGate(_loud);
+    final km = midTarget > _midLevel
+        ? 1 - math.pow(0.002, dt).toDouble()
+        : 1 - math.pow(0.1, dt).toDouble();
+    _midLevel += (midTarget - _midLevel) * km.clamp(0.0, 1.0);
+
     if (!isBeat) return null;
     _sinceBeat = Duration.zero;
     return (rise / (_linPeak * 0.5)).clamp(0.0, 1.0);
@@ -156,6 +181,8 @@ class BeatPulse {
   void reset() {
     _midPeak = 0.05;
     _level = 0;
+    _midLevel = 0;
+    _midFloor = 0;
     _lastBass = -1;
     _lastMid = -1;
     _bassLin = 0;

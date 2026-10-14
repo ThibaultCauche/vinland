@@ -74,9 +74,6 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
   /// dessous (sinon elles semblent en retard sur la basse).
   double _startRadius = 0;
 
-  /// Eclat bref du halo sur chaque coup, visible des la frappe.
-  double _flash = 0;
-
   @override
   void initState() {
     super.initState();
@@ -123,10 +120,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
         loudness: levels.loudness,
         elapsed: elapsed,
       );
-      if (beat != null) {
-        _rings.spawn(0.35 + 0.65 * beat);
-        _flash = math.max(_flash, 0.5 + 0.5 * beat);
-      }
+      if (beat != null) _rings.spawn(0.35 + 0.65 * beat);
     } else {
       // Sans analyse du son : pas de fausses vagues a rythme fixe (elles
       // ne collaient jamais a la musique), juste une lente respiration.
@@ -138,7 +132,6 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
       }
     }
 
-    _flash *= math.pow(0.001, dt).toDouble();
     _center = _originCenter();
     _frame.value++;
     if (!widget.playing && _rings.rings.isEmpty && _beat.level <= 0.01) {
@@ -178,7 +171,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
           origin: widget.origin,
           center: () => _center,
           startRadius: () => _startRadius,
-          flash: () => _flash,
+          voice: () => _beat.midLevel,
           intensity: widget.intensity,
         ),
         size: Size.infinite,
@@ -196,7 +189,7 @@ class _WavesPainter extends CustomPainter {
     required this.origin,
     required this.center,
     required this.startRadius,
-    required this.flash,
+    required this.voice,
     required this.intensity,
   }) : super(repaint: repaint);
 
@@ -206,7 +199,7 @@ class _WavesPainter extends CustomPainter {
   final Alignment origin;
   final Offset? Function() center;
   final double Function() startRadius;
-  final double Function() flash;
+  final double Function() voice;
   final double intensity;
 
   /// Epaisseur d'une vague, en part de la distance au bord le plus loin.
@@ -235,8 +228,7 @@ class _WavesPainter extends CustomPainter {
           maxDist * (0.4 + lvl * 0.3),
           [
             color.withValues(
-                alpha: ((0.06 + lvl * 0.38 + flash() * 0.3) * intensity)
-                    .clamp(0.0, 1.0)),
+                alpha: ((0.06 + lvl * 0.38) * intensity).clamp(0.0, 1.0)),
             transparent,
           ],
         ),
@@ -249,6 +241,27 @@ class _WavesPainter extends CustomPainter {
     final start = math.min(startRadius(), maxDist * 0.6);
     final travel = maxDist * 1.15 - start;
     final width = maxDist * _waveWidth;
+    // Cercle lumineux qui epouse le bord de la pochette et s'allume avec
+    // la voix et les melodies (les mediums), en plus des vagues de basse.
+    final v = voice();
+    if (start > 0 && v > 0.01) {
+      final glowOuter = start * (1.25 + 0.35 * v);
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            center,
+            glowOuter,
+            [
+              transparent,
+              color.withValues(alpha: (0.5 * v * intensity).clamp(0.0, 1.0)),
+              transparent,
+            ],
+            [0, (start * 0.92 / glowOuter).clamp(0.0, 1.0), 1],
+          ),
+      );
+    }
+
     for (final ring in rings.rings) {
       final t = ring.age / rings.lifetime;
       final eased = 1 - (1 - t) * (1 - t);
