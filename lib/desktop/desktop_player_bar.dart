@@ -8,6 +8,7 @@ import '../models/album.dart';
 import '../models/track.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/player/jam_controls.dart';
+import 'desktop_lyrics_panel.dart';
 import 'desktop_queue_panel.dart';
 import 'glass.dart';
 
@@ -569,6 +570,12 @@ class _PlayerExtrasState extends State<_PlayerExtras> {
             tooltip: 'Jam',
             onPressed: () => showJamMenu(context),
           ),
+        ),
+        GlassIconButton(
+          icon: Icons.lyrics_outlined,
+          size: 18,
+          tooltip: 'Paroles',
+          onPressed: () => showLyricsPanel(context),
         ),
         GlassIconButton(
           icon: Icons.queue_music,

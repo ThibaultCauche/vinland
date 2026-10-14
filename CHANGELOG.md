@@ -9,6 +9,13 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
+  barre de lecture (PC). La ligne en cours est mise en avant et suit la
+  musique, un tap sur une ligne y saute. Les paroles viennent de Navidrome
+  (tags du fichier ou `.lrc` à côté), sinon de LRCLIB ; à défaut de
+  minutage, le texte s'affiche simplement.
+
 ## [2.0.2] - 2026-10-14
 
 ### Ajouté
