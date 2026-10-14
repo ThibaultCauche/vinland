@@ -10,6 +10,11 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
+  barre de lecture (PC). La ligne en cours est mise en avant et suit la
+  musique, un tap sur une ligne y saute. Les paroles viennent de Navidrome
+  (tags du fichier ou `.lrc` à côté), sinon de LRCLIB ; à défaut de
+  minutage, le texte s'affiche simplement.
 - Android Auto : Vinland apparaît dans la voiture avec tes titres likés,
   tes écoutes de la semaine, un aléatoire, tes playlists et les nouveautés
   du NAS, plus la commande vocale (« Ok Google, mets … sur Vinland »).

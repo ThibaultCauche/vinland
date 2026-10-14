@@ -43,6 +43,7 @@ import '../services/avatar_service.dart';
 import '../services/download_worker_service.dart';
 import '../services/local_import_planner.dart';
 import '../services/share_inbox_service.dart';
+import '../services/lyrics_service.dart';
 import '../services/media_browser.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
@@ -66,6 +67,10 @@ class AppState extends ChangeNotifier
   /// Secret de synchro perso du compte (voir PersonalSyncSecretStore).
   late final PersonalSyncSecretStore _personalSecrets =
       PersonalSyncSecretStore(_navidrome);
+
+  /// Paroles du titre en cours (Navidrome, sinon LRCLIB).
+  late final LyricsService lyrics =
+      LyricsService(navidromeLyrics: _navidrome.lyrics);
 
   Future<PersonalSyncIds?> _personalSyncIds(String username) async {
     final secret = await _personalSecrets.secretFor(username);
