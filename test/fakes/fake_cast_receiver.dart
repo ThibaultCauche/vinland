@@ -32,6 +32,9 @@ class FakeCastReceiver {
   int mediaSessionId = 0;
   double volume = 0.4;
 
+  /// Etat du titre renvoye a une demande d'etat (reprise de session).
+  String playerState = 'PAUSED';
+
   void _onSenderBytes(List<int> bytes) {
     for (final message in _decoder.add(bytes)) {
       received.add(message);
@@ -54,6 +57,24 @@ class FakeCastReceiver {
               'volume': {'level': volume},
             },
           });
+        case 'GET_STATUS' when message.namespace == CastNamespace.receiver:
+          send(CastNamespace.receiver, 'receiver-0', {
+            'type': 'RECEIVER_STATUS',
+            'requestId': requestId,
+            'status': {
+              'applications': [
+                {
+                  'appId': 'CC1AD845',
+                  'transportId': transportId,
+                  'sessionId': sessionId,
+                },
+              ],
+              'volume': {'level': volume},
+            },
+          });
+        case 'GET_STATUS' when message.namespace == CastNamespace.media:
+          mediaStatus(playerState,
+              requestId: requestId, time: 42, duration: 200);
         case 'LOAD':
           if (failLoad) {
             send(CastNamespace.media, transportId, {

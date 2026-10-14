@@ -15,6 +15,16 @@ commit.
   Vinland à la place de l'orange et des couleurs vives. Les réponses du
   blind test sont maintenant repérées par une lettre (A, B, C, D).
 
+### Corrigé
+- Chromecast : les titres téléchargés sur le téléphone passent maintenant
+  sur la Chromecast (lus depuis le serveur). Avant, le blind test, qui
+  pioche surtout dans les titres likés, n'arrivait pas à jouer l'extrait
+  sur la télé.
+- Chromecast : une coupure de connexion (téléphone qui perd le Wi-Fi un
+  instant, mise en veille) ne fait plus repartir la musique sur le
+  téléphone pendant qu'elle continue sur la télé : l'app reprend la main
+  sur la Chromecast toute seule.
+
 ## [2.1.0] - 2026-10-14
 
 Paroles synchronisées, playlists intelligentes, bilan musical, blind test,

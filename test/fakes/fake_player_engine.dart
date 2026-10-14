@@ -153,6 +153,7 @@ class FakePlaybackOutput implements PlaybackOutput {
   final Queue<Completer<bool>> pendingLoads = Queue();
 
   final List<String> loadedTitles = [];
+  final List<MediaItem> loadedItems = [];
   final List<String> calls = [];
   bool stopThrows = false;
 
@@ -194,6 +195,7 @@ class FakePlaybackOutput implements PlaybackOutput {
   }) async {
     final title = items[startIndex].title;
     loadedTitles.add(title);
+    loadedItems.add(items[startIndex]);
     crossfades.add(crossfade);
     gains.add(gain);
     if (pendingLoads.isNotEmpty) {
