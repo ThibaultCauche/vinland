@@ -34,14 +34,16 @@ void main() {
     expect(tester.hasRunningAnimations, isFalse);
   });
 
-  test('couleur : teinte de la pochette, vert Vinland si elle est terne', () {
+  test('couleur : toujours celle de la pochette, vert sans pochette', () {
     expect(HexPulseVisualizer.colorFromCover(null),
         HexPulseVisualizer.vinlandGreen);
-    expect(HexPulseVisualizer.colorFromCover(const Color(0xFF808080)),
-        HexPulseVisualizer.vinlandGreen);
+    final grey = HSLColor.fromColor(
+        HexPulseVisualizer.colorFromCover(const Color(0xFF303030)));
+    expect(grey.saturation, lessThan(0.05));
+    expect(grey.lightness, closeTo(0.65, 0.01));
     final blue = HSLColor.fromColor(
         HexPulseVisualizer.colorFromCover(const Color(0xFF0A2A6A)));
     expect(blue.hue, closeTo(220, 5));
-    expect(blue.lightness, closeTo(0.58, 0.01));
+    expect(blue.lightness, closeTo(0.65, 0.01));
   });
 }

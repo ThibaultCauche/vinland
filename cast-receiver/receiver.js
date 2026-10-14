@@ -181,7 +181,7 @@ function glowAt(d) {
   let g = 0;
   for (const r of rings) {
     const t = r.age / LIFETIME;
-    const x = (d - t * 1.15) / 0.16;
+    const x = (d - t * 1.15) / 0.22;
     g += r.strength * (1 - t * t) * Math.exp(-x * x);
   }
   return Math.min(1, g);
@@ -214,7 +214,7 @@ function rgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-let last = 0, idleClock = 0;
+let last = 0;
 function frame(now) {
   const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
   last = now;
@@ -231,9 +231,8 @@ function frame(now) {
   } else {
     beat.add(0, 0, dt);
     if (playing) {
-      idleClock += dt;
-      if (idleClock >= 0.8) { idleClock = 0; rings.push({ age: 0, strength: 0.5 }); }
-      idle = 0.15 + 0.1 * Math.sin(now / 800);
+      // Sans analyse du son : lente respiration, pas de fausses vagues.
+      idle = 0.12 + 0.08 * Math.sin(now / 1400);
     } else {
       idle = 0.12;
     }

@@ -116,7 +116,7 @@ class PulseRings {
     for (final r in rings) {
       final t = r.age / lifetime;
       final front = t * 1.15;
-      final d = (distance - front) / 0.16;
+      final d = (distance - front) / 0.22;
       glow += r.strength * (1 - t * t) * math.exp(-d * d);
     }
     return glow.clamp(0.0, 1.0);

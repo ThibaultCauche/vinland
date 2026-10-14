@@ -42,15 +42,17 @@ class HexPulseVisualizer extends StatefulWidget {
 
   static const vinlandGreen = Color(0xFF1DB954);
 
-  /// Couleur lisible tiree de la pochette : on garde sa teinte, mais assez
-  /// vive et claire pour briller sur fond sombre.
+  /// Couleur tiree de la pochette, toujours (vert seulement sans pochette) :
+  /// sa teinte, eclaircie pour se voir sur le fond sombre. Une pochette
+  /// terne (noir et blanc...) donne des hexagones gris clair.
   static Color colorFromCover(Color? dominant) {
     if (dominant == null) return vinlandGreen;
     final hsl = HSLColor.fromColor(dominant);
-    if (hsl.saturation < 0.15) return vinlandGreen;
     return hsl
-        .withSaturation(math.max(hsl.saturation, 0.55))
-        .withLightness(0.58)
+        .withSaturation(hsl.saturation < 0.15
+            ? hsl.saturation
+            : math.max(hsl.saturation, 0.5))
+        .withLightness(0.65)
         .toColor();
   }
 
@@ -65,7 +67,6 @@ class _HexPulseVisualizerState extends State<HexPulseVisualizer>
   final PulseRings _rings = PulseRings();
   final ValueNotifier<int> _frame = ValueNotifier(0);
   Duration _last = Duration.zero;
-  double _idleClock = 0;
   double _idleLevel = 0;
 
   @override
@@ -112,15 +113,11 @@ class _HexPulseVisualizerState extends State<HexPulseVisualizer>
           _beat.add(bass: levels.bass, mid: levels.mid, elapsed: elapsed);
       if (beat != null) _rings.spawn(0.35 + 0.65 * beat);
     } else {
-      // Au repos : un battement lent (≈ 75 BPM), sans a-coups.
+      // Sans analyse du son : pas de fausses vagues a rythme fixe (elles
+      // ne collaient jamais a la musique), juste une lente respiration.
       _beat.add(bass: 0, mid: 0, elapsed: elapsed);
       if (widget.playing) {
-        _idleClock += dt;
-        if (_idleClock >= 0.8) {
-          _idleClock = 0;
-          _rings.spawn(0.5);
-        }
-        _idleLevel = 0.15 + 0.1 * math.sin(now.inMilliseconds / 800);
+        _idleLevel = 0.12 + 0.08 * math.sin(now.inMilliseconds / 1400);
       } else {
         _idleLevel = math.max(0, _idleLevel - dt);
       }
@@ -211,7 +208,7 @@ class _HexPainter extends CustomPainter {
     final fill = Paint()..style = PaintingStyle.fill;
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.8, r / 14);
+      ..strokeWidth = math.max(0.6, r / 24);
 
     final rows = (size.height / h).ceil() + 1;
     final cols = (size.width / w).ceil() + 1;
@@ -223,13 +220,13 @@ class _HexPainter extends CustomPainter {
         final d = (c - center).distance / maxDist;
         // Lueur de fond qui respire avec le niveau, plus forte au centre,
         // plus les vagues qui passent.
-        final glow = rings.glowAt(d) * 0.85 + lvl * 0.3 * (1 - d);
-        final b = (0.08 + glow).clamp(0.0, 1.0) * intensity;
+        final glow = rings.glowAt(d) * 0.7 + lvl * 0.25 * (1 - d);
+        final b = (0.06 + glow).clamp(0.0, 1.0) * intensity;
         canvas.save();
         canvas.translate(c.dx, c.dy);
-        fill.color = color.withValues(alpha: 0.03 + b * 0.35);
+        fill.color = color.withValues(alpha: b * 0.14);
         canvas.drawPath(hex, fill);
-        stroke.color = color.withValues(alpha: 0.10 + b * 0.9);
+        stroke.color = color.withValues(alpha: 0.04 + b * 0.45);
         canvas.drawPath(hex, stroke);
         canvas.restore();
       }
@@ -241,7 +238,7 @@ class _HexPainter extends CustomPainter {
         center,
         maxDist * 0.6,
         [
-          color.withValues(alpha: (0.08 + lvl * 0.25) * intensity),
+          color.withValues(alpha: (0.05 + lvl * 0.12) * intensity),
           color.withValues(alpha: 0),
         ],
       );

@@ -60,7 +60,7 @@ class MiniPlayer extends StatelessWidget {
                   child: PlayerVisualizer(
                     origin: Alignment(-0.88, 0),
                     cellRadius: 9,
-                    intensity: 0.55,
+                    intensity: 0.45,
                   ),
                 ),
                 Column(
