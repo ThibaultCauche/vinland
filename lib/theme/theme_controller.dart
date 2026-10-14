@@ -182,7 +182,9 @@ class ThemeController extends ChangeNotifier {
   }
 
   void updateCoverColor(String? coverPath) {
-    if (coverPath == null) {
+    // Vide = pochette du NAS alors que les identifiants ne sont pas encore
+    // charges (voir SubsonicRefs.resolve).
+    if (coverPath == null || coverPath.isEmpty) {
       dominantColor = null;
       _notify();
       return;
@@ -220,7 +222,7 @@ class ThemeController extends ChangeNotifier {
   /// deja la, sans passer un instant par celle du titre precedent.
   void prefetchCoverColors(Iterable<String?> coverPaths) {
     for (final path in coverPaths) {
-      if (path != null) unawaited(_colorFor(path));
+      if (path != null && path.isNotEmpty) unawaited(_colorFor(path));
     }
   }
 

@@ -471,6 +471,11 @@ class AppState extends ChangeNotifier
     }
   }
 
+  void _refreshRestoredCoverColor() {
+    if (_theme.dominantColor != null) return;
+    _theme.updateCoverColor(displayTrack?.coverPath);
+  }
+
   /// Un titre vient de demarrer localement (voir PlayerController).
   void _onTrackStarted(Track track) {
     _syncNowPlayingMirror();
@@ -587,6 +592,10 @@ class AppState extends ChangeNotifier
       // s'affiche brievement avant de basculer sur la home -- flash visible
       // a chaque lancement alors que l'utilisateur est bien "reste connecte".
       await _navidrome.loadStoredCredentials();
+      // Le dernier titre est restaure avant les identifiants : son URL de
+      // pochette etait encore vide, d'ou un fond sans couleur au lancement
+      // tant que rien ne jouait.
+      _refreshRestoredCoverColor();
       _jamCtl.startPersonalSyncPolling();
     } catch (e, stack) {
       debugPrint('AppState.initialize failed, showing app anyway: $e\n$stack');
@@ -601,6 +610,7 @@ class AppState extends ChangeNotifier
 
     unawaited(_navidrome.authenticate().then((navidromeOk) {
       if (navidromeOk) {
+        _refreshRestoredCoverColor();
         // Les URLs des titres en cache sont reconstruites a la demande avec
         // l'URL de serveur courante (voir SubsonicRefs) : rien a rafraichir,
         // un simple rebuild suffit.

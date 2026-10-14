@@ -12,7 +12,7 @@ commit.
 ### Modifié
 
 - Android : le visuel du lecteur devient des vagues de lumière douces, centrées sur la pochette et calées sur le son, qui ne partent que sur les vraies basses (plus sur une intro au piano), et couvre tout le grand lecteur, barre du haut comprise.
-- La couleur d'ambiance suit la couleur principale de la pochette plutôt qu'un petit détail coloré, et celle des titres suivants est préparée d'avance.
+- La couleur d'ambiance suit la couleur principale de la pochette plutôt qu'un petit détail coloré, et celle des titres suivants est préparée d'avance. Elle s'affiche aussi dès le lancement de l'app, avant de relancer la musique.
 
 ## [2.2.0] - 2026-10-14
 

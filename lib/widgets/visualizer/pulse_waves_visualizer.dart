@@ -70,6 +70,13 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
   double _idleLevel = 0;
   Offset? _center;
 
+  /// Rayon de la pochette : les vagues naissent a son bord, pas cachees
+  /// dessous (sinon elles semblent en retard sur la basse).
+  double _startRadius = 0;
+
+  /// Eclat bref du halo sur chaque coup, visible des la frappe.
+  double _flash = 0;
+
   @override
   void initState() {
     super.initState();
@@ -116,7 +123,10 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
         loudness: levels.loudness,
         elapsed: elapsed,
       );
-      if (beat != null) _rings.spawn(0.35 + 0.65 * beat);
+      if (beat != null) {
+        _rings.spawn(0.35 + 0.65 * beat);
+        _flash = math.max(_flash, 0.5 + 0.5 * beat);
+      }
     } else {
       // Sans analyse du son : pas de fausses vagues a rythme fixe (elles
       // ne collaient jamais a la musique), juste une lente respiration.
@@ -128,6 +138,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
       }
     }
 
+    _flash *= math.pow(0.001, dt).toDouble();
     _center = _originCenter();
     _frame.value++;
     if (!widget.playing && _rings.rings.isEmpty && _beat.level <= 0.01) {
@@ -142,6 +153,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
     final self = context.findRenderObject();
     if (target is! RenderBox || self is! RenderBox) return null;
     if (!target.hasSize || !self.hasSize || !target.attached) return null;
+    _startRadius = target.size.shortestSide / 2;
     return self
         .globalToLocal(target.localToGlobal(target.size.center(Offset.zero)));
   }
@@ -165,6 +177,8 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
           color: widget.color ?? PulseWavesVisualizer.vinlandGreen,
           origin: widget.origin,
           center: () => _center,
+          startRadius: () => _startRadius,
+          flash: () => _flash,
           intensity: widget.intensity,
         ),
         size: Size.infinite,
@@ -181,6 +195,8 @@ class _WavesPainter extends CustomPainter {
     required this.color,
     required this.origin,
     required this.center,
+    required this.startRadius,
+    required this.flash,
     required this.intensity,
   }) : super(repaint: repaint);
 
@@ -189,6 +205,8 @@ class _WavesPainter extends CustomPainter {
   final Color color;
   final Alignment origin;
   final Offset? Function() center;
+  final double Function() startRadius;
+  final double Function() flash;
   final double intensity;
 
   /// Epaisseur d'une vague, en part de la distance au bord le plus loin.
@@ -216,7 +234,9 @@ class _WavesPainter extends CustomPainter {
           center,
           maxDist * (0.4 + lvl * 0.3),
           [
-            color.withValues(alpha: (0.06 + lvl * 0.38) * intensity),
+            color.withValues(
+                alpha: ((0.06 + lvl * 0.38 + flash() * 0.3) * intensity)
+                    .clamp(0.0, 1.0)),
             transparent,
           ],
         ),
@@ -224,18 +244,24 @@ class _WavesPainter extends CustomPainter {
 
     // Chaque coup de basse : un anneau de lumiere floue qui s'eloigne et
     // s'estompe (degrade radial transparent > couleur > transparent).
+    // Les vagues partent du bord de la pochette et s'en eloignent vite au
+    // debut (depart en douceur sinon invisible), puis ralentissent.
+    final start = math.min(startRadius(), maxDist * 0.6);
+    final travel = maxDist * 1.15 - start;
+    final width = maxDist * _waveWidth;
     for (final ring in rings.rings) {
       final t = ring.age / rings.lifetime;
-      final front = t * 1.15;
+      final eased = 1 - (1 - t) * (1 - t);
+      final front = start + eased * travel;
       final alpha = ring.strength * (1 - t) * (1 - t) * 0.42 * intensity;
       if (alpha <= 0.005) continue;
-      final outer = front + _waveWidth;
+      final outer = front + width;
       canvas.drawRect(
         rect,
         Paint()
           ..shader = ui.Gradient.radial(
             center,
-            maxDist * outer,
+            outer,
             [
               transparent,
               transparent,
@@ -244,7 +270,7 @@ class _WavesPainter extends CustomPainter {
             ],
             [
               0,
-              (math.max(0, front - _waveWidth) / outer).clamp(0.0, 1.0),
+              (math.max(0, front - width) / outer).clamp(0.0, 1.0),
               (front / outer).clamp(0.0, 1.0),
               1,
             ],
