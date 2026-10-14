@@ -38,6 +38,13 @@
             </intent-filter>
         </service>
 
+        <!-- Android Auto : l'app apparait dans la voiture, qui parcourt la
+             bibliotheque par le MediaBrowserService ci-dessus (voir
+             lib/services/media_browser.dart). -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <receiver
             android:name="com.ryanheise.audioservice.MediaButtonReceiver"
             android:exported="true">
