@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'deck_player_engine.dart';
+import 'media_browser.dart';
 import 'player_engine.dart';
 import 'routed_player_engine.dart';
 
@@ -24,6 +25,11 @@ class VinlandAudioHandler extends BaseAudioHandler
     }
     return null;
   }
+
+  /// Bibliotheque vue par Android Auto (voir VinlandMediaBrowser), branchee
+  /// par AppState. Null : rien a parcourir (entree Bluetooth en
+  /// arriere-plan, ou bibliotheque pas encore chargee).
+  VinlandMediaBrowser? browser;
 
   final _customActionController = StreamController<String>.broadcast();
   Stream<String> get customActionStream => _customActionController.stream;
@@ -118,6 +124,28 @@ class VinlandAudioHandler extends BaseAudioHandler
     await _engine.stop();
     await super.stop();
   }
+
+  // --- Android Auto : parcourir et lancer depuis la voiture ---------------
+
+  @override
+  Future<List<MediaItem>> getChildren(String parentMediaId,
+          [Map<String, dynamic>? options]) async =>
+      await browser?.children(parentMediaId) ?? const [];
+
+  @override
+  Future<void> playFromMediaId(String mediaId,
+          [Map<String, dynamic>? extras]) async =>
+      browser?.playFromMediaId(mediaId);
+
+  @override
+  Future<void> playFromSearch(String query,
+          [Map<String, dynamic>? extras]) async =>
+      browser?.playFromSearch(query);
+
+  @override
+  Future<List<MediaItem>> search(String query,
+          [Map<String, dynamic>? extras]) async =>
+      await browser?.searchItems(query) ?? const [];
 
   @override
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
