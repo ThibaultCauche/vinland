@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Corrigé
+- Chromecast : les titres téléchargés sur le téléphone passent maintenant
+  sur la Chromecast (lus depuis le serveur). Avant, le blind test, qui
+  pioche surtout dans les titres likés, n'arrivait pas à jouer l'extrait
+  sur la télé.
+
 ## [2.1.0] - 2026-10-14
 
 Paroles synchronisées, playlists intelligentes, bilan musical, blind test,

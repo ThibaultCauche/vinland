@@ -16,6 +16,10 @@ class PlayerQueueItem {
   final String? album;
   final Uri? artUri;
 
+  /// Adresse sur le serveur d'un titre lu depuis un fichier telecharge :
+  /// la Chromecast ne voit pas les fichiers du telephone et lit celle-ci.
+  final String? streamUrl;
+
   const PlayerQueueItem({
     required this.path,
     required this.isRemote,
@@ -23,6 +27,7 @@ class PlayerQueueItem {
     this.artist,
     this.album,
     this.artUri,
+    this.streamUrl,
   });
 }
 

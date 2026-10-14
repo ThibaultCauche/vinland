@@ -249,6 +249,7 @@ class VinlandAudioHandler extends BaseAudioHandler
         artist: item.artist,
         album: item.album,
         artUri: item.artUri,
+        streamUrl: item.extras?['streamUrl'] as String?,
       );
 
   // --- Sortie (appareil ou Chromecast) ------------------------------------

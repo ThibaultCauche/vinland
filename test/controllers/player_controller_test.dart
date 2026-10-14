@@ -277,6 +277,24 @@ void main() {
       await player.playTrack(a);
       expect(player.currentTrack, a);
     });
+
+    test(
+        'un titre telecharge garde son adresse sur le serveur pour la '
+        'Chromecast', () async {
+      final nas = Track(
+        id: 'n',
+        title: 'n',
+        artist: 'Artiste',
+        album: 'Album',
+        duration: const Duration(minutes: 3),
+        filePath: 'https://nas.example/musique/n.mp3',
+      );
+      repo.offline['n'] = '/hors-ligne/n.mp3';
+      await player.playTrack(nas);
+      final item = output.loadedItems.single;
+      expect(item.id, '/hors-ligne/n.mp3');
+      expect(item.extras?['streamUrl'], 'https://nas.example/musique/n.mp3');
+    });
   });
 
   group('file d\'attente', () {

@@ -110,6 +110,28 @@ void main() {
     await engine.disconnect(stopReceiver: false);
   });
 
+  test(
+      'un titre telecharge passe sur la Chromecast par son adresse sur le '
+      'serveur (sinon le blind test coupait la diffusion)', () async {
+    final receiver = FakeCastReceiver();
+    final engine = await CastPlayerEngine.launch(receiver.channel);
+    await engine.setAudioSources(
+      [
+        const PlayerQueueItem(
+          path: '/offline/a.mp3',
+          isRemote: false,
+          streamUrl: 'http://nas:4533/rest/stream?id=a',
+        ),
+      ],
+      initialIndex: 0,
+    );
+    final load = receiver.received.lastWhere((m) => m.type == 'LOAD').json!;
+    expect((load['media'] as Map)['contentId'],
+        'http://nas:4533/rest/stream?id=a');
+    expect(engine.hasSource, isTrue);
+    await engine.disconnect(stopReceiver: false);
+  });
+
   test('seek et volume partent vers la Chromecast', () async {
     final receiver = FakeCastReceiver();
     final engine = await CastPlayerEngine.launch(receiver.channel);

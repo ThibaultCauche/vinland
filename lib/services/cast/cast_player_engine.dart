@@ -275,7 +275,10 @@ class CastPlayerEngine implements PlayerEngine {
   }) async {
     if (_ended) throw StateError('Diffusion terminee');
     final item = items[initialIndex];
-    if (!item.isRemote) {
+    // Titre telecharge : la Chromecast ne voit pas les fichiers du
+    // telephone, elle le lit depuis le serveur.
+    final url = item.isRemote ? item.path : item.streamUrl;
+    if (url == null) {
       throw StateError('Fichier local : la Chromecast ne peut pas le lire');
     }
     _loading = true;
@@ -291,7 +294,7 @@ class CastPlayerEngine implements PlayerEngine {
         'autoplay': false,
         'currentTime': 0,
         'media': {
-          'contentId': item.path,
+          'contentId': url,
           'streamType': 'BUFFERED',
           // Navidrome transcode la lecture en direct en mp3 (voir
           // NavidromeService.getStreamUrl).

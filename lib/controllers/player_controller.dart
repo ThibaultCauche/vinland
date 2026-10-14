@@ -243,7 +243,8 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   }
 
   MediaItem _mediaItemFor(Track track) {
-    final path = _tracks.offlinePath(track.id) ?? track.playbackPath!;
+    final streamPath = track.playbackPath!;
+    final path = _tracks.offlinePath(track.id) ?? streamPath;
     final isRemote = path.startsWith('http');
 
     Uri? artUri;
@@ -260,7 +261,11 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
       album: track.album,
       duration: track.duration,
       artUri: artUri,
-      extras: {'isRemote': isRemote},
+      extras: {
+        'isRemote': isRemote,
+        // Titre telecharge : la Chromecast le lira depuis le serveur.
+        if (!isRemote && streamPath.startsWith('http')) 'streamUrl': streamPath,
+      },
     );
   }
 
