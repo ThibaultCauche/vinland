@@ -65,6 +65,10 @@ class AudioVisualizer private constructor(private val context: Context) :
         val range = Visualizer.getCaptureSizeRange()
         v.setCaptureSize(1024.coerceIn(range[0], range[1]))
         v.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED)
+        // Volume reel (RMS, en millibels) : le mode NORMALIZED gonfle un
+        // piano doux autant qu'une grosse caisse, le RMS dit ce qui est fort.
+        v.setMeasurementMode(Visualizer.MEASUREMENT_MODE_PEAK_RMS)
+        val rms = Visualizer.MeasurementPeakRms()
         val rate = Visualizer.getMaxCaptureRate()
         v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
             override fun onWaveFormDataCapture(
@@ -76,6 +80,14 @@ class AudioVisualizer private constructor(private val context: Context) :
             ) {
                 if (fft == null) return
                 val levels = bands(fft, samplingRate)
+                val loudness = try {
+                    visualizer?.getMeasurementPeakRms(rms)
+                    // -60 dB (ou moins) -> 0, 0 dB (plein volume) -> 1.
+                    ((rms.mRms / 100.0 + 60) / 60).coerceIn(0.0, 1.0)
+                } catch (_: Exception) {
+                    1.0
+                }
+                levels[2] = loudness
                 main.post { publish(sessionId, levels) }
             }
         }, rate, false, true)
@@ -84,8 +96,9 @@ class AudioVisualizer private constructor(private val context: Context) :
     }
 
     /**
-     * [basses 20-150 Hz, mediums 150-2000 Hz], chacun ramene a 0..1 sur une
-     * echelle logarithmique (l'oreille aussi).
+     * [basses 30-120 Hz (grosse caisse), mediums 150-2000 Hz], chacun
+     * ramene a 0..1 sur une echelle logarithmique (l'oreille aussi), puis
+     * une case pour le volume, remplie par l'appelant.
      */
     private fun bands(fft: ByteArray, samplingRateMilliHz: Int): DoubleArray {
         val n = fft.size
@@ -100,7 +113,7 @@ class AudioVisualizer private constructor(private val context: Context) :
             val hz = k * binHz
             if (hz > 2000) break
             val mag = hypot(fft[2 * k].toDouble(), fft[2 * k + 1].toDouble())
-            if (hz in 20.0..150.0) {
+            if (hz in 30.0..120.0) {
                 bass += mag; bassCount++
             } else if (hz > 150) {
                 mid += mag; midCount++
@@ -111,7 +124,7 @@ class AudioVisualizer private constructor(private val context: Context) :
             val avg = sum / count
             return (ln(1 + avg) / ln(1 + 128.0)).coerceIn(0.0, 1.0)
         }
-        return doubleArrayOf(scale(bass, bassCount), scale(mid, midCount))
+        return doubleArrayOf(scale(bass, bassCount), scale(mid, midCount), 1.0)
     }
 
     /**
@@ -139,10 +152,11 @@ class AudioVisualizer private constructor(private val context: Context) :
         // Pendant un fondu les deux platines jouent : on garde la plus forte.
         var bass = 0.0
         var mid = 0.0
+        var loudness = 0.0
         for (l in latest.values) {
-            bass = max(bass, l[0]); mid = max(mid, l[1])
+            bass = max(bass, l[0]); mid = max(mid, l[1]); loudness = max(loudness, l[2])
         }
-        sink?.success(doubleArrayOf(bass, mid))
+        sink?.success(doubleArrayOf(bass, mid, loudness))
     }
 
     private fun release(sessionId: Int) {

@@ -99,6 +99,41 @@ void main() {
       expect(pulse.level, lessThan(loud * 0.6));
     });
 
+    test('pas de vague sur une intro au piano', () {
+      // Notes de piano : graves et mediums montent ensemble, volume reel
+      // faible (-25 dB) meme si Android normalise les bandes.
+      final pulse = BeatPulse();
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final note = i % 8 == 0;
+        final hit = pulse.add(
+          bass: note ? 0.9 : 0.6,
+          mid: note ? 0.95 : 0.6,
+          loudness: 0.58,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, 0);
+      expect(pulse.level, lessThan(0.4));
+    });
+
+    test('une grosse caisse forte lance bien des vagues', () {
+      final pulse = BeatPulse();
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        final hit = pulse.add(
+          bass: kick ? 0.95 : 0.7,
+          mid: 0.6,
+          loudness: 0.88,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, inInclusiveRange(10, 13));
+    });
+
     test('le niveau reste entre 0 et 1', () {
       final pulse = BeatPulse();
       for (var i = 0; i < 200; i++) {

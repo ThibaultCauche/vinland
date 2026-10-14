@@ -110,8 +110,12 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
     final levels = widget.playing ? widget.visualizer.latest : null;
     if (levels != null) {
       _idleLevel = 0;
-      final beat =
-          _beat.add(bass: levels.bass, mid: levels.mid, elapsed: elapsed);
+      final beat = _beat.add(
+        bass: levels.bass,
+        mid: levels.mid,
+        loudness: levels.loudness,
+        elapsed: elapsed,
+      );
       if (beat != null) _rings.spawn(0.35 + 0.65 * beat);
     } else {
       // Sans analyse du son : pas de fausses vagues a rythme fixe (elles

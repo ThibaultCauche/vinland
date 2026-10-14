@@ -474,6 +474,8 @@ class AppState extends ChangeNotifier
   /// Un titre vient de demarrer localement (voir PlayerController).
   void _onTrackStarted(Track track) {
     _syncNowPlayingMirror();
+    // Couleur (et image) des pochettes suivantes preparees d'avance.
+    _theme.prefetchCoverColors(queue.take(2).map((t) => t.coverPath));
     // Voir NavidromeService.scrobble : fait remonter la lecture au NAS pour
     // que la regle de suppression des morceaux peu ecoutes puisse s'appuyer
     // dessus. Ids locaux/hors-Navidrome (assets, imports) n'ont pas

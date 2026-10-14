@@ -39,6 +39,9 @@ class BeatPulse {
   double _bassLin = 0;
   double _linPeak = 1;
   double _riseAverage = 0;
+  double _midLin = 0;
+  double _midLinPeak = 1;
+  double _loudPeak = 0;
   Duration _sinceSample = Duration.zero;
   Duration _sinceBeat = const Duration(days: 1);
 
@@ -54,6 +57,7 @@ class BeatPulse {
   double? add({
     required double bass,
     required double mid,
+    double loudness = 1,
     required Duration elapsed,
   }) {
     final dt = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
@@ -62,6 +66,7 @@ class BeatPulse {
 
     final b = bass.clamp(0.0, 1.0);
     final m = mid.clamp(0.0, 1.0);
+    final loud = loudness.clamp(0.0, 1.0);
     final fresh = bass != _lastBass ||
         mid != _lastMid ||
         _sinceSample >= const Duration(milliseconds: 40);
@@ -81,13 +86,26 @@ class BeatPulse {
       final decay = math.pow(0.84, sampleDt).toDouble();
       _linPeak = math.max(lin, _linPeak * decay);
       _midPeak = math.max(m, _midPeak * decay);
+      // Plus fort volume recent, qui redescend lentement (~moitie en 20 s).
+      _loudPeak = math.max(loud, _loudPeak * math.pow(0.966, sampleDt));
 
-      // Coup = brusque montee de l'energie des basses (pas leur niveau).
+      // Coup = brusque montee de l'energie des basses (pas leur niveau)...
       rise = math.max(0.0, lin - _bassLin);
       _bassLin = lin;
+      final midLin = math.exp(m * _logScale) - 1;
+      final midRise = math.max(0.0, midLin - _midLin);
+      _midLin = midLin;
+      _midLinPeak = math.max(midLin, _midLinPeak * decay);
       isBeat = rise >= _linPeak * minBeatLevel &&
           rise > _riseAverage * beatRatio &&
-          _sinceBeat >= minBeatGap;
+          _sinceBeat >= minBeatGap &&
+          // ... qui monte bien plus que les mediums : une note de piano
+          // monte partout, une grosse caisse surtout dans le grave ...
+          rise / math.max(_linPeak, 1) >
+              1.5 * midRise / math.max(_midLinPeak, 1) &&
+          // ... et seulement quand la musique est vraiment forte (pas sur
+          // une intro au piano, gonflee par la normalisation d'Android).
+          _loudnessGate(loud) > 0.5;
       // Moyenne des montees sur ~1 s.
       final a = 1 - math.pow(0.05, sampleDt).toDouble();
       _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
@@ -97,7 +115,7 @@ class BeatPulse {
     // bouge autant qu'un morceau fort), un peu de mediums.
     final bassNorm = (lin / math.max(_linPeak, 1)).clamp(0.0, 1.0);
     final midNorm = _midPeak <= 0.02 ? 0.0 : (m / _midPeak).clamp(0.0, 1.0);
-    final target = bassNorm * 0.8 + midNorm * 0.2;
+    final target = (bassNorm * 0.8 + midNorm * 0.2) * _loudnessGate(loud);
     // Attaque rapide, relachement doux : le visuel suit le coup sans
     // clignoter.
     final k = target > _level ? 0.6 : 1 - math.pow(0.05, dt).toDouble();
@@ -108,6 +126,14 @@ class BeatPulse {
     return (rise / (_linPeak * 0.5)).clamp(0.0, 1.0);
   }
 
+  /// 0..1 : 0 pour un passage doux (moins de -27 dB, ou 15 dB sous le
+  /// passage le plus fort recent), 1 quand la musique tape.
+  double _loudnessGate(double loud) {
+    final absolute = ((loud - 0.45) / 0.4).clamp(0.0, 1.0);
+    final relative = (1 - (_loudPeak - loud) / 0.25).clamp(0.0, 1.0);
+    return math.min(absolute, relative);
+  }
+
   void reset() {
     _midPeak = 0.05;
     _level = 0;
@@ -116,6 +142,9 @@ class BeatPulse {
     _bassLin = 0;
     _linPeak = 1;
     _riseAverage = 0;
+    _midLin = 0;
+    _midLinPeak = 1;
+    _loudPeak = 0;
     _sinceSample = Duration.zero;
     _sinceBeat = const Duration(days: 1);
   }

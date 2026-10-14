@@ -7,9 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Niveaux instantanes de la musique, 0..1.
 class AudioLevels {
-  const AudioLevels(this.bass, this.mid);
+  const AudioLevels(this.bass, this.mid, [this.loudness = 1]);
   final double bass;
   final double mid;
+
+  /// Volume reel du son (RMS), 0 = silence ou presque, 1 = plein volume.
+  /// Les basses et mediums, eux, sont normalises par Android : un piano
+  /// doux y parait aussi fort qu'une grosse caisse.
+  final double loudness;
 }
 
 /// Niveaux de la musique en cours pour le visuel du lecteur (grille
@@ -136,7 +141,11 @@ class AudioVisualizer with WidgetsBindingObserver {
     if (data is! List || data.length < 2) return;
     _pending.add((
       _clock.elapsed,
-      AudioLevels((data[0] as num).toDouble(), (data[1] as num).toDouble()),
+      AudioLevels(
+        (data[0] as num).toDouble(),
+        (data[1] as num).toDouble(),
+        data.length > 2 ? (data[2] as num).toDouble() : 1,
+      ),
     ));
     // Garde-fou si personne ne lit (visuel cache) : ~2 s de mesures.
     if (_pending.length > 40) _pending.removeAt(0);
