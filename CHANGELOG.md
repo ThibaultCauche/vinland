@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+## [2.2.0] - 2026-10-14
+
+Visuel animé sur Android, boutons dans la barre des tâches Windows,
+écran télé prêt pour la Chromecast. Notes pour les amis :
+[docs/release-notes/v2.2.0.md](docs/release-notes/v2.2.0.md).
+
 ### Ajouté
 - Chromecast : écran télé Vinland à la place du « Default Media Receiver »
   de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
@@ -438,7 +444,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/ThibaultCauche/vinland/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/ThibaultCauche/vinland/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...v2.0.2
