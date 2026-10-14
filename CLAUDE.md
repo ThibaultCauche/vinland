@@ -59,7 +59,8 @@ Android l'exige). Rien d'autre a faire cote distribution.
   `/await` deprecated de `permission_handler_windows`. `windows-2022` evite
   les deux.
 - **`lib/config/*.dart`** (credentials.dart, discord_config.dart,
-  avatar_config.dart, download_worker_config.dart, share_inbox_config.dart)
+  avatar_config.dart, download_worker_config.dart, share_inbox_config.dart,
+  lastfm_config.dart)
   sont gitignores (secrets/
   URLs internes au NAS) et n'existent donc pas dans le checkout CI : le
   workflow les regenere a partir de secrets du repo GitHub avant chaque
@@ -73,7 +74,7 @@ Android l'exige). Rien d'autre a faire cote distribution.
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
   `DISCORD_FEEDBACK_WEBHOOK_URL`, `AVATAR_SERVICE_BASE_URL`,
   `AVATAR_SERVICE_API_KEY`, `DOWNLOAD_WORKER_BASE_URL`,
-  `DOWNLOAD_WORKER_API_KEY`, `MINISIGN_SECRET_KEY`.
+  `DOWNLOAD_WORKER_API_KEY`, `MINISIGN_SECRET_KEY`, `LASTFM_API_KEY`.
 - **Signature des releases (minisign)** : `release.yml` signe `SHA256SUMS`
   avec le secret `MINISIGN_SECRET_KEY` et refuse de publier si la signature
   ne se verifie pas avec `kReleasePublicKey`

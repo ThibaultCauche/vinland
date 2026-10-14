@@ -51,6 +51,18 @@ const moods = [
   ]),
 ];
 
+/// Humeurs tirees des tags Last.fm (voir LastfmService) : libelle affiche,
+/// tag Last.fm (en anglais, comme les utilisateurs de Last.fm les posent).
+const lastfmMoods = [
+  ('Triste', 'sad'),
+  ('Joyeux', 'happy'),
+  ('Mélancolique', 'melancholic'),
+  ('Énervé', 'aggressive'),
+  ('Motivé', 'energetic'),
+  ('Romantique', 'romantic'),
+  ('Planant', 'chillout'),
+];
+
 /// Titres de [library] dont le genre correspond a [mood].
 List<Track> tracksForMood(Mood mood, List<Track> library) => [
       for (final t in library)
