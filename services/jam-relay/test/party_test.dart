@@ -535,4 +535,133 @@ void main() {
       expect(signer.verify('a.b.c', DateTime.utc(2026)), isNull);
     });
   });
+
+  group('blind test', () {
+    Future<void> hostSends(Map<String, dynamic> msg) => hub.handle(host, msg);
+
+    Future<void> startRound({int answer = 2}) => hostSends({
+          'type': 'blindtest_round',
+          'choices': ['A · X', 'B · Y', 'C · Z', 'D · W'],
+          'answer': answer,
+          'durationMs': 20000,
+          'song': {'songId': 's3', 'title': 'Titre 3', 'artist': 'Artiste'},
+        });
+
+    test("le relais annonce qu'il connait le blind test", () {
+      expect(host.last('party_joined')['features'], contains('blindtest'));
+    });
+
+    test("la reponse reste secrete pour les invites jusqu'a la revelation",
+        () async {
+      final lea = await join('Léa');
+      await hostSends({'type': 'blindtest_start', 'rounds': 5});
+      expect(lea.last('blindtest_state')['phase'], 'ready');
+      await startRound();
+      final question = lea.last('blindtest_state');
+      expect(question['phase'], 'question');
+      expect(question['round'], 1);
+      expect(question['choices'], hasLength(4));
+      expect(question.containsKey('answer'), isFalse);
+      expect(question.containsKey('song'), isFalse);
+      expect(question['remainingMs'], 20000);
+      // L'hote, lui, voit la reponse (il passe le titre).
+      expect(host.last('blindtest_state')['answer'], 2);
+
+      await hostSends({'type': 'blindtest_reveal'});
+      final reveal = lea.last('blindtest_state');
+      expect(reveal['phase'], 'reveal');
+      expect(reveal['answer'], 2);
+      expect((reveal['song'] as Map)['title'], 'Titre 3');
+    });
+
+    test('points : bonne reponse rapide > bonne reponse lente > erreur',
+        () async {
+      final lea = await join('Léa');
+      final max = await join('Max');
+      final tom = await join('Tom');
+      await hostSends({'type': 'blindtest_start', 'rounds': 3});
+      await startRound();
+      await hub
+          .handle(lea, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      now = now.add(const Duration(seconds: 15));
+      await hub
+          .handle(max, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      await hub
+          .handle(tom, {'type': 'blindtest_answer', 'round': 1, 'choice': 0});
+      expect(lea.last('blindtest_state')['answered'], 3);
+      expect(lea.last('blindtest_state')['myChoice'], 2);
+      await hostSends({'type': 'blindtest_reveal'});
+
+      expect(lea.last('blindtest_state')['myGained'], 200);
+      expect(max.last('blindtest_state')['myGained'], 125);
+      expect(tom.last('blindtest_state')['myGained'], 0);
+      final scores = lea.last('blindtest_state')['scores'] as List;
+      expect([for (final s in scores) s['name']], ['Léa', 'Max', 'Tom']);
+    });
+
+    test('une seule reponse par manche, et pas apres le chrono', () async {
+      final lea = await join('Léa');
+      final max = await join('Max');
+      await hostSends({'type': 'blindtest_start', 'rounds': 3});
+      await startRound();
+      await hub
+          .handle(lea, {'type': 'blindtest_answer', 'round': 1, 'choice': 1});
+      await hub
+          .handle(lea, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      expect(lea.lastErrorCode, 'duplicate');
+      now = now.add(const Duration(seconds: 25));
+      await hub
+          .handle(max, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      expect(max.lastErrorCode, 'expired');
+    });
+
+    test("l'hote ne joue pas, un invite ne pilote pas", () async {
+      final lea = await join('Léa');
+      await hostSends({'type': 'blindtest_start', 'rounds': 3});
+      await startRound();
+      await hostSends({'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      expect(host.lastErrorCode, 'forbidden');
+      await hub.handle(lea, {'type': 'blindtest_reveal'});
+      expect(lea.lastErrorCode, 'forbidden');
+    });
+
+    test('pas plus de manches que prevu ; fin puis fermeture', () async {
+      final lea = await join('Léa');
+      await hostSends({'type': 'blindtest_start', 'rounds': 1});
+      await startRound();
+      await startRound();
+      expect(host.lastErrorCode, 'invalid');
+      await hub
+          .handle(lea, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      await hostSends({'type': 'blindtest_stop'});
+      final over = lea.last('blindtest_state');
+      expect(over['phase'], 'over');
+      expect((over['scores'] as List).first['points'], greaterThan(100));
+      await hostSends({'type': 'blindtest_close'});
+      expect(lea.last('blindtest_state')['active'], isFalse);
+    });
+
+    test('un invite qui revient retrouve la manche en cours', () async {
+      final lea = await join('Léa');
+      final token = lea.last('party_joined')['token'];
+      await hostSends({'type': 'blindtest_start', 'rounds': 3});
+      await startRound();
+      hub.disconnected(lea);
+      final back = FakeConn();
+      await hub.handle(back, {'type': 'party_join', 'v': 1, 'token': token});
+      expect(back.last('blindtest_state')['phase'], 'question');
+    });
+
+    test('un invite exclu sort du classement', () async {
+      final lea = await join('Léa');
+      final memberId = lea.last('party_joined')['memberId'];
+      await hostSends({'type': 'blindtest_start', 'rounds': 3});
+      await startRound();
+      await hub
+          .handle(lea, {'type': 'blindtest_answer', 'round': 1, 'choice': 2});
+      await hostSends({'type': 'kick', 'memberId': memberId, 'ban': true});
+      await hostSends({'type': 'blindtest_reveal'});
+      expect(host.last('blindtest_state')['scores'], isEmpty);
+    });
+  });
 }
