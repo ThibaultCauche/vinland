@@ -32,6 +32,10 @@ class FakeCastReceiver {
   int mediaSessionId = 0;
   double volume = 0.4;
 
+  /// Etat media renvoye a un GET_STATUS (reprise apres coupure).
+  String playerState = 'PLAYING';
+  num currentTime = 0;
+
   void _onSenderBytes(List<int> bytes) {
     for (final message in _decoder.add(bytes)) {
       received.add(message);
@@ -77,6 +81,25 @@ class FakeCastReceiver {
             'requestId': requestId,
             'status': {'applications': <Object>[]},
           });
+        case 'GET_STATUS' when message.namespace == CastNamespace.receiver:
+          send(CastNamespace.receiver, 'receiver-0', {
+            'type': 'RECEIVER_STATUS',
+            'requestId': requestId,
+            'status': {
+              'applications': [
+                if (!refuseLaunch)
+                  {
+                    'appId': 'CC1AD845',
+                    'transportId': transportId,
+                    'sessionId': sessionId,
+                  },
+              ],
+              'volume': {'level': volume},
+            },
+          });
+        case 'GET_STATUS':
+          mediaStatus(playerState,
+              requestId: requestId, time: currentTime, duration: 200);
         case 'SET_VOLUME':
           volume = ((payload['volume'] as Map)['level'] as num).toDouble();
       }

@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Corrigé
+- Chromecast : si la liaison avec la Chromecast se coupe (Wi-Fi, mise en
+  veille) alors que la télé continue de jouer, l'app s'y reconnecte toute
+  seule. Avant, elle revenait sur le téléphone en pause en laissant la télé
+  jouer sans télécommande, et Play lançait le titre en double.
+
 ## [2.1.0] - 2026-10-14
 
 Paroles synchronisées, playlists intelligentes, bilan musical, blind test,

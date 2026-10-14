@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 
 import '../player_engine.dart';
 import 'cast_channel.dart';
@@ -19,7 +20,7 @@ import 'cast_message.dart';
 class CastPlayerEngine implements PlayerEngine {
   CastPlayerEngine._(this._channel, this._transportId, this._sessionId) {
     _sub = _channel.messages.listen(_onMessage);
-    unawaited(_channel.done.then((_) => _end()));
+    unawaited(_channel.done.then((_) => _end(lostLink: true)));
     _ticker = Timer.periodic(const Duration(milliseconds: 500), (_) => _tick());
   }
 
@@ -43,6 +44,31 @@ class CastPlayerEngine implements PlayerEngine {
     final engine =
         CastPlayerEngine._(channel, transportId, app['sessionId'] as String?);
     engine._readVolume(reply.json);
+    return engine;
+  }
+
+  /// Reprend la main sur le lecteur deja ouvert (session [sessionId]) au
+  /// bout d'une nouvelle [channel], apres une coupure de la liaison : la
+  /// tele, elle, a continue de jouer.
+  static Future<CastPlayerEngine> join(
+      CastChannel channel, String sessionId) async {
+    channel.send(CastNamespace.connection, 'receiver-0', {'type': 'CONNECT'});
+    final reply = await channel
+        .request(CastNamespace.receiver, 'receiver-0', {'type': 'GET_STATUS'});
+    final app = _receiverApp(reply.json);
+    if (app == null || app['sessionId'] != sessionId) {
+      throw StateError('Le lecteur de la Chromecast est ferme');
+    }
+    final transportId = app['transportId'] as String;
+    channel.send(CastNamespace.connection, transportId, {'type': 'CONNECT'});
+    final engine = CastPlayerEngine._(channel, transportId, sessionId);
+    engine._readVolume(reply.json);
+    // Titre, position et lecture en cours : le canal est synchrone, l'etat
+    // est donc lu avant que la requete ne rende la main.
+    await channel
+        .request(CastNamespace.media, transportId, {'type': 'GET_STATUS'});
+    engine._hasSource = engine._mediaSessionId != null;
+    engine._loadedSession = engine._mediaSessionId;
     return engine;
   }
 
@@ -80,6 +106,7 @@ class CastPlayerEngine implements PlayerEngine {
   bool _hasSource = false;
   bool _loading = false;
   bool _ended = false;
+  bool _lostLink = false;
   int? _finishedSession;
 
   /// Session media du titre charge en dernier : seule sa fin fait avancer
@@ -99,6 +126,12 @@ class CastPlayerEngine implements PlayerEngine {
   Stream<void> get ended => _endedCtrl.stream;
   bool get isEnded => _ended;
 
+  /// La fin vient de la liaison (Wi-Fi, canal ferme par la Chromecast), pas
+  /// du lecteur : il tourne peut-etre encore et peut etre rejoint (voir
+  /// [join]).
+  bool get lostLink => _lostLink;
+  String? get sessionId => _sessionId;
+
   /// Volume de la Chromecast (0..1), tel qu'elle le signale.
   double get deviceVolume => _deviceVolume;
   Stream<double> get deviceVolumeStream => _volumeCtrl.stream;
@@ -111,7 +144,7 @@ class CastPlayerEngine implements PlayerEngine {
     if (message.namespace == CastNamespace.connection &&
         message.sourceId == _transportId &&
         payload['type'] == 'CLOSE') {
-      _end();
+      _end(lostLink: true);
       return;
     }
     if (message.namespace == CastNamespace.receiver &&
@@ -209,9 +242,12 @@ class CastPlayerEngine implements PlayerEngine {
     if (++_ticks % 10 == 0) _media({'type': 'GET_STATUS'});
   }
 
-  void _end() {
+  void _end({bool lostLink = false}) {
     if (_ended) return;
     _ended = true;
+    _lostLink = lostLink;
+    debugPrint('Chromecast : fin de session'
+        '${lostLink ? ' (liaison perdue)' : ''}');
     _setPlaying(false);
     _endedCtrl.add(null);
   }

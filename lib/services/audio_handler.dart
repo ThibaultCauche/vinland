@@ -301,6 +301,14 @@ class VinlandAudioHandler extends BaseAudioHandler
     }
   }
 
+  @override
+  void adoptOutput(PlayerEngine engine) {
+    final router = _engine;
+    if (router is! RoutedPlayerEngine) return;
+    router.route(engine);
+    _pushState();
+  }
+
   PlaybackState _transformState() {
     return PlaybackState(
       controls: [

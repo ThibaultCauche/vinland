@@ -147,4 +147,8 @@ abstract class OutputSwitch {
   /// Passe la lecture sur [target] en reprenant le titre en cours a la meme
   /// position ; il ne repart en lecture que si [resume] et s'il jouait.
   Future<void> switchOutput(PlayerEngine target, {bool resume = true});
+
+  /// Fait de [engine] la sortie active sans rien recharger : il joue deja le
+  /// titre en cours (reprise de la meme Chromecast apres une coupure).
+  void adoptOutput(PlayerEngine engine);
 }

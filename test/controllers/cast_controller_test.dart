@@ -44,6 +44,12 @@ class _FakeOutput implements OutputSwitch {
       throw StateError('titre refuse');
     }
   }
+
+  @override
+  void adoptOutput(PlayerEngine engine) {
+    activeEngine = engine;
+    log.add('reprise');
+  }
 }
 
 const _salon = CastDevice(id: 'Chromecast-1', name: 'Salon', host: '10.0.0.5');
@@ -53,18 +59,25 @@ void main() {
   late _FakeOutput output;
   late List<FakeCastReceiver> receivers;
   late CastController cast;
+  // Le lecteur a ete ferme sur la tele (une reprise le trouve ferme).
+  var appClosed = false;
 
   setUp(() {
+    appClosed = false;
     scanner = _FakeScanner();
     output = _FakeOutput(FakePlayerEngine());
     receivers = [];
     cast = CastController(
       output: output,
       scanner: scanner,
-      connector: (device) async {
-        final receiver = FakeCastReceiver();
+      connector: (device, {sessionId}) async {
+        final receiver = FakeCastReceiver(refuseLaunch: appClosed)
+          ..mediaSessionId = 7
+          ..currentTime = 42;
         receivers.add(receiver);
-        return CastPlayerEngine.launch(receiver.channel);
+        return sessionId == null
+            ? CastPlayerEngine.launch(receiver.channel)
+            : CastPlayerEngine.join(receiver.channel, sessionId);
       },
     );
   });
@@ -108,7 +121,7 @@ void main() {
     final failing = CastController(
       output: output,
       scanner: scanner,
-      connector: (_) async => throw const SocketLikeError(),
+      connector: (_, {sessionId}) async => throw const SocketLikeError(),
     );
     expect(await failing.connect(_salon), isFalse);
     expect(output.log, isEmpty);
@@ -118,11 +131,29 @@ void main() {
 
   test('la tele qui coupe ramene la lecture sur l\'appareil', () async {
     await cast.connect(_salon);
+    appClosed = true;
     receivers.single.closeApp();
     await Future<void>.delayed(const Duration(milliseconds: 10));
     expect(cast.isCasting, isFalse);
     expect(output.log, ['cast', 'local (pause)']);
     expect(cast.message, contains('arrêtée'));
+  });
+
+  test('une liaison coupee reprend la meme session sans quitter la tele',
+      () async {
+    await cast.connect(_salon);
+    await receivers.single.disconnectSocket();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(cast.isCasting, isTrue);
+    expect(cast.message, isNull);
+    // Rien de relance sur le telephone : la tele joue toujours.
+    expect(output.log, ['cast', 'reprise']);
+    expect(receivers, hasLength(2));
+    expect(receivers.last.types, isNot(contains('LAUNCH')));
+    final engine = output.activeEngine as CastPlayerEngine;
+    expect(engine.playing, isTrue);
+    expect(engine.hasSource, isTrue);
+    expect(engine.position, greaterThanOrEqualTo(const Duration(seconds: 42)));
   });
 
   test('le volume part vers la Chromecast', () async {

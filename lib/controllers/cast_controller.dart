@@ -7,13 +7,18 @@ import '../services/cast/cast_discovery.dart';
 import '../services/cast/cast_player_engine.dart';
 import '../services/routed_player_engine.dart';
 
-/// Ouvre la lecture sur une Chromecast ; remplace par un faux en test.
-typedef CastConnector = Future<CastPlayerEngine> Function(CastDevice device);
+/// Ouvre la lecture sur une Chromecast, ou rejoint la session [sessionId]
+/// deja ouverte ; remplace par un faux en test.
+typedef CastConnector = Future<CastPlayerEngine> Function(CastDevice device,
+    {String? sessionId});
 
-Future<CastPlayerEngine> _connect(CastDevice device) async {
+Future<CastPlayerEngine> _connect(CastDevice device,
+    {String? sessionId}) async {
   final channel = await CastChannel.connect(device.host, device.port);
   try {
-    return await CastPlayerEngine.launch(channel);
+    return sessionId == null
+        ? await CastPlayerEngine.launch(channel)
+        : await CastPlayerEngine.join(channel, sessionId);
   } catch (_) {
     await channel.close();
     rethrow;
@@ -164,6 +169,35 @@ class CastController extends ChangeNotifier {
 
   Future<void> _onEnded(CastPlayerEngine engine) async {
     if (!identical(engine, _engine)) return;
+    // Liaison coupee mais la tele continue de jouer : on reprend la main
+    // dessus. Revenir sur l'appareil la laisserait jouer sans telecommande
+    // (et Play relancerait le titre en double sur le telephone).
+    final device = _device;
+    final sessionId = engine.sessionId;
+    if (engine.lostLink && device != null && sessionId != null) {
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        try {
+          final rejoined = await _connector(device, sessionId: sessionId);
+          if (!identical(engine, _engine)) {
+            // Deconnecte entre-temps par l'utilisateur.
+            await _release(rejoined, stopReceiver: false);
+            return;
+          }
+          _attach(rejoined);
+          _output.adoptOutput(rejoined);
+          await _release(engine, stopReceiver: false);
+          _notify();
+          return;
+        } on StateError {
+          // Notre lecteur est ferme sur la tele : rien a reprendre.
+          break;
+        } catch (e) {
+          debugPrint('Reprise Chromecast impossible ($attempt/3): $e');
+          if (!identical(engine, _engine)) return;
+          await Future<void>.delayed(Duration(seconds: attempt));
+        }
+      }
+    }
     _message = 'La diffusion sur ${_device?.name ?? 'la Chromecast'} '
         's\'est arrêtée.';
     await _backToLocal(resume: false);
