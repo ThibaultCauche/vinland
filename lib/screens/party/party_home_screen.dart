@@ -69,7 +69,8 @@ class _PartyHomeScreenState extends State<PartyHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final seat = _seat;
-    return Scaffold(
+    return PartyBackground(
+        child: Scaffold(
       backgroundColor: partyBackground,
       appBar: partyAppBar('Mode soirée'),
       body: ListView(
@@ -126,7 +127,7 @@ class _PartyHomeScreenState extends State<PartyHomeScreen> {
           ],
         ],
       ),
-    );
+    ));
   }
 }
 

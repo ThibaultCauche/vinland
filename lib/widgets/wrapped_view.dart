@@ -143,7 +143,7 @@ class _WrappedViewState extends State<WrappedView> {
       ),
       if (stats.topArtists.isNotEmpty)
         _Card(
-          colors: const [Color(0xFF8E2DE2), Color(0xFF4A00E0)],
+          colors: _cardColors,
           child: _ranking(
             heading: 'Ton artiste n°1',
             highlight: stats.topArtists.first.name,
@@ -152,7 +152,7 @@ class _WrappedViewState extends State<WrappedView> {
         ),
       if (stats.topTracks.isNotEmpty)
         _Card(
-          colors: const [Color(0xFFFF512F), Color(0xFFB0244B)],
+          colors: _cardColors,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -170,7 +170,7 @@ class _WrappedViewState extends State<WrappedView> {
         ),
       if (stats.topAlbums.isNotEmpty)
         _Card(
-          colors: const [Color(0xFF0F2027), Color(0xFF2C5364)],
+          colors: _cardColors,
           child: _ranking(
             heading: 'Tes albums',
             items: stats.topAlbums,
@@ -178,7 +178,7 @@ class _WrappedViewState extends State<WrappedView> {
         ),
       if (stats.topGenres.isNotEmpty)
         _Card(
-          colors: const [Color(0xFFF7971E), Color(0xFFB8620B)],
+          colors: _cardColors,
           child: _ranking(
             heading: 'Ton genre',
             highlight: stats.topGenres.first.name,
@@ -187,7 +187,7 @@ class _WrappedViewState extends State<WrappedView> {
         ),
       if (stats.busiestMonth != null || stats.firstPlay != null)
         _Card(
-          colors: const [Color(0xFF283C86), Color(0xFF45A247)],
+          colors: _cardColors,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -322,6 +322,10 @@ class _WrappedViewState extends State<WrappedView> {
     return out.toString();
   }
 }
+
+/// Cartes du bilan apres la premiere (en vert Vinland) : le gris des
+/// cartes de l'app, avec une pointe de vert.
+const _cardColors = [Color(0xFF1E3A29), Color(0xFF2A2A2A)];
 
 class _Card extends StatelessWidget {
   const _Card({required this.colors, required this.child});

@@ -65,7 +65,8 @@ class _PartySetupScreenState extends State<PartySetupScreen> {
   @override
   Widget build(BuildContext context) {
     final env = context.read<PartyEnvironment>();
-    return Scaffold(
+    return PartyBackground(
+        child: Scaffold(
       backgroundColor: partyBackground,
       appBar: partyAppBar('Lancer une soirée'),
       body: ListView(
@@ -145,6 +146,6 @@ class _PartySetupScreenState extends State<PartySetupScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

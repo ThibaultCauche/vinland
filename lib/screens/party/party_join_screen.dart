@@ -125,7 +125,8 @@ class _PartyJoinScreenState extends State<PartyJoinScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PartyBackground(
+        child: Scaffold(
       backgroundColor: partyBackground,
       appBar: partyAppBar('Rejoindre une soirée'),
       body: ListView(
@@ -179,6 +180,6 @@ class _PartyJoinScreenState extends State<PartyJoinScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }

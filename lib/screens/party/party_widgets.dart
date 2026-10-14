@@ -6,14 +6,35 @@ import 'package:provider/provider.dart';
 import '../../controllers/party_controller.dart';
 import '../../services/party/party_link.dart';
 import '../../services/party/party_models.dart';
+import '../../providers/app_state.dart';
+import '../../widgets/app_background.dart';
 import 'party_recap.dart';
 
 // Morceaux communs aux ecrans du mode Soiree (hote et invite).
 
-const partyBackground = Color(0xFF121212);
-const partySurface = Color(0xFF1E1E1E);
-const partyAccent = Color(0xFFFFB74D);
+// Memes couleurs que le reste de l'app : le fond choisi dans Parametres >
+// Personnalisation (voir PlatformBackground), les cartes grises et le vert
+// Vinland.
+const partyBackground = Colors.transparent;
+const partySurface = Color(0xFF2A2A2A);
+const partyAccent = Color(0xFF1DB954);
 const partyMuted = TextStyle(color: Colors.white54, fontSize: 13);
+
+/// Fond des ecrans de soiree : celui du reste de l'app (Parametres >
+/// Personnalisation), ou le gris de l'app sans etat charge (tests).
+class PartyBackground extends StatelessWidget {
+  const PartyBackground({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Provider.of<AppState?>(context, listen: false) == null) {
+      return ColoredBox(color: const Color(0xFF121212), child: child);
+    }
+    return PlatformBackground(child: child);
+  }
+}
 
 AppBar partyAppBar(String title,
         {List<Widget>? actions, PreferredSizeWidget? bottom}) =>
@@ -257,7 +278,7 @@ class PartyStatusBanner extends StatelessWidget {
     if (text == null) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
-      color: const Color(0xFF5D4037),
+      color: const Color(0xFF2A2A2A),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Text(text, style: const TextStyle(color: Colors.white)),
     );

@@ -17,7 +17,7 @@ import 'party_widgets.dart';
 typedef AmbianceColors = ({Color background, Color accent});
 
 const AmbianceColors _defaultColors =
-    (background: Color(0xFF1A1A2E), accent: partyAccent);
+    (background: Color(0xFF121212), accent: partyAccent);
 
 /// Extrait les couleurs d'une pochette avec PaletteGenerator (deja utilise
 /// pour la couleur d'ambiance du lecteur, voir ThemeController).

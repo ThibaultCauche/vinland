@@ -22,11 +22,12 @@ class PartyHostScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final party = context.watch<PartyController>();
     if (party.phase == PartyPhase.ended || party.phase == PartyPhase.idle) {
-      return Scaffold(
+      return PartyBackground(
+          child: Scaffold(
         backgroundColor: partyBackground,
         appBar: partyAppBar('Soirée'),
         body: PartyEndedView(party: party),
-      );
+      ));
     }
     final guests = party.queue.members;
     final env = context.read<PartyEnvironment>();
@@ -38,7 +39,8 @@ class PartyHostScreen extends StatelessWidget {
       party: party,
       child: DefaultTabController(
         length: 2,
-        child: Scaffold(
+        child: PartyBackground(
+            child: Scaffold(
           backgroundColor: partyBackground,
           appBar: partyAppBar(
             party.partyName.isEmpty ? 'Soirée' : party.partyName,
@@ -110,7 +112,7 @@ class PartyHostScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

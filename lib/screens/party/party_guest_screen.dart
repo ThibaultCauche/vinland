@@ -18,17 +18,19 @@ class PartyGuestScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final party = context.watch<PartyController>();
     if (party.phase == PartyPhase.ended || party.phase == PartyPhase.idle) {
-      return Scaffold(
+      return PartyBackground(
+          child: Scaffold(
         backgroundColor: partyBackground,
         appBar: partyAppBar('Soirée'),
         body: PartyEndedView(party: party),
-      );
+      ));
     }
     return PartyNoticeListener(
       party: party,
       child: DefaultTabController(
         length: 2,
-        child: Scaffold(
+        child: PartyBackground(
+            child: Scaffold(
           backgroundColor: partyBackground,
           appBar: partyAppBar(
             party.partyName.isEmpty ? 'Soirée' : party.partyName,
@@ -66,7 +68,7 @@ class PartyGuestScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

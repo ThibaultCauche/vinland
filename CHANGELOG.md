@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Modifié
+- Mode Soirée, blind test et bilan musical reprennent le style du reste de
+  l'app : fond choisi dans Personnalisation, cartes grises et vert
+  Vinland à la place de l'orange et des couleurs vives. Les réponses du
+  blind test sont maintenant repérées par une lettre (A, B, C, D).
+
 ## [2.1.0] - 2026-10-14
 
 Paroles synchronisées, playlists intelligentes, bilan musical, blind test,
