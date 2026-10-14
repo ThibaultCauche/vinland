@@ -9,6 +9,13 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Accueil : rangée « Playlists intelligentes » qui se remplissent toutes
+  seules à partir de ta bibliothèque : Ajoutés ce mois-ci, Jamais écoutés,
+  Tes classiques, Likés oubliés, À redécouvrir, et une par décennie
+  (Années 80, Années 2000...). Elles se mettent à jour d'elles-mêmes ;
+  « Ajouter à ma bibliothèque » en fait une vraie playlist.
+
 ## [2.0.2] - 2026-10-14
 
 ### Ajouté
