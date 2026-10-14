@@ -11,6 +11,10 @@ commit.
 
 ## [2.1.0] - 2026-10-14
 
+Paroles synchronisées, playlists intelligentes, bilan musical, blind test,
+Android Auto et Chromecast. Notes pour les amis :
+[docs/release-notes/v2.1.0.md](docs/release-notes/v2.1.0.md).
+
 ### Ajouté
 - Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
   barre de lecture (PC). La ligne en cours est mise en avant et suit la
