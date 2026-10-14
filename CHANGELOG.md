@@ -26,6 +26,12 @@ commit.
   tient maintenant un journal des écoutes de l'appareil pour le bilan par
   année ; avant lui, « Depuis toujours » part des compteurs d'écoute.
 - Récap de soirée : durée, DJ de la soirée et artiste le plus joué.
+- Mode Soirée : blind test (menu de l'hôte > « Blind test »). Un extrait
+  d'un titre de la bibliothèque passe sur l'enceinte, les invités
+  choisissent parmi 4 réponses colorées sur leur téléphone. Plus on répond
+  vite, plus on marque. Classement après chaque manche et podium final,
+  aussi sur l'écran d'ambiance. La file de la soirée attend la fin du jeu.
+  Demande le relais à jour sur le NAS.
 
 ## [2.0.2] - 2026-10-14
 

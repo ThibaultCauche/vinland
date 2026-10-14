@@ -1,6 +1,7 @@
 // Etat d'une soiree et regles de la file (voir docs/soiree-protocole.md,
 // « Regles de la file »). Logique pure, sans reseau : PartyHub s'occupe des
 // connexions et appelle ces methodes.
+import 'blind_test.dart';
 
 /// Infos d'un titre telles que montrees aux invites. Jamais d'URL ni
 /// d'identifiant Navidrome : seulement de quoi afficher et identifier.
@@ -126,6 +127,9 @@ class Party {
   /// Qui a propose le titre en cours : pseudo de l'invite, etiquette donnee
   /// par l'hote pour un titre hors file (« Radio »), ou vide.
   String nowPlayingBy = '';
+
+  /// Blind test en cours ou dont le classement est encore affiche.
+  BlindTest? blindTest;
   late final String hostId;
   int _seq = 0;
   int _ids = 0;
@@ -219,6 +223,7 @@ class Party {
     final member = members[memberId];
     if (member == null || member.isHost) return;
     _items.removeWhere((i) => i.memberId == memberId);
+    blindTest?.forget(memberId);
     if (ban) {
       member.banned = true;
     } else {

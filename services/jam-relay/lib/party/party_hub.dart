@@ -4,6 +4,7 @@
 // horloge et un catalogue factices.
 import 'dart:math';
 
+import 'blind_test.dart';
 import 'catalog.dart';
 import 'party.dart';
 import 'party_token.dart';
@@ -11,6 +12,11 @@ import 'rate_limiter.dart';
 
 /// Version majeure du protocole (champ `v`).
 const partyProtocolVersion = 1;
+
+/// Ajouts au protocole annonces dans `party_joined` : l'app n'affiche une
+/// fonction que si le relais la connait (un relais pas encore mis a jour
+/// ignorerait ses messages sans rien dire).
+const partyFeatures = ['blindtest'];
 
 abstract class PartyConnection {
   void send(Map<String, dynamic> message);
@@ -63,6 +69,12 @@ class PartyHub {
     'veto',
     'kick',
     'now_playing',
+    'blindtest_start',
+    'blindtest_round',
+    'blindtest_reveal',
+    'blindtest_stop',
+    'blindtest_close',
+    'blindtest_answer',
   };
 
   // Sans 0/O ni 1/I/L : se dicte sans ambiguite en soiree.
@@ -126,6 +138,13 @@ class PartyHub {
         return _suggest(conn, msg);
       case 'vote':
         return _vote(conn, msg);
+      case 'blindtest_answer':
+        return _blindAnswer(conn, msg);
+      case 'blindtest_start':
+      case 'blindtest_round':
+      case 'blindtest_reveal':
+      case 'blindtest_stop':
+      case 'blindtest_close':
       case 'veto':
       case 'kick':
       case 'now_playing':
@@ -294,9 +313,13 @@ class PartyHub {
       )),
       'rules': party.rules.toJson(),
       'expiresAt': party.expiresAt.millisecondsSinceEpoch,
+      'features': partyFeatures,
       if (member.isHost) 'code': party.code,
     });
     conn.send(_nowPlayingMessage(party));
+    if (party.blindTest != null) {
+      conn.send(_blindTestMessage(party, _seats[conn]!));
+    }
     _broadcastQueue(party);
   }
 
@@ -489,6 +512,78 @@ class PartyHub {
         conn.send({'type': 'party_code', 'code': party.code});
       case 'party_end':
         _end(party, 'host');
+      case 'blindtest_start':
+        final total = msg['rounds'];
+        party.blindTest = BlindTest(total: total is int ? total : 10);
+        _broadcastBlindTest(party);
+      case 'blindtest_round':
+        final test = party.blindTest;
+        final choices = msg['choices'];
+        final answer = msg['answer'];
+        final duration = msg['durationMs'];
+        final song = msg['song'];
+        if (test == null ||
+            choices is! List ||
+            answer is! int ||
+            !test.startRound(
+              choices: [for (final c in choices) _text(c, 200)],
+              answer: answer,
+              duration:
+                  Duration(milliseconds: duration is int ? duration : 20000),
+              now: _now(),
+              song: song is Map
+                  ? _songFromMessage(song.cast<String, dynamic>(),
+                          _text(song['songId'], 100))
+                      .toJson()
+                  : null,
+            )) {
+          _error(conn, 'invalid', 'manche invalide');
+          return;
+        }
+        _broadcastBlindTest(party);
+      case 'blindtest_reveal':
+        party.blindTest?.reveal();
+        _broadcastBlindTest(party);
+      case 'blindtest_stop':
+        party.blindTest?.finish();
+        _broadcastBlindTest(party);
+      case 'blindtest_close':
+        party.blindTest = null;
+        _broadcast(party, (_) => {'type': 'blindtest_state', 'active': false});
+    }
+  }
+
+  void _blindAnswer(PartyConnection conn, Map<String, dynamic> msg) {
+    final found = _member(conn);
+    if (found == null) return;
+    final (party, member, seat) = found;
+    final test = party.blindTest;
+    if (member.isHost) {
+      _error(conn, 'forbidden', 'l\'hote connait deja la reponse');
+      return;
+    }
+    if (test == null) {
+      _error(conn, 'not_found', 'pas de blind test en cours');
+      return;
+    }
+    if (!seat.vote.tryTake()) {
+      _error(conn, 'rate_limited', 'doucement');
+      return;
+    }
+    final round = msg['round'], choice = msg['choice'];
+    if (round is! int || choice is! int) {
+      _error(conn, 'invalid', 'round et choice attendus');
+      return;
+    }
+    switch (test.answer(member.id, round, choice, _now())) {
+      case BlindAnswerOutcome.accepted:
+        _broadcastBlindTest(party);
+      case BlindAnswerOutcome.already:
+        _error(conn, 'duplicate', 'tu as deja repondu');
+      case BlindAnswerOutcome.closed:
+        _error(conn, 'expired', 'trop tard pour cette manche');
+      case BlindAnswerOutcome.invalid:
+        _error(conn, 'invalid', 'choix inconnu');
     }
   }
 
@@ -530,6 +625,61 @@ class PartyHub {
   }
 
   // --- Diffusion ----------------------------------------------------------
+
+  void _broadcastBlindTest(Party party) {
+    if (party.blindTest == null) return;
+    _broadcast(party, (seat) => _blindTestMessage(party, seat));
+  }
+
+  /// Etat du blind test vu par [seat] : la reponse n'est donnee qu'a l'hote
+  /// avant la revelation.
+  Map<String, dynamic> _blindTestMessage(Party party, _Seat seat) {
+    final test = party.blindTest!;
+    final round = test.round;
+    final isHost = seat.memberId == party.hostId;
+    final shown = round != null && (round.revealed || isHost);
+    final phase = test.over
+        ? 'over'
+        : round == null
+            ? 'ready'
+            : round.revealed
+                ? 'reveal'
+                : 'question';
+    final players = [
+      for (final m in party.members.values)
+        if (!m.isHost && !m.banned) m
+    ];
+    final scores = [
+      for (final m in players)
+        {'memberId': m.id, 'name': m.name, 'points': test.scores[m.id] ?? 0}
+    ]..sort((a, b) => (b['points'] as int).compareTo(a['points'] as int));
+    return {
+      'type': 'blindtest_state',
+      'active': true,
+      'phase': phase,
+      'total': test.total,
+      'scores': scores,
+      'players': players.length,
+      if (round != null) ...{
+        'round': round.number,
+        'choices': round.choices,
+        'durationMs': round.duration.inMilliseconds,
+        'remainingMs': round.revealed
+            ? 0
+            : round.endsAt
+                .difference(_now())
+                .inMilliseconds
+                .clamp(0, round.duration.inMilliseconds),
+        'answered': round.answers.length,
+        if (round.answers[seat.memberId] != null)
+          'myChoice': round.answers[seat.memberId],
+        if (shown) 'answer': round.answer,
+        if (shown && round.song != null) 'song': round.song,
+        if (round.revealed && round.gained[seat.memberId] != null)
+          'myGained': round.gained[seat.memberId],
+      },
+    };
+  }
 
   Map<String, dynamic> _nowPlayingMessage(Party party) => {
         'type': 'now_playing',

@@ -54,6 +54,17 @@ class PartyHostDj {
     sync();
   }
 
+  bool _suspended = false;
+
+  /// Vrai pendant un blind test (voir BlindTestHost) : plus de titre de la
+  /// file place ni annonce, sinon les telephones afficheraient la reponse.
+  bool get suspended => _suspended;
+  set suspended(bool value) {
+    if (value == _suspended) return;
+    _suspended = value;
+    sync();
+  }
+
   String? _upNextSongId;
   bool _upNextIsRadio = false;
   bool _starting = false;
@@ -72,7 +83,7 @@ class PartyHostDj {
   /// Appele a chaque changement de la soiree (voir AppState) et a chaque
   /// titre qui demarre.
   void sync() {
-    if (!party.isHost || !party.isInParty) {
+    if (!party.isHost || !party.isInParty || _suspended) {
       _clearUpNext();
       return;
     }
@@ -158,7 +169,7 @@ class PartyHostDj {
 
   /// Un titre vient de demarrer chez l'hote (voir AppState._onTrackStarted).
   void onTrackStarted(PartySong song) {
-    if (!party.isHost || !party.isInParty) return;
+    if (!party.isHost || !party.isInParty || _suspended) return;
     _lastStarted = song;
     if (song.songId == _upNextSongId) {
       _upNextSongId = null;

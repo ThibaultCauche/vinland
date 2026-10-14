@@ -39,6 +39,7 @@ import '../services/matching_service.dart';
 import '../services/party/party_link.dart';
 import '../services/party/party_models.dart';
 import '../services/party/party_socket.dart';
+import '../controllers/blind_test_host.dart';
 import '../controllers/party_environment.dart';
 import '../services/bluetooth_trusted_devices_service.dart';
 import '../services/avatar_service.dart';
@@ -116,6 +117,15 @@ class AppState extends ChangeNotifier
     isOffline: areTracksOffline,
     downloadOffline: (tracks, onProgress) =>
         downloadTracksOffline(tracks, onProgress: onProgress),
+    blindTest: blindTestHost,
+  );
+
+  /// Blind test de la soiree, joue sur le lecteur de l'hote.
+  late final BlindTestHost blindTestHost = BlindTestHost(
+    relay: party,
+    playback: _PlayerBlindTestPlayback(_player),
+    library: () => allTracks,
+    setDjSuspended: (suspended) => _partyDj.suspended = suspended,
   );
   bool get isPersonalSyncParticipant => _jamCtl.isPersonalSyncParticipant;
   bool get isPersonalSyncHost => _jamCtl.isPersonalSyncHost;
@@ -1389,5 +1399,18 @@ class AppState extends ChangeNotifier
   Future<void> clearAllLikes() async {
     await _music.clearAllLikes();
     _notify();
+  }
+}
+
+/// Extrait de blind test sur le vrai lecteur : le titre, puis un saut au
+/// moment choisi (le refrain plutot que l'intro).
+class _PlayerBlindTestPlayback implements BlindTestPlayback {
+  _PlayerBlindTestPlayback(this._player);
+  final PlayerController _player;
+
+  @override
+  Future<void> playExtract(Track track, Duration from) async {
+    await _player.playTrack(track);
+    if (from > Duration.zero) _player.seek(from);
   }
 }

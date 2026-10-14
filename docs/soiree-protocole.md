@@ -121,6 +121,12 @@ celui-ci répond `party_error` avec le code `version`.
 | `party_rotate_code` | hôte | rien |
 | `party_end` | hôte | rien |
 | `party_leave` | membre | rien (l'invité garde le droit de revenir avec son jeton) |
+| `blindtest_start` | hôte | `rounds` (1 à 50) |
+| `blindtest_round` | hôte | `choices` (2 à 6 textes), `answer` (index, secret), `durationMs` (5 000 à 60 000), `song` (titre à dévoiler) |
+| `blindtest_reveal` | hôte | rien |
+| `blindtest_stop` | hôte | rien (classement final) |
+| `blindtest_close` | hôte | rien (retour à la soirée) |
+| `blindtest_answer` | invité | `round`, `choice` |
 
 ### Relais → client
 
@@ -135,6 +141,7 @@ celui-ci répond `party_error` avec le code `version`.
 | `kicked` | le membre exclu | `banned` |
 | `party_ended` | tous | `reason` (`host` ou `expired`) |
 | `party_error` | l'émetteur | `code`, `message`, `requestId?` |
+| `blindtest_state` | tous, à chaque changement | `active` ; si vrai : `phase` (`ready`, `question`, `reveal`, `over`), `round`, `total`, `choices`, `durationMs`, `remainingMs`, `answered`, `players`, `scores` [{`memberId`, `name`, `points`}], `myChoice?`, `myGained?` (à la révélation), `answer` et `song` (à la révélation, toujours pour l'hôte) |
 
 Codes d'erreur : `version`, `unauthorized` (identifiants refusés),
 `bad_code`, `bad_token`, `expired`, `banned`, `full`, `forbidden` (action
@@ -158,6 +165,24 @@ relais → (à tous) {"type":"queue_state","items":[{"id":"i1","by":"Léa", …}
 hôte   → {"type":"now_playing","itemId":"i1"}
 relais → (à tous) {"type":"now_playing","song":{"songId":"s42", …}}
 ```
+
+## Blind test
+
+Annoncé par `features: ["blindtest"]` dans `party_joined` : l'app ne
+propose le jeu qu'à un relais qui le connaît.
+
+- L'hôte choisit les titres dans sa bibliothèque et joue l'extrait sur son
+  enceinte ; il envoie au relais les choix et l'index de la bonne réponse.
+  Le relais **ne donne la réponse aux invités qu'à la révélation**.
+- Pendant le jeu, l'hôte n'annonce plus le titre en cours (`now_playing`)
+  et la file de la soirée attend : le titre affiché donnerait la réponse.
+- Une réponse par invité et par manche, acceptée jusqu'à la fin du chrono
+  (plus 0,8 s de marge réseau). L'hôte ne joue pas.
+- Points : 0 pour une erreur ; pour une bonne réponse, 100 plus jusqu'à 100
+  selon le temps restant (réponse immédiate = 200).
+- Le chrono est envoyé en temps restant (`remainingMs`), pas en heure : les
+  horloges des téléphones diffèrent.
+- Un invité exclu sort du classement.
 
 ## Durée de vie
 

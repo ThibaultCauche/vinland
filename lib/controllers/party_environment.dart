@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../models/track.dart';
+import 'blind_test_host.dart';
 import '../services/party/party_models.dart';
 
 /// Une playlist proposee pour le pack hors-ligne de la soiree.
@@ -24,6 +25,7 @@ class PartyEnvironment {
     this.packPlaylists,
     this.isOffline,
     this.downloadOffline,
+    this.blindTest,
   });
 
   /// Adresse du relais deduite du serveur Navidrome, null sans serveur.
@@ -57,4 +59,7 @@ class PartyEnvironment {
   final Future<void> Function(
           List<Track> tracks, void Function(double progress) onProgress)?
       downloadOffline;
+
+  /// Hote : blind test joue sur son lecteur avec sa bibliotheque.
+  final BlindTestHost? blindTest;
 }
