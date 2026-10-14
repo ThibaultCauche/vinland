@@ -254,6 +254,109 @@ String partyRecapComment(List<PartyPlayed> played) {
   return parts.isEmpty ? '' : 'Proposé par : ${parts.join(', ')}';
 }
 
+// --- Blind test --------------------------------------------------------------
+
+enum BlindTestPhase {
+  /// Lance, premiere manche pas encore partie.
+  ready,
+
+  /// Extrait en cours : les invites repondent.
+  question,
+
+  /// Reponse devoilee, points de la manche donnes.
+  reveal,
+
+  /// Termine : classement final.
+  over,
+}
+
+class BlindTestScore {
+  final String memberId;
+  final String name;
+  final int points;
+
+  const BlindTestScore(
+      {required this.memberId, required this.name, required this.points});
+
+  factory BlindTestScore.fromJson(Map<String, dynamic> json) => BlindTestScore(
+        memberId: _str(json['memberId']),
+        name: _str(json['name'], '?'),
+        points: _int(json['points']),
+      );
+}
+
+/// Etat du blind test tel que le relais l'envoie (`blindtest_state`), vu
+/// par cet appareil : la reponse n'est connue des invites qu'a la
+/// revelation.
+class BlindTestState {
+  final BlindTestPhase phase;
+  final int round;
+  final int total;
+  final List<String> choices;
+  final Duration duration;
+
+  /// Fin du chrono, calculee a la reception (le relais envoie le temps
+  /// restant, pas une heure : les horloges des telephones different).
+  final DateTime? endsAt;
+  final int answered;
+  final int players;
+  final int? myChoice;
+
+  /// Index de la bonne reponse : a la revelation, ou toujours pour l'hote.
+  final int? answer;
+  final PartySong? song;
+  final int? myGained;
+  final List<BlindTestScore> scores;
+
+  const BlindTestState({
+    required this.phase,
+    this.round = 0,
+    this.total = 0,
+    this.choices = const [],
+    this.duration = Duration.zero,
+    this.endsAt,
+    this.answered = 0,
+    this.players = 0,
+    this.myChoice,
+    this.answer,
+    this.song,
+    this.myGained,
+    this.scores = const [],
+  });
+
+  /// Null pour `active: false` (blind test ferme par l'hote).
+  static BlindTestState? fromJson(Map<String, dynamic> json, DateTime now) {
+    if (json['active'] != true) return null;
+    final phase = BlindTestPhase.values.firstWhere(
+        (p) => p.name == json['phase'],
+        orElse: () => BlindTestPhase.ready);
+    final remaining = _int(json['remainingMs']);
+    final rawChoices = json['choices'];
+    final song = json['song'];
+    return BlindTestState(
+      phase: phase,
+      round: _int(json['round']),
+      total: _int(json['total']),
+      choices:
+          rawChoices is List ? [for (final c in rawChoices) _str(c)] : const [],
+      duration: Duration(milliseconds: _int(json['durationMs'])),
+      endsAt: phase == BlindTestPhase.question
+          ? now.add(Duration(milliseconds: remaining))
+          : null,
+      answered: _int(json['answered']),
+      players: _int(json['players']),
+      myChoice: json['myChoice'] is int ? json['myChoice'] as int : null,
+      answer: json['answer'] is int ? json['answer'] as int : null,
+      song:
+          song is Map ? PartySong.fromJson(song.cast<String, dynamic>()) : null,
+      myGained: json['myGained'] is int ? json['myGained'] as int : null,
+      scores: _maps(json['scores']).map(BlindTestScore.fromJson).toList(),
+    );
+  }
+
+  bool get isLastRound => round >= total;
+}
+
 /// Le bilan de la soiree, en quelques lignes : combien de temps elle a
 /// dure, le DJ de la soiree (l'invite qui a fait passer le plus de titres),
 /// l'artiste le plus joue. Rien a dire pour une soiree vide.

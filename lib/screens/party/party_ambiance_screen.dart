@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../controllers/party_controller.dart';
 import '../../services/party/party_link.dart';
+import 'blind_test_view.dart';
 import 'party_widgets.dart';
 
 /// Deux couleurs tirees d'une pochette (fond et accent).
@@ -161,9 +162,16 @@ class _PartyAmbianceScreenState extends State<PartyAmbianceScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: LayoutBuilder(
-                      builder: (context, box) => box.maxWidth > box.maxHeight
-                          ? _wide(party, box, invite)
-                          : _tall(party, box, invite),
+                      builder: (context, box) => party.blindTest != null
+                          ? SingleChildScrollView(
+                              child: BlindTestAmbiance(
+                                state: party.blindTest!,
+                                scale: (box.maxHeight / 700).clamp(0.6, 2.0),
+                              ),
+                            )
+                          : box.maxWidth > box.maxHeight
+                              ? _wide(party, box, invite)
+                              : _tall(party, box, invite),
                     ),
                   ),
                 ),

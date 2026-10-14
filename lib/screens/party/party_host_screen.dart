@@ -5,6 +5,7 @@ import '../../controllers/party_controller.dart';
 import '../../controllers/party_environment.dart';
 import '../../services/party/party_link.dart';
 import '../../services/party/party_models.dart';
+import 'blind_test_view.dart';
 import 'party_ambiance_screen.dart';
 import 'party_offline_pack_screen.dart';
 import 'party_qr_screen.dart';
@@ -29,6 +30,10 @@ class PartyHostScreen extends StatelessWidget {
     }
     final guests = party.queue.members;
     final env = context.read<PartyEnvironment>();
+    final blindTestHost = env.blindTest;
+    final canBlindTest = party.supportsBlindTest &&
+        blindTestHost != null &&
+        party.blindTest == null;
     return PartyNoticeListener(
       party: party,
       child: DefaultTabController(
@@ -50,6 +55,7 @@ class PartyHostScreen extends StatelessWidget {
               ),
               PopupMenuButton<String>(
                 onSelected: (value) => switch (value) {
+                  'blindtest' => showBlindTestSetup(context, blindTestHost!),
                   'radio' => env.setRadioEnabled
                       ?.call(!(env.radioEnabled?.call() ?? false)),
                   'pack' => Navigator.of(context).push(MaterialPageRoute(
@@ -59,6 +65,9 @@ class PartyHostScreen extends StatelessWidget {
                   _ => null,
                 },
                 itemBuilder: (_) => [
+                  if (canBlindTest)
+                    const PopupMenuItem(
+                        value: 'blindtest', child: Text('Blind test')),
                   if (env.setRadioEnabled != null)
                     CheckedPopupMenuItem(
                       value: 'radio',
@@ -90,12 +99,14 @@ class PartyHostScreen extends StatelessWidget {
               PartyStatusBanner(party: party),
               _CodeBar(party: party, onShowQr: () => _showQr(context, party)),
               Expanded(
-                child: TabBarView(
-                  children: [
-                    _HostQueue(party: party),
-                    _GuestList(party: party, guests: guests),
-                  ],
-                ),
+                child: party.blindTest != null && blindTestHost != null
+                    ? BlindTestHostPanel(party: party, host: blindTestHost)
+                    : TabBarView(
+                        children: [
+                          _HostQueue(party: party),
+                          _GuestList(party: party, guests: guests),
+                        ],
+                      ),
               ),
             ],
           ),
