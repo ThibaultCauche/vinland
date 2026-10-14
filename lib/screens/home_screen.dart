@@ -26,6 +26,7 @@ import 'friend_profile_screen.dart';
 import 'search_screen.dart';
 import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/mood_chips.dart';
+import '../widgets/smart_playlist_shelf.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -130,6 +131,7 @@ class HomeScreen extends StatelessWidget {
                     _buildSectionTitle('Récemment écouté'),
                     _buildRecentlyPlayed(state),
                     const SliverToBoxAdapter(child: MoodChips()),
+                    const SliverToBoxAdapter(child: SmartPlaylistShelf()),
                     _buildSectionTitle('Écoutés cette semaine'),
                     _buildWeeklyTracks(state, weeklyTracks),
                     _buildSectionTitle('Artistes du moment'),

@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../domain/smart_playlists.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/pinned_item.dart';
@@ -26,6 +27,7 @@ class DesktopHomeView extends StatefulWidget {
   final ValueChanged<String> onOpenArtist;
   final VoidCallback onOpenLikedSongs;
   final ValueChanged<Playlist> onOpenPlaylist;
+  final ValueChanged<SmartPlaylist> onOpenSmartPlaylist;
   final ValueChanged<String> onOpenFriendProfile;
   final void Function(String title, List<DesktopSeeAllItem> items) onSeeAll;
 
@@ -36,6 +38,7 @@ class DesktopHomeView extends StatefulWidget {
     required this.onOpenArtist,
     required this.onOpenLikedSongs,
     required this.onOpenPlaylist,
+    required this.onOpenSmartPlaylist,
     required this.onOpenFriendProfile,
     required this.onSeeAll,
   });
@@ -142,6 +145,7 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
               const SizedBox(height: 8),
             ],
             const MoodChips(),
+            _smartPlaylistSection(context),
             _sectionTitle('Écoutés cette semaine',
                 onSeeAll: weeklyTracks.isEmpty
                     ? null
@@ -313,6 +317,65 @@ class _DesktopHomeViewState extends State<DesktopHomeView> {
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  /// « Playlists intelligentes » (voir SmartPlaylist), absente si la
+  /// bibliotheque n'en donne aucune.
+  Widget _smartPlaylistSection(BuildContext context) {
+    return Selector<AppState, List<SmartPlaylist>>(
+      selector: (_, state) => state.smartPlaylists,
+      builder: (context, playlists, _) {
+        if (playlists.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('Playlists intelligentes'),
+            DesktopHorizontalShelf(
+              height: 210,
+              itemCount: playlists.length,
+              itemBuilder: (context, i) {
+                final smart = playlists[i];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: SizedBox(
+                    width: 166,
+                    child: DesktopHoverable(
+                      onTap: () => widget.onOpenSmartPlaylist(smart),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PlaylistCover(
+                              playlist: smart.toPlaylist(),
+                              size: 150,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(smart.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500)),
+                            Text(smart.description,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white54, fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
         );
       },
     );

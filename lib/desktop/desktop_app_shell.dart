@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../domain/smart_playlists.dart';
 import '../providers/app_state.dart';
 import '../models/album.dart';
 import '../models/discovered_album.dart';
@@ -200,6 +201,52 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
     ));
   }
 
+  /// Playlist intelligente (voir SmartPlaylist) : meme vue qu'une playlist,
+  /// mais rien a modifier ; « Enregistrer dans ma bibliotheque » en fait une
+  /// vraie playlist, figee a ce moment-la.
+  void _openSmartPlaylist(SmartPlaylist smart) {
+    final state = context.read<AppState>();
+    final tracks = smart.tracks;
+    final playlist = smart.toPlaylist();
+    _push(DesktopCollectionView(
+      key: ValueKey('smart-${smart.id}'),
+      title: smart.name,
+      subtitle:
+          '${smart.description} · ${tracks.length} titre${tracks.length > 1 ? 's' : ''}',
+      coverPath: tracks.isNotEmpty ? tracks.first.coverPath : null,
+      tracks: tracks,
+      onOpenAlbum: _openAlbum,
+      onOpenArtist: _openArtist,
+      moreActions: [
+        DesktopHeroMenuAction(
+          label: 'Enregistrer dans ma bibliothèque',
+          icon: Icons.library_add_outlined,
+          onTap: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            await state.copyFriendPlaylist(playlist);
+            messenger.showSnackBar(SnackBar(
+              content: Text('"${smart.name}" ajoutée à ta bibliothèque'),
+            ));
+          },
+        ),
+        DesktopHeroMenuAction(
+          label: "Ajouter à la file d'attente",
+          icon: Icons.playlist_add,
+          onTap: () {
+            for (final t in tracks) {
+              state.addToQueue(t);
+            }
+          },
+        ),
+        DesktopHeroMenuAction(
+          label: 'Télécharger',
+          icon: Icons.download_outlined,
+          onTap: () => state.downloadTracksOffline(tracks),
+        ),
+      ],
+    ));
+  }
+
   Future<void> _confirmDeletePlaylist(Playlist playlist) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -313,6 +360,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
           onOpenArtist: _openArtist,
           onOpenLikedSongs: _openLikedSongs,
           onOpenPlaylist: _openPlaylist,
+          onOpenSmartPlaylist: _openSmartPlaylist,
           onOpenFriendProfile: _openFriendProfileByUsername,
           onSeeAll: _openSeeAll,
         );
