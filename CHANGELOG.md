@@ -9,6 +9,9 @@ commit.
 
 ## [Non publié]
 
+## [2.0.2] - 2026-10-14
+
+### Ajouté
 - Accueil : rangée « Humeur » sous « Ton mood » (Triste, Joyeux, Mélancolique,
   Énervé, Motivé, Romantique, Planant), tirée des tags Last.fm et ramenée
   aux titres de ta bibliothèque. Visible une fois la clé Last.fm configurée.
@@ -360,7 +363,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/ThibaultCauche/vinland/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/ThibaultCauche/vinland/compare/v1.2.2...v2.0.0
 [1.2.2]: https://github.com/ThibaultCauche/vinland/compare/v1.2.0...v1.2.2
