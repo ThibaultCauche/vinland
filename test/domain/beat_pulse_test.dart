@@ -147,6 +147,26 @@ void main() {
       expect(beats, inInclusiveRange(10, 13));
     });
 
+    test('un pic au demarrage et un volume bas ne bloquent pas les vagues', () {
+      // Mesure sur le telephone, haut-parleur a 3/16 : une mesure a 0,27 au
+      // lancement du titre, puis la musique autour de 0,12.
+      final pulse = BeatPulse();
+      pulse.add(bass: 0.9, mid: 0.6, loudness: 0.27, elapsed: _frame);
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        final hit = pulse.add(
+          bass: kick ? 0.98 : 0.85,
+          mid: 0.62,
+          loudness: kick ? 0.13 : 0.12,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, inInclusiveRange(9, 13));
+      expect(pulse.level, greaterThan(0));
+    });
+
     test('le niveau reste entre 0 et 1', () {
       final pulse = BeatPulse();
       for (var i = 0; i < 200; i++) {

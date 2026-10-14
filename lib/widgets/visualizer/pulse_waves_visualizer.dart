@@ -120,7 +120,7 @@ class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
     } else {
       // Sans analyse du son : pas de fausses vagues a rythme fixe (elles
       // ne collaient jamais a la musique), juste une lente respiration.
-      _beat.add(bass: 0, mid: 0, elapsed: elapsed);
+      _beat.add(bass: 0, mid: 0, loudness: 0, elapsed: elapsed);
       if (widget.playing) {
         _idleLevel = 0.12 + 0.08 * math.sin(now.inMilliseconds / 1400);
       } else {

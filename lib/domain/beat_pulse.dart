@@ -47,6 +47,7 @@ class BeatPulse {
   double _midLin = 0;
   double _midLinPeak = 1;
   double _loudPeak = 0;
+  double _loud = 0;
   Duration _sinceSample = Duration.zero;
   Duration _sinceBeat = const Duration(days: 1);
 
@@ -94,7 +95,11 @@ class BeatPulse {
       // Plus fort volume recent, qui redescend lentement (~moitie en une
       // minute) : l'intro calme d'un titre se compare encore au refrain
       // du precedent.
-      _loudPeak = math.max(loud, _loudPeak * math.pow(0.9885, sampleDt));
+      // Volume lisse sur ~0,15 s : le pic au demarrage d'un titre (mesure
+      // a 0,27 sur le telephone) ne doit pas bloquer les vagues ensuite.
+      _loud += (loud - _loud) *
+          (1 - math.pow(0.001, sampleDt).toDouble()).clamp(0.0, 1.0);
+      _loudPeak = math.max(_loud, _loudPeak * math.pow(0.9885, sampleDt));
 
       // Coup = brusque montee de l'energie des basses (pas leur niveau)...
       rise = math.max(0.0, lin - _bassLin);
@@ -114,8 +119,8 @@ class BeatPulse {
           b >= minBeatBass &&
           // ... et seulement quand la musique est a son plus fort (pas sur
           // une intro au piano, gonflee par la normalisation d'Android).
-          loud >= 0.08 &&
-          _loudPeak - loud <= 0.067;
+          _loud >= 0.02 &&
+          _loudPeak - _loud <= 0.067;
       // Moyenne des montees sur ~1 s.
       final a = 1 - math.pow(0.05, sampleDt).toDouble();
       _riseAverage += (rise - _riseAverage) * a.clamp(0.0, 1.0);
@@ -125,7 +130,7 @@ class BeatPulse {
     // bouge autant qu'un morceau fort), un peu de mediums.
     final bassNorm = (lin / math.max(_linPeak, 1)).clamp(0.0, 1.0);
     final midNorm = _midPeak <= 0.02 ? 0.0 : (m / _midPeak).clamp(0.0, 1.0);
-    final target = (bassNorm * 0.8 + midNorm * 0.2) * _loudnessGate(loud);
+    final target = (bassNorm * 0.8 + midNorm * 0.2) * _loudnessGate(_loud);
     // Attaque rapide, relachement doux : le visuel suit le coup sans
     // clignoter.
     final k = target > _level ? 0.6 : 1 - math.pow(0.05, dt).toDouble();
@@ -141,7 +146,9 @@ class BeatPulse {
   /// sur le telephone de Thibault : -51 dB sur l'intro piano de BREAKSH!T,
   /// -45 dB sur sa batterie, jamais au-dessus de -44 dB.
   double _loudnessGate(double loud) {
-    final absolute = ((loud - 0.06) / 0.06).clamp(0.0, 1.0);
+    // Le volume mesure suit celui du telephone (-53 dB a 3/16 sur le
+    // haut-parleur) : seul le silence eteint tout, le reste est relatif.
+    final absolute = ((loud - 0.02) / 0.04).clamp(0.0, 1.0);
     final relative = (1 - (_loudPeak - loud - 0.03) / 0.12).clamp(0.0, 1.0);
     return math.min(absolute, relative);
   }
@@ -157,6 +164,7 @@ class BeatPulse {
     _midLin = 0;
     _midLinPeak = 1;
     _loudPeak = 0;
+    _loud = 0;
     _sinceSample = Duration.zero;
     _sinceBeat = const Duration(days: 1);
   }
