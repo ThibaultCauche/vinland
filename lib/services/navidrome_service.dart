@@ -469,6 +469,19 @@ class NavidromeService {
     }
   }
 
+  /// Paroles brutes du titre (voir SubsonicClient.lyricsBySongId). Liste
+  /// vide si pas de connexion, pas de paroles, ou serveur trop ancien pour
+  /// l'extension (il repond alors par une erreur).
+  Future<List<Map<String, dynamic>>> lyrics(String trackId) async {
+    if (!isConnected) return const [];
+    try {
+      return await _client.lyricsBySongId(_cleanId(trackId));
+    } on SubsonicException catch (e) {
+      debugPrint('lyrics error: $e');
+      return const [];
+    }
+  }
+
   static String _cleanId(String trackId) =>
       trackId.replaceFirst('navidrome_', '');
 
