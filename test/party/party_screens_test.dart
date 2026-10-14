@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vinland/controllers/blind_test_host.dart';
 import 'package:vinland/controllers/party_controller.dart';
 import 'package:vinland/controllers/party_environment.dart';
 import 'package:vinland/screens/party/party_guest_screen.dart';
@@ -12,9 +13,16 @@ import 'package:vinland/screens/party/party_join_screen.dart';
 import 'package:vinland/screens/party/party_qr_screen.dart';
 import 'package:vinland/screens/party/party_setup_screen.dart';
 import 'package:vinland/services/party/party_link.dart';
+import 'package:vinland/models/track.dart';
 import 'package:vinland/services/party/party_models.dart';
+import 'package:vinland/services/subsonic_refs.dart';
 
 import '../fakes/hub_party_socket.dart';
+
+class _SilentPlayback implements BlindTestPlayback {
+  @override
+  Future<void> playExtract(Track track, Duration from) async {}
+}
 
 const relayUrl = 'wss://nas.test/jam';
 
@@ -240,5 +248,70 @@ void main() {
     await tester.tap(find.text('Fermer'));
     await tester.pumpAndSettle();
     expect(lea.phase, PartyPhase.idle);
+  });
+
+  testWidgets("blind test : l'hote lance, l'invite repond et marque",
+      (tester) async {
+    // Ecran de telephone haut : tous les boutons sont construits.
+    tester.view.physicalSize = const Size(1080, 3000);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final h = await hostParty();
+    final lea = await guestParty('Léa', h.code!);
+    final game = BlindTestHost(
+      relay: h,
+      playback: _SilentPlayback(),
+      library: () => [
+        for (final (i, artist)
+            in ['Muse', 'Air', 'Justice', 'Queen', 'Abba'].indexed)
+          Track(
+            id: 'navidrome_b$i',
+            title: 'Tube $i',
+            artist: artist,
+            album: 'Album',
+            duration: const Duration(minutes: 4),
+            filePath: SubsonicRefs.stream('b$i'),
+          ),
+      ],
+      setDjSuspended: (_) {},
+    );
+    addTearDown(game.dispose);
+    final hostEnv = PartyEnvironment(
+      relayUrl: () => relayUrl,
+      hostAuth: () => goodHostAuth,
+      userName: () => 'thibault',
+      playNow: (item) async {},
+      blindTest: game,
+    );
+    await tester.pumpWidget(app(h, const PartyHostScreen(), e: hostEnv));
+    await flush(tester);
+
+    await tester.tap(find.byType(PopupMenuButton<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Blind test'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('5'));
+    await tester.tap(find.text('Lancer'));
+    await flush(tester);
+    expect(find.text('Première manche'), findsOneWidget);
+    await tester.tap(find.text('Première manche'));
+    await flush(tester);
+    expect(find.text('Révéler'), findsOneWidget);
+    final good = h.blindTest!.answer!;
+
+    // Cote invite.
+    await tester.pumpWidget(app(lea, const PartyGuestScreen()));
+    await flush(tester);
+    expect(find.text('Manche 1 sur 5'), findsOneWidget);
+    await tester.tap(find.byKey(ValueKey('blindtest-choice-$good')));
+    await flush(tester);
+    expect(
+        find.text('Réponse envoyée, attends la révélation…'), findsOneWidget);
+
+    game.reveal();
+    await flush(tester);
+    expect(find.textContaining('Bravo ! +'), findsOneWidget);
+    expect(find.text('Classement'), findsOneWidget);
+    expect(find.text('Léa'), findsOneWidget);
   });
 }

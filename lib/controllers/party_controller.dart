@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../services/party/party_models.dart';
+import 'blind_test_host.dart';
 import 'party_host_dj.dart';
 import '../services/party/party_socket.dart';
 
@@ -28,7 +29,8 @@ enum PartyEndReason { host, expired, kicked, banned, left, lost }
 /// regles (file equitable, limites, doublons) : ici on se contente
 /// d'afficher ce qu'il renvoie, pour que tous les telephones voient la meme
 /// file.
-class PartyController extends ChangeNotifier implements PartyDjParty {
+class PartyController extends ChangeNotifier
+    implements PartyDjParty, BlindTestRelay {
   PartyController({
     required PartySocketConnector connect,
     PartySeatStore? store,
@@ -91,6 +93,17 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
   /// Titres passes depuis le debut de la soiree, dans l'ordre : le recap.
   /// Garde apres la fin de la soiree, jusqu'a [clear].
   List<PartyPlayed> get played => List.unmodifiable(_played);
+
+  /// Ajouts au protocole que le relais connait (`party_joined.features`).
+  Set<String> features = const {};
+
+  /// Le relais sait faire un blind test (un relais pas a jour ignorerait
+  /// les messages sans rien dire).
+  bool get supportsBlindTest => features.contains('blindtest');
+
+  /// Blind test en cours ou dont le classement est affiche, sinon null.
+  @override
+  BlindTestState? blindTest;
 
   List<PartySong> searchResults = const [];
   bool searching = false;
@@ -235,6 +248,8 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
         queue = PartyQueueState.fromJson(msg);
       case 'now_playing':
         _onNowPlaying(msg);
+      case 'blindtest_state':
+        blindTest = BlindTestState.fromJson(msg, _now());
       case 'suggested':
         _notices.add('Titre proposé !');
       case 'search_results':
@@ -296,6 +311,13 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
     memberId = msg['memberId'] as String?;
     partyName = msg['name'] is String ? msg['name'] as String : '';
     rules = PartyRules.fromJson(msg['rules']);
+    final featureList = msg['features'];
+    features = featureList is List
+        ? {
+            for (final f in featureList)
+              if (f is String) f
+          }
+        : const {};
     if (msg['code'] is String) code = msg['code'] as String;
     final expires = msg['expiresAt'];
     expiresAt =
@@ -366,6 +388,7 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
 
   void _finish(PartyEndReason reason) {
     endReason = reason;
+    blindTest = null;
     phase = PartyPhase.ended;
     searching = false;
     unawaited(_store?.save(null));
@@ -412,6 +435,48 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
       _send({'type': 'kick', 'memberId': memberId, 'ban': ban});
 
   void rotateCode() => _send({'type': 'party_rotate_code'});
+
+  // --- Blind test ---------------------------------------------------------
+
+  /// Hote : lance un blind test de [rounds] manches.
+  @override
+  void startBlindTest(int rounds) =>
+      _send({'type': 'blindtest_start', 'rounds': rounds});
+
+  /// Hote : nouvelle manche. [answer] reste secret pour les invites
+  /// jusqu'a [revealBlindTest] ; [song] est montre a la revelation.
+  @override
+  void sendBlindTestRound({
+    required List<String> choices,
+    required int answer,
+    required Duration duration,
+    required PartySong song,
+  }) =>
+      _send({
+        'type': 'blindtest_round',
+        'choices': choices,
+        'answer': answer,
+        'durationMs': duration.inMilliseconds,
+        'song': song.toJson(),
+      });
+
+  @override
+  void revealBlindTest() => _send({'type': 'blindtest_reveal'});
+
+  /// Hote : fin du blind test, le classement reste affiche.
+  @override
+  void stopBlindTest() => _send({'type': 'blindtest_stop'});
+
+  /// Hote : referme le classement, retour a la soiree.
+  @override
+  void closeBlindTest() => _send({'type': 'blindtest_close'});
+
+  /// Invite : repond a la manche en cours.
+  void answerBlindTest(int choice) {
+    final test = blindTest;
+    if (test == null || test.phase != BlindTestPhase.question) return;
+    _send({'type': 'blindtest_answer', 'round': test.round, 'choice': choice});
+  }
 
   /// L'hote annonce ce qui joue : un titre de la file ([itemId], qui la
   /// quitte alors), un titre hors file ([song]), ou rien (arret).
@@ -464,6 +529,8 @@ class PartyController extends ChangeNotifier implements PartyDjParty {
     _played.clear();
     searchResults = const [];
     searching = false;
+    features = const {};
+    blindTest = null;
   }
 
   Future<void> _closeSocket() async {

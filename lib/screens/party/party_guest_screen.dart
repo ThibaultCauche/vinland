@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/party_controller.dart';
 import '../../services/party/party_models.dart';
+import 'blind_test_view.dart';
 import 'party_ambiance_screen.dart';
 import 'party_widgets.dart';
 
@@ -54,12 +55,14 @@ class PartyGuestScreen extends StatelessWidget {
             children: [
               PartyStatusBanner(party: party),
               Expanded(
-                child: TabBarView(
-                  children: [
-                    _GuestQueue(party: party),
-                    _SuggestTab(party: party),
-                  ],
-                ),
+                child: party.blindTest != null
+                    ? BlindTestGuestView(party: party)
+                    : TabBarView(
+                        children: [
+                          _GuestQueue(party: party),
+                          _SuggestTab(party: party),
+                        ],
+                      ),
               ),
             ],
           ),
