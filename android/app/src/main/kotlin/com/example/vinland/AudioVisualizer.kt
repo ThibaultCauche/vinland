@@ -109,12 +109,16 @@ class AudioVisualizer private constructor(private val context: Context) :
             ) {
                 if (fft == null) return
                 val levels = bands(fft, samplingRate)
+                // -60 dB (ou moins) -> 0, 0 dB (plein volume) -> 1. Un
+                // Visualizer tout juste cree rend 0 mB (pas encore de mesure),
+                // pas 0 dB : compter 1 ici bloquait le visuel des minutes
+                // (le pic de volume restait au-dessus de la musique).
                 val loudness = try {
                     visualizer?.getMeasurementPeakRms(rms)
-                    // -60 dB (ou moins) -> 0, 0 dB (plein volume) -> 1.
-                    ((rms.mRms / 100.0 + 60) / 60).coerceIn(0.0, 1.0)
+                    if (rms.mRms >= 0) 0.0
+                    else ((rms.mRms / 100.0 + 60) / 60).coerceIn(0.0, 1.0)
                 } catch (_: Exception) {
-                    1.0
+                    0.0
                 }
                 levels[2] = loudness
                 main.post { publish(sessionId, levels) }
