@@ -20,6 +20,12 @@ commit.
   Tes classiques, Likés oubliés, À redécouvrir, et une par décennie
   (Années 80, Années 2000...). Elles se mettent à jour d'elles-mêmes ;
   « Ajouter à ma bibliothèque » en fait une vraie playlist.
+- Bilan musical (« Ton année en musique ») depuis l'accueil, sur mobile et
+  PC : minutes écoutées, artiste n°1, top titres, albums et genres, mois et
+  jour records, premier titre de l'année, et « Écouter ton top ». L'app
+  tient maintenant un journal des écoutes de l'appareil pour le bilan par
+  année ; avant lui, « Depuis toujours » part des compteurs d'écoute.
+- Récap de soirée : durée, DJ de la soirée et artiste le plus joué.
 
 ## [2.0.2] - 2026-10-14
 

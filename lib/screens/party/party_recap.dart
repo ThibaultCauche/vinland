@@ -65,6 +65,12 @@ class _PartyRecapCardState extends State<PartyRecapCard> {
             const SizedBox(height: 4),
             Text(comment, style: partyMuted),
           ],
+          for (final line in partyRecapHighlights(played)) ...[
+            const SizedBox(height: 4),
+            Text(line,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
+          ],
           const SizedBox(height: 8),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 220),
