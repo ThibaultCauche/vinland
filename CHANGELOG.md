@@ -14,6 +14,11 @@ commit.
   de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
   et les paroles synchronisées. S'active une fois le récepteur enregistré
   chez Google (voir `cast-receiver/README.md`) ; d'ici là, rien ne change.
+- Android : visuel animé dans le mini lecteur et le grand lecteur, une
+  grille d'hexagones qui s'allume par vagues au rythme des basses. Il
+  prend la couleur de la pochette et se coupe dans Paramètres > Lecture.
+  Android demande une fois l'accès au son (« micro ») ; sans lui, le
+  visuel pulse tout seul.
 
 ### Modifié
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du

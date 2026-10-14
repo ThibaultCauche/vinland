@@ -29,6 +29,7 @@ import 'services/deck_player_engine.dart';
 import 'services/just_audio_player_engine.dart';
 import 'services/media_kit_player_engine.dart';
 import 'services/deep_link_service.dart';
+import 'services/audio_visualizer.dart';
 import 'widgets/sharing_consent_dialog.dart';
 import 'widgets/mini_player.dart';
 import 'widgets/bottom_nav.dart';
@@ -140,9 +141,10 @@ Future<void> main() async {
 
     // Deux moteurs : pendant que l'un joue, l'autre precharge le titre
     // suivant (voir DeckPlayerEngine) -- plus de blanc entre deux titres.
+    final audioSessions = <Stream<int?>>[];
     PlayerEngine createEngine() {
       if (useMediaKit) return MediaKitPlayerEngine();
-      return JustAudioPlayerEngine(ja.AudioPlayer(
+      final engine = JustAudioPlayerEngine(ja.AudioPlayer(
         // Buffers plus genereux : absorbe les micro-coupures dues a la
         // latence variable du lien Tailscale vers le NAS au lieu de couper
         // le son.
@@ -155,6 +157,8 @@ Future<void> main() async {
           ),
         ),
       ));
+      audioSessions.add(engine.androidAudioSessionIdStream);
+      return engine;
     }
 
     if (useMediaKit) MediaKit.ensureInitialized();
@@ -198,6 +202,10 @@ Future<void> main() async {
       navidrome: navidrome,
       jamService: WebSocketJamService(navidrome),
       discovery: discovery,
+      // Visuel du lecteur : seul Android sait analyser le son des platines.
+      visualizer: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? AudioVisualizer(sessionIds: audioSessions)
+          : AudioVisualizer.disabled(),
     );
     unawaited(appState.initialize());
     unawaited(DeepLinkService(appState).init());

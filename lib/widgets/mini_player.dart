@@ -5,6 +5,7 @@ import '../models/track.dart';
 import 'player_screen.dart';
 import 'cover_image.dart';
 import 'like_heart_button.dart';
+import 'visualizer/player_visualizer.dart';
 
 class MiniPlayer extends StatelessWidget {
   const MiniPlayer({super.key});
@@ -50,90 +51,107 @@ class MiniPlayer extends StatelessWidget {
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      _MiniCover(coverPath: track.coverPath),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                // Petite grille discrete derriere le mini lecteur ; les
+                // vagues partent de la pochette, a gauche.
+                const Positioned.fill(
+                  child: PlayerVisualizer(
+                    origin: Alignment(-0.88, 0),
+                    cellRadius: 9,
+                    intensity: 0.55,
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 8),
+                          _MiniCover(coverPath: track.coverPath),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (isJamActive || isRemote)
-                                  Container(
-                                    margin: const EdgeInsets.only(right: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1DB954),
-                                      borderRadius: BorderRadius.circular(4),
+                                Row(
+                                  children: [
+                                    if (isJamActive || isRemote)
+                                      Container(
+                                        margin: const EdgeInsets.only(right: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1DB954),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: isRemote
+                                            ? const Icon(Icons.devices,
+                                                color: Colors.black, size: 11)
+                                            : const Text(
+                                                'JAM',
+                                                style: TextStyle(
+                                                  color: Colors.black,
+                                                  fontSize: 9,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                      ),
+                                    Expanded(
+                                      child: Text(
+                                        track.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    child: isRemote
-                                        ? const Icon(Icons.devices,
-                                            color: Colors.black, size: 11)
-                                        : const Text(
-                                            'JAM',
-                                            style: TextStyle(
-                                              color: Colors.black,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
+                                  ],
+                                ),
+                                Text(
+                                  track.artist,
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 11,
                                   ),
-                                Expanded(
-                                  child: Text(
-                                    track.title,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
-                            Text(
-                              track.artist,
-                              style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 11,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          ),
+                          _LikeButton(trackId: track.id),
+                          IconButton(
+                            icon: Icon(
+                              isPlaying ? Icons.pause : Icons.play_arrow,
+                              color: Colors.white,
+                              size: 28,
                             ),
-                          ],
-                        ),
+                            onPressed: () =>
+                                context.read<AppState>().togglePlayPause(),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.skip_next,
+                                color: Colors.white, size: 28),
+                            onPressed: () =>
+                                context.read<AppState>().nextTrack(),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
                       ),
-                      _LikeButton(trackId: track.id),
-                      IconButton(
-                        icon: Icon(
-                          isPlaying ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                        onPressed: () =>
-                            context.read<AppState>().togglePlayPause(),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.skip_next,
-                            color: Colors.white, size: 28),
-                        onPressed: () => context.read<AppState>().nextTrack(),
-                      ),
-                      const SizedBox(width: 4),
-                    ],
-                  ),
+                    ),
+                    RepaintBoundary(
+                        child:
+                            _MiniProgressBar(track: track, isRemote: isRemote)),
+                  ],
                 ),
-                RepaintBoundary(
-                    child: _MiniProgressBar(track: track, isRemote: isRemote)),
               ],
             ),
           ),

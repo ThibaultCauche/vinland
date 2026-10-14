@@ -23,6 +23,7 @@ import '../models/friend_profile.dart';
 import '../models/collab_playlist.dart';
 import '../models/pinned_item.dart';
 import '../navigation/overlay_navigator.dart';
+import '../services/audio_visualizer.dart';
 import '../services/music_service.dart';
 import '../services/audio_handler.dart';
 import 'package:path/path.dart' as p;
@@ -172,6 +173,9 @@ class AppState extends ChangeNotifier
 
   /// Fondu enchaine et normalisation (Parametres > Lecture).
   final PlaybackSettings playbackSettings = PlaybackSettings();
+
+  /// Niveaux de la musique pour le visuel en hexagones du lecteur.
+  final AudioVisualizer visualizer;
 
   /// Decalage audio de cet appareil en Jam (menu Jam).
   final JamSyncSettings jamSyncSettings = JamSyncSettings();
@@ -325,7 +329,9 @@ class AppState extends ChangeNotifier
     required JamService jamService,
     PartyController? party,
     DiscoveryService? discovery,
+    AudioVisualizer? visualizer,
   })  : _audioHandler = audioHandler,
+        visualizer = visualizer ?? AudioVisualizer.disabled(),
         _music = music,
         _navidrome = navidrome {
     _player = PlayerController(
