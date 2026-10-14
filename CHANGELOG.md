@@ -9,6 +9,8 @@ commit.
 
 ## [Non publié]
 
+## [2.1.1] - 2026-10-14
+
 ### Modifié
 - Mode Soirée, blind test et bilan musical reprennent le style du reste de
   l'app : fond choisi dans Personnalisation, cartes grises et vert
@@ -416,7 +418,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.1.0...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/ThibaultCauche/vinland/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/ThibaultCauche/vinland/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/ThibaultCauche/vinland/compare/v2.0.0...v2.0.1
