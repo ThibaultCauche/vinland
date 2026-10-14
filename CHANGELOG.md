@@ -9,13 +9,6 @@ commit.
 
 ## [Non publié]
 
-### Modifié
-
-- Android : le visuel du lecteur devient des vagues de lumière douces, centrées sur la pochette et calées sur le son, qui ne partent que sur les vraies basses (plus sur une intro au piano), et couvre tout le grand lecteur, barre du haut comprise.
-- La couleur d'ambiance suit la couleur principale de la pochette plutôt qu'un petit détail coloré, et celle des titres suivants est préparée d'avance. Elle s'affiche aussi dès le lancement de l'app, avant de relancer la musique.
-- Android : les pochettes des deux morceaux suivants sont chargées d'avance, plus de case vide d'une seconde au changement de morceau.
-- Android : un cercle lumineux autour de la pochette s'allume avec la voix et les mélodies.
-
 ## [2.2.0] - 2026-10-14
 
 Visuel animé sur Android, boutons dans la barre des tâches Windows,
@@ -27,17 +20,25 @@ Visuel animé sur Android, boutons dans la barre des tâches Windows,
   de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
   et les paroles synchronisées. S'active une fois le récepteur enregistré
   chez Google (voir `cast-receiver/README.md`) ; d'ici là, rien ne change.
-- Android : visuel animé dans le mini lecteur et le grand lecteur, une
-  grille d'hexagones qui s'allume par vagues au rythme des basses. Il
-  prend la couleur de la pochette et se coupe dans Paramètres > Lecture.
+- Android : visuel animé dans le mini lecteur et le grand lecteur : des
+  vagues de lumière douces partent de la pochette sur les vraies basses
+  (pas sur une intro au piano), calées sur le son du haut-parleur, et un
+  cercle lumineux autour de la pochette s'allume avec la voix. Il prend
+  la couleur de la pochette, couvre tout le grand lecteur et se coupe
+  dans Paramètres > Lecture.
   Android demande une fois l'accès au son (« micro ») ; sans lui, le
-  visuel pulse tout seul. Réservé à Android : rien sur Windows, même dans
+  visuel respire tout seul. Réservé à Android : rien sur Windows, même dans
   une fenêtre étroite.
 - Windows : boutons précédent, lecture/pause et suivant dans l'aperçu qui
   s'affiche au survol de l'icône Vinland dans la barre des tâches, comme
   Spotify.
 
 ### Modifié
+- La couleur d'ambiance suit la couleur principale de la pochette plutôt
+  qu'un petit détail coloré, s'affiche dès le lancement de l'app et est
+  préparée d'avance pour les morceaux suivants.
+- Android : les pochettes des deux morceaux suivants sont chargées
+  d'avance, plus de case vide d'une seconde au changement de morceau.
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du
   blind test, boutons des fenêtres de confirmation) passent au vert
   Vinland : le vert est maintenant la couleur par défaut de toute l'app.
