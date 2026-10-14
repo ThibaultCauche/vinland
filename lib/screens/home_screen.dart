@@ -26,6 +26,7 @@ import 'friend_profile_screen.dart';
 import 'search_screen.dart';
 import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/mood_chips.dart';
+import '../widgets/smart_playlist_shelf.dart';
 import '../widgets/wrapped_banner.dart';
 import 'wrapped_screen.dart';
 
@@ -132,6 +133,7 @@ class HomeScreen extends StatelessWidget {
                     _buildSectionTitle('Récemment écouté'),
                     _buildRecentlyPlayed(state),
                     const SliverToBoxAdapter(child: MoodChips()),
+                    const SliverToBoxAdapter(child: SmartPlaylistShelf()),
                     SliverToBoxAdapter(
                       child: WrappedBanner(
                         onTap: () => state.pushOverlay(const WrappedScreen()),

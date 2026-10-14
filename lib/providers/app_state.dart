@@ -12,6 +12,7 @@ import '../controllers/playback_settings.dart';
 import '../controllers/player_controller.dart';
 import '../data/track_repository.dart';
 import '../domain/home_shelves.dart';
+import '../domain/smart_playlists.dart';
 import '../domain/listening_stats.dart';
 import '../domain/liked_tracks.dart';
 import '../models/track.dart';
@@ -243,8 +244,15 @@ class AppState extends ChangeNotifier
   /// le melange aleatoire de "Decouverte", cense rester stable sur une
   /// journee) changeaient sans arret pendant tout le chargement au lieu de
   /// rester stables, remplacant ce qui etait deja affiche a l'utilisateur.
-  void _refreshHomeShelves() =>
-      _homeShelves = HomeShelves.compute(allTracks, albums);
+  void _refreshHomeShelves() {
+    _homeShelves = HomeShelves.compute(allTracks, albums);
+    _smartPlaylists = SmartPlaylist.compute(allTracks);
+  }
+
+  /// Playlists intelligentes de l'accueil (voir SmartPlaylist), recalculees
+  /// avec les etageres.
+  List<SmartPlaylist> _smartPlaylists = const [];
+  List<SmartPlaylist> get smartPlaylists => _smartPlaylists;
 
   // Vrai tant que le tout premier chargement (cache local + tentative de
   // connexion Navidrome) n'est pas termine : evite un flash de l'ecran de
