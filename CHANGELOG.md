@@ -10,6 +10,11 @@ commit.
 ## [Non publié]
 
 ### Ajouté
+- Paroles synchronisées : bouton « Paroles » dans le lecteur (mobile) et la
+  barre de lecture (PC). La ligne en cours est mise en avant et suit la
+  musique, un tap sur une ligne y saute. Les paroles viennent de Navidrome
+  (tags du fichier ou `.lrc` à côté), sinon de LRCLIB ; à défaut de
+  minutage, le texte s'affiche simplement.
 - Bilan musical (« Ton année en musique ») depuis l'accueil, sur mobile et
   PC : minutes écoutées, artiste n°1, top titres, albums et genres, mois et
   jour records, premier titre de l'année, et « Écouter ton top ». L'app

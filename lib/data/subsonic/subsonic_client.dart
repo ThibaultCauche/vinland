@@ -323,6 +323,16 @@ class SubsonicClient {
         retry: false);
   }
 
+  /// Paroles d'un titre (extension OpenSubsonic `songLyrics`) : une entree
+  /// par langue, cle `synced`, `offset` (ms) et `line` (`start` en ms,
+  /// `value`). Navidrome les lit dans les tags du fichier ou un `.lrc` a
+  /// cote. Liste vide si le titre n'en a pas.
+  Future<List<Map<String, dynamic>>> lyricsBySongId(String id) async {
+    final data = await get('getLyricsBySongId.view',
+        params: {'id': id}, timeout: const Duration(seconds: 10));
+    return listOf((data['lyricsList'] as Map?)?['structuredLyrics']);
+  }
+
   Future<List<Map<String, dynamic>>> playlists() async {
     final data = await get('getPlaylists.view');
     return listOf((data['playlists'] as Map?)?['playlist']);
