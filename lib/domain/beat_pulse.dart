@@ -69,7 +69,7 @@ class BeatPulse {
   double? add({
     required double bass,
     required double mid,
-    double loudness = 1,
+    double loudness = 0.5,
     required Duration elapsed,
   }) {
     final dt = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
@@ -103,8 +103,13 @@ class BeatPulse {
       // du precedent.
       // Volume lisse sur ~0,15 s : le pic au demarrage d'un titre (mesure
       // a 0,27 sur le telephone) ne doit pas bloquer les vagues ensuite.
-      _loud += (loud - _loud) *
-          (1 - math.pow(0.001, sampleDt).toDouble()).clamp(0.0, 1.0);
+      // Un Visualizer qui vient d'etre cree renvoie une fois 0 dB (aucune
+      // mesure encore) : valeur impossible ici (jamais au-dessus de -44 dB
+      // mesure), ignoree pour ne pas fausser le plus fort recent.
+      if (loud < 0.99) {
+        _loud += (loud - _loud) *
+            (1 - math.pow(0.001, sampleDt).toDouble()).clamp(0.0, 1.0);
+      }
       _loudPeak = math.max(_loud, _loudPeak * math.pow(0.9885, sampleDt));
 
       // Coup = brusque montee de l'energie des basses (pas leur niveau)...

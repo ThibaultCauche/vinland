@@ -10,7 +10,7 @@ List<double?> _play(BeatPulse pulse,
     int beatEvery = 10,
     double kick = 0.8,
     double floor = 0.2,
-    double loudness = 1}) {
+    double loudness = 0.5}) {
   return [
     for (var i = 0; i < frames; i++)
       pulse.add(
@@ -178,6 +178,25 @@ void main() {
       }
       expect(before, lessThan(0.2));
       expect(pulse.midLevel, greaterThan(0.5));
+    });
+
+    test('ignore le faux 0 dB d une analyse qui demarre', () {
+      final pulse = BeatPulse();
+      pulse.add(bass: 0.85, mid: 0.6, loudness: 1, elapsed: _frame);
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        if (pulse.add(
+              bass: kick ? 0.98 : 0.85,
+              mid: 0.6,
+              loudness: 0.12,
+              elapsed: _frame,
+            ) !=
+            null) {
+          beats++;
+        }
+      }
+      expect(beats, greaterThanOrEqualTo(9));
     });
 
     test('le niveau reste entre 0 et 1', () {
