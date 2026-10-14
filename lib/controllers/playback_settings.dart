@@ -31,7 +31,7 @@ class PlaybackSettings extends ChangeNotifier {
   Duration get crossfade => _crossfade;
   ReplayGainMode get replayGainMode => _replayGainMode;
 
-  /// Grille d'hexagones animee derriere le mini lecteur et le grand lecteur.
+  /// Vagues lumineuses animees derriere le mini lecteur et le grand lecteur.
   bool get visualizerEnabled => _visualizerEnabled;
 
   Future<void> load(SharedPreferences prefs) async {

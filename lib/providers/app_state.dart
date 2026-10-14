@@ -174,7 +174,7 @@ class AppState extends ChangeNotifier
   /// Fondu enchaine et normalisation (Parametres > Lecture).
   final PlaybackSettings playbackSettings = PlaybackSettings();
 
-  /// Niveaux de la musique pour le visuel en hexagones du lecteur.
+  /// Niveaux de la musique pour le visuel en vagues du lecteur.
   final AudioVisualizer visualizer;
 
   /// Decalage audio de cet appareil en Jam (menu Jam).

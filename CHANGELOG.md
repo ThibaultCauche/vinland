@@ -9,6 +9,10 @@ commit.
 
 ## [Non publié]
 
+### Modifié
+
+- Android : le visuel du lecteur devient des vagues de lumière douces, à la couleur de la pochette, et couvre tout le grand lecteur, barre du haut comprise.
+
 ## [2.2.0] - 2026-10-14
 
 Visuel animé sur Android, boutons dans la barre des tâches Windows,

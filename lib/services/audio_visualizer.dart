@@ -13,7 +13,7 @@ class AudioLevels {
 }
 
 /// Niveaux de la musique en cours pour le visuel du lecteur (grille
-/// d'hexagones, voir HexPulseVisualizer).
+/// de vagues, voir PulseWavesVisualizer).
 ///
 /// Android seulement : l'analyse est faite par AudioVisualizer.kt, branche
 /// sur les sessions audio des platines just_audio. Ailleurs (Windows,

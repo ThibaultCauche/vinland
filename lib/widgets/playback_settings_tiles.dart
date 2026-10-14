@@ -88,8 +88,7 @@ class PlaybackSettingsTiles extends StatelessWidget {
           ),
           if (visualizer != null) ...[
             SwitchListTile(
-              secondary:
-                  const Icon(Icons.hexagon_outlined, color: Colors.white54),
+              secondary: const Icon(Icons.waves, color: Colors.white54),
               title: const Text('Visuel animé',
                   style: TextStyle(color: Colors.white)),
               subtitle: const Text(

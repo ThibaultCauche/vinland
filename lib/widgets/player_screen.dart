@@ -35,11 +35,13 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
 
         return Scaffold(
           backgroundColor: Colors.transparent,
+          // Le fond et les vagues passent aussi sous la barre du haut.
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
-            backgroundColor: dominantColor != null
-                ? Color.lerp(dominantColor, Colors.black, 0.4)
-                : const Color(0xFF121212),
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent,
             elevation: 0,
+            scrolledUnderElevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.expand_more, color: Colors.white),
               onPressed: () => context.read<AppState>().popOverlay(),
@@ -100,12 +102,11 @@ class PlayerScreen extends StatelessWidget implements SingleInstanceOverlay {
             ),
             child: Stack(
               children: [
-                // Grille d'hexagones derriere tout le lecteur ; les vagues
+                // Vagues lumineuses derriere tout le lecteur ; elles
                 // partent de la pochette.
                 const Positioned.fill(
                   child: PlayerVisualizer(
                     origin: Alignment(0, -0.35),
-                    cellRadius: 18,
                     intensity: 0.8,
                     askPermission: true,
                   ),

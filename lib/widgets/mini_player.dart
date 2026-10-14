@@ -59,7 +59,6 @@ class MiniPlayer extends StatelessWidget {
                 const Positioned.fill(
                   child: PlayerVisualizer(
                     origin: Alignment(-0.88, 0),
-                    cellRadius: 9,
                     intensity: 0.45,
                   ),
                 ),

@@ -7,35 +7,30 @@ import 'package:flutter/scheduler.dart';
 import '../../domain/beat_pulse.dart';
 import '../../services/audio_visualizer.dart';
 
-/// Grille d'hexagones qui s'allume par vagues depuis [origin] au rythme des
-/// basses (mini lecteur et grand lecteur).
+/// Vagues de lumiere douces qui partent de [origin] au rythme des basses,
+/// sur un halo qui respire avec la musique (mini lecteur et grand lecteur).
 ///
-/// Quand l'analyse audio n'est pas disponible (permission refusee, Windows,
-/// lecture sur Chromecast), la grille pulse toute seule, doucement, tant
-/// que la musique joue ; a l'arret elle reste allumee faiblement, sans
-/// animation.
-class HexPulseVisualizer extends StatefulWidget {
-  const HexPulseVisualizer({
+/// Quand l'analyse audio n'est pas disponible (permission refusee,
+/// lecture sur Chromecast), seul le halo respire lentement tant que la
+/// musique joue, sans fausses vagues ; a l'arret tout s'eteint.
+class PulseWavesVisualizer extends StatefulWidget {
+  const PulseWavesVisualizer({
     super.key,
     required this.visualizer,
     required this.playing,
     this.color,
     this.origin = Alignment.center,
-    this.cellRadius = 16,
     this.intensity = 1,
   });
 
   final AudioVisualizer visualizer;
   final bool playing;
 
-  /// Couleur des hexagones ; vert Vinland par defaut.
+  /// Couleur des vagues ; vert Vinland par defaut.
   final Color? color;
 
   /// D'ou partent les vagues.
   final Alignment origin;
-
-  /// Rayon d'un hexagone, en pixels logiques.
-  final double cellRadius;
 
   /// 0..1 : discret derriere le mini lecteur, plein dans le grand lecteur.
   final double intensity;
@@ -44,7 +39,7 @@ class HexPulseVisualizer extends StatefulWidget {
 
   /// Couleur tiree de la pochette, toujours (vert seulement sans pochette) :
   /// sa teinte, eclaircie pour se voir sur le fond sombre. Une pochette
-  /// terne (noir et blanc...) donne des hexagones gris clair.
+  /// terne (noir et blanc...) donne des vagues gris clair.
   static Color colorFromCover(Color? dominant) {
     if (dominant == null) return vinlandGreen;
     final hsl = HSLColor.fromColor(dominant);
@@ -57,10 +52,10 @@ class HexPulseVisualizer extends StatefulWidget {
   }
 
   @override
-  State<HexPulseVisualizer> createState() => _HexPulseVisualizerState();
+  State<PulseWavesVisualizer> createState() => _PulseWavesVisualizerState();
 }
 
-class _HexPulseVisualizerState extends State<HexPulseVisualizer>
+class _PulseWavesVisualizerState extends State<PulseWavesVisualizer>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   final BeatPulse _beat = BeatPulse();
@@ -78,7 +73,7 @@ class _HexPulseVisualizerState extends State<HexPulseVisualizer>
   }
 
   @override
-  void didUpdateWidget(HexPulseVisualizer old) {
+  void didUpdateWidget(PulseWavesVisualizer old) {
     super.didUpdateWidget(old);
     if (old.visualizer != widget.visualizer) {
       old.visualizer.detach();
@@ -141,13 +136,12 @@ class _HexPulseVisualizerState extends State<HexPulseVisualizer>
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: CustomPaint(
-        painter: _HexPainter(
+        painter: _WavesPainter(
           repaint: _frame,
           rings: _rings,
           level: () => math.max(_beat.level, _idleLevel),
-          color: widget.color ?? HexPulseVisualizer.vinlandGreen,
+          color: widget.color ?? PulseWavesVisualizer.vinlandGreen,
           origin: widget.origin,
-          cellRadius: widget.cellRadius,
           intensity: widget.intensity,
         ),
         size: Size.infinite,
@@ -156,14 +150,13 @@ class _HexPulseVisualizerState extends State<HexPulseVisualizer>
   }
 }
 
-class _HexPainter extends CustomPainter {
-  _HexPainter({
+class _WavesPainter extends CustomPainter {
+  _WavesPainter({
     required Listenable repaint,
     required this.rings,
     required this.level,
     required this.color,
     required this.origin,
-    required this.cellRadius,
     required this.intensity,
   }) : super(repaint: repaint);
 
@@ -171,30 +164,14 @@ class _HexPainter extends CustomPainter {
   final double Function() level;
   final Color color;
   final Alignment origin;
-  final double cellRadius;
   final double intensity;
 
-  static final Map<double, Path> _hexCache = {};
-
-  /// Hexagone « pointe en haut » centre sur (0, 0), legerement plus petit
-  /// que sa case pour laisser un joint sombre entre les alveoles.
-  static Path _hex(double r) => _hexCache.putIfAbsent(r, () {
-        final path = Path();
-        final inner = r * 0.88;
-        for (var i = 0; i < 6; i++) {
-          final a = math.pi / 6 + i * math.pi / 3;
-          final p = Offset(inner * math.cos(a), inner * math.sin(a));
-          i == 0 ? path.moveTo(p.dx, p.dy) : path.lineTo(p.dx, p.dy);
-        }
-        return path..close();
-      });
+  /// Epaisseur d'une vague, en part de la distance au bord le plus loin.
+  static const _waveWidth = 0.16;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (size.isEmpty) return;
-    final r = cellRadius;
-    final w = math.sqrt(3) * r;
-    final h = 1.5 * r;
     final center = origin.alongSize(size);
     final maxDist = [
       Offset.zero,
@@ -202,53 +179,56 @@ class _HexPainter extends CustomPainter {
       Offset(0, size.height),
       Offset(size.width, size.height),
     ].map((c) => (c - center).distance).reduce(math.max);
+    final rect = Offset.zero & size;
     final lvl = level();
-    final hex = _hex(r);
+    final transparent = color.withValues(alpha: 0);
 
-    final fill = Paint()..style = PaintingStyle.fill;
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = math.max(0.6, r / 24);
+    // Halo qui respire avec le niveau de la musique.
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = ui.Gradient.radial(
+          center,
+          maxDist * (0.55 + lvl * 0.15),
+          [
+            color.withValues(alpha: (0.10 + lvl * 0.22) * intensity),
+            transparent,
+          ],
+        ),
+    );
 
-    final rows = (size.height / h).ceil() + 1;
-    final cols = (size.width / w).ceil() + 1;
-    for (var row = -1; row < rows; row++) {
-      final y = row * h;
-      final shift = row.isOdd ? w / 2 : 0.0;
-      for (var col = -1; col < cols; col++) {
-        final c = Offset(col * w + shift, y);
-        final d = (c - center).distance / maxDist;
-        // Lueur de fond qui respire avec le niveau, plus forte au centre,
-        // plus les vagues qui passent.
-        final glow = rings.glowAt(d) * 0.7 + lvl * 0.25 * (1 - d);
-        final b = (0.06 + glow).clamp(0.0, 1.0) * intensity;
-        canvas.save();
-        canvas.translate(c.dx, c.dy);
-        fill.color = color.withValues(alpha: b * 0.14);
-        canvas.drawPath(hex, fill);
-        stroke.color = color.withValues(alpha: 0.04 + b * 0.45);
-        canvas.drawPath(hex, stroke);
-        canvas.restore();
-      }
-    }
-
-    // Halo au centre, pour l'effet « lumiere sous la grille » de la video.
-    final halo = Paint()
-      ..shader = ui.Gradient.radial(
-        center,
-        maxDist * 0.6,
-        [
-          color.withValues(alpha: (0.05 + lvl * 0.12) * intensity),
-          color.withValues(alpha: 0),
-        ],
+    // Chaque coup de basse : un anneau de lumiere floue qui s'eloigne et
+    // s'estompe (degrade radial transparent > couleur > transparent).
+    for (final ring in rings.rings) {
+      final t = ring.age / rings.lifetime;
+      final front = t * 1.15;
+      final alpha = ring.strength * (1 - t) * (1 - t) * 0.42 * intensity;
+      if (alpha <= 0.005) continue;
+      final outer = front + _waveWidth;
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            center,
+            maxDist * outer,
+            [
+              transparent,
+              transparent,
+              color.withValues(alpha: alpha),
+              transparent
+            ],
+            [
+              0,
+              (math.max(0, front - _waveWidth) / outer).clamp(0.0, 1.0),
+              (front / outer).clamp(0.0, 1.0),
+              1,
+            ],
+          ),
       );
-    canvas.drawRect(Offset.zero & size, halo);
+    }
   }
 
   @override
-  bool shouldRepaint(_HexPainter old) =>
-      old.color != color ||
-      old.origin != origin ||
-      old.cellRadius != cellRadius ||
-      old.intensity != intensity;
+  bool shouldRepaint(_WavesPainter old) =>
+      old.color != color || old.origin != origin || old.intensity != intensity;
 }
