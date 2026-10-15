@@ -196,6 +196,36 @@ void main() {
       expect(player.currentTrack, c);
     });
 
+    test(
+        'seek pendant le chargement du titre : applique une fois charge, '
+        'le titre ne repart pas du debut', () async {
+      await player.playTrack(a, trackList: album);
+      final slow = Completer<bool>();
+      output.pendingLoads.add(slow);
+      final loading = player.playTrack(c, trackList: album);
+      await pumpEventQueue();
+      player.seek(const Duration(seconds: 90));
+      output.calls.clear();
+      slow.complete(true);
+      await loading;
+      expect(output.calls, contains('seek:${const Duration(seconds: 90)}'));
+    });
+
+    test('seek pendant le chargement d\'un titre remplace ensuite : ignore',
+        () async {
+      await player.playTrack(a, trackList: album);
+      final slow = Completer<bool>();
+      output.pendingLoads.add(slow);
+      final loading = player.playTrack(c, trackList: album);
+      await pumpEventQueue();
+      player.seek(const Duration(seconds: 90));
+      slow.complete(true);
+      output.calls.clear();
+      await player.playTrack(b, trackList: album);
+      await loading;
+      expect(output.calls.where((c) => c.startsWith('seek:')), isEmpty);
+    });
+
     test('apres un redemarrage de l\'app, play relance le dernier titre',
         () async {
       SharedPreferences.setMockInitialValues({'vinland_last_track_id': 'b'});

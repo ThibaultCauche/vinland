@@ -43,6 +43,10 @@ Visuel animé sur Android, boutons dans la barre des tâches Windows,
   blind test, boutons des fenêtres de confirmation) passent au vert
   Vinland : le vert est maintenant la couleur par défaut de toute l'app.
 
+### Corrigé
+- Déplacer le curseur juste après un changement de morceau (pendant son
+  chargement) ne fait plus repartir le morceau du début.
+
 ## [2.1.1] - 2026-10-14
 
 ### Modifié
