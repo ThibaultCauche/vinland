@@ -7,13 +7,18 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Niveaux instantanes de la musique, 0..1.
 class AudioLevels {
-  const AudioLevels(this.bass, this.mid);
+  const AudioLevels(this.bass, this.mid, [this.loudness = 1]);
   final double bass;
   final double mid;
+
+  /// Volume reel du son (RMS), 0 = silence ou presque, 1 = plein volume.
+  /// Les basses et mediums, eux, sont normalises par Android : un piano
+  /// doux y parait aussi fort qu'une grosse caisse.
+  final double loudness;
 }
 
 /// Niveaux de la musique en cours pour le visuel du lecteur (grille
-/// d'hexagones, voir HexPulseVisualizer).
+/// de vagues, voir PulseWavesVisualizer).
 ///
 /// Android seulement : l'analyse est faite par AudioVisualizer.kt, branche
 /// sur les sessions audio des platines just_audio. Ailleurs (Windows,
@@ -53,8 +58,14 @@ class AudioVisualizer with WidgetsBindingObserver {
   bool _running = false;
   bool _foreground = true;
 
-  AudioLevels? _latest;
-  final Stopwatch _sinceSample = Stopwatch();
+  /// Mesures recues, datees sur [_clock], en attente d'etre affichees.
+  final List<(Duration, AudioLevels)> _pending = [];
+  final Stopwatch _clock = Stopwatch()..start();
+
+  /// L'analyse entend le son avant le haut-parleur (voir outputLatencyMs
+  /// dans AudioVisualizer.kt) : on affiche chaque mesure avec ce retard
+  /// pour que les vagues tombent en meme temps que les basses.
+  Duration _delay = const Duration(milliseconds: 350);
 
   bool get supported => _sessions.isNotEmpty;
 
@@ -62,8 +73,14 @@ class AudioVisualizer with WidgetsBindingObserver {
   /// permission refusee, lecture sur Chromecast) : le visuel passe alors au
   /// repos.
   AudioLevels? get latest {
-    if (_latest == null || _sinceSample.elapsedMilliseconds > 400) return null;
-    return _latest;
+    final due = _clock.elapsed - _delay;
+    while (_pending.length > 1 && _pending[1].$1 <= due) {
+      _pending.removeAt(0);
+    }
+    if (_pending.isEmpty) return null;
+    final (at, levels) = _pending.first;
+    if (at > due || due - at > const Duration(milliseconds: 400)) return null;
+    return levels;
   }
 
   void attach() {
@@ -93,7 +110,7 @@ class AudioVisualizer with WidgetsBindingObserver {
     } else {
       unawaited(_sub?.cancel());
       _sub = null;
-      _latest = null;
+      _pending.clear();
       unawaited(_invoke('stop'));
     }
   }
@@ -103,27 +120,35 @@ class AudioVisualizer with WidgetsBindingObserver {
     final ids = _sessions.whereType<int>().where((id) => id > 0).toList();
     if (ids.isEmpty) return;
     await _invoke('start', {'sessionIds': ids});
+    final latency = await _invoke('latency');
+    if (latency is int && latency >= 0) {
+      _delay = Duration(milliseconds: latency);
+    }
   }
 
-  Future<void> _invoke(String method, [Object? args]) async {
+  Future<Object?> _invoke(String method, [Object? args]) async {
     try {
-      await _channel.invokeMethod<Object?>(method, args);
+      return await _channel.invokeMethod<Object?>(method, args);
     } on PlatformException catch (e) {
       debugPrint('Visualiseur $method: $e');
     } on MissingPluginException {
       // Pas de code natif (tests, autre plateforme).
     }
+    return null;
   }
 
   void _onSample(dynamic data) {
     if (data is! List || data.length < 2) return;
-    _latest = AudioLevels(
-      (data[0] as num).toDouble(),
-      (data[1] as num).toDouble(),
-    );
-    _sinceSample
-      ..reset()
-      ..start();
+    _pending.add((
+      _clock.elapsed,
+      AudioLevels(
+        (data[0] as num).toDouble(),
+        (data[1] as num).toDouble(),
+        data.length > 2 ? (data[2] as num).toDouble() : 1,
+      ),
+    ));
+    // Garde-fou si personne ne lit (visuel cache) : ~2 s de mesures.
+    if (_pending.length > 40) _pending.removeAt(0);
   }
 
   /// Demande une seule fois l'acces au son (Android l'appelle « micro ») :

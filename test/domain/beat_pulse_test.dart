@@ -9,12 +9,14 @@ List<double?> _play(BeatPulse pulse,
     {required int frames,
     int beatEvery = 10,
     double kick = 0.8,
-    double floor = 0.2}) {
+    double floor = 0.2,
+    double loudness = 0.5}) {
   return [
     for (var i = 0; i < frames; i++)
       pulse.add(
         bass: i % beatEvery == 0 ? kick : floor,
         mid: 0.3,
+        loudness: loudness,
         elapsed: _frame,
       ),
   ];
@@ -56,13 +58,145 @@ void main() {
       expect(fast, lessThanOrEqualTo(40 * 50 ~/ 280 + 1));
     });
 
-    test('suit aussi un morceau calme (niveau rapporte au pic recent)', () {
+    test('suit aussi un titre enregistre doucement (volume rapporte au pic)',
+        () {
+      // Tout le titre a -51 dB : c'est son plus fort, les coups passent.
       final pulse = BeatPulse();
-      final beats = _play(pulse, frames: 100, kick: 0.25, floor: 0.06)
-          .map((b) => b ?? 0)
-          .toList();
+      final beats =
+          _play(pulse, frames: 100, kick: 0.9, floor: 0.5, loudness: 0.15)
+              .map((b) => b ?? 0)
+              .toList();
       expect(beats.where((b) => b > 0).length, greaterThanOrEqualTo(8));
       expect(pulse.level, greaterThan(0));
+    });
+
+    test('repere les coups sur des basses ecrasees par l echelle log', () {
+      // Comme mesure sur le telephone : basse continue vers 0,85, grosse
+      // caisse a 0,95, une mesure toutes les 50 ms mais lue a chaque image
+      // (~16 ms), donc la meme valeur repetee trois fois.
+      final pulse = BeatPulse();
+      var beats = 0;
+      for (var i = 0; i < 300; i++) {
+        final sample = i ~/ 3;
+        final bass = sample % 8 == 0 ? 0.95 : 0.85 + (sample % 3) * 0.01;
+        final hit = pulse.add(
+          bass: bass,
+          mid: 0.6,
+          elapsed: const Duration(microseconds: 16667),
+        );
+        if (hit != null) beats++;
+      }
+      // 100 mesures, un coup toutes les 8 : ~12 coups.
+      expect(beats, inInclusiveRange(10, 13));
+    });
+
+    test('une basse forte eclaire bien plus qu un passage sans basse', () {
+      final pulse = BeatPulse();
+      for (var i = 0; i < 40; i++) {
+        pulse.add(bass: 0.9, mid: 0.5, elapsed: _frame);
+      }
+      final loud = pulse.level;
+      for (var i = 0; i < 20; i++) {
+        pulse.add(bass: 0.6, mid: 0.5, elapsed: _frame);
+      }
+      // 0,9 contre 0,6 sur l'echelle log : ~20 fois moins d'energie.
+      expect(loud, greaterThan(0.8));
+      expect(pulse.level, lessThan(loud * 0.6));
+    });
+
+    test('pas de vague sur une intro au piano', () {
+      // Valeurs mesurees sur le telephone (BREAKSH!T) : batterie a -45 dB,
+      // puis intro au piano a -51 dB, graves 0,3-0,6, mediums ~0,65.
+      final pulse = BeatPulse();
+      for (var i = 0; i < 100; i++) {
+        pulse.add(
+          bass: i % 8 == 0 ? 0.98 : 0.85,
+          mid: 0.65,
+          loudness: 0.25,
+          elapsed: _frame,
+        );
+      }
+      var beats = 0;
+      for (var i = 0; i < 200; i++) {
+        final note = i % 8 == 0;
+        final hit = pulse.add(
+          bass: note ? 0.76 : 0.35,
+          mid: note ? 0.72 : 0.62,
+          loudness: note ? 0.17 : 0.14,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, 0);
+      expect(pulse.level, lessThan(0.4));
+    });
+
+    test('une grosse caisse lance bien des vagues', () {
+      final pulse = BeatPulse();
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        final hit = pulse.add(
+          bass: kick ? 0.98 : 0.85,
+          mid: 0.65,
+          loudness: kick ? 0.26 : 0.24,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, inInclusiveRange(10, 13));
+    });
+
+    test('un pic au demarrage et un volume bas ne bloquent pas les vagues', () {
+      // Mesure sur le telephone, haut-parleur a 3/16 : une mesure a 0,27 au
+      // lancement du titre, puis la musique autour de 0,12.
+      final pulse = BeatPulse();
+      pulse.add(bass: 0.9, mid: 0.6, loudness: 0.27, elapsed: _frame);
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        final hit = pulse.add(
+          bass: kick ? 0.98 : 0.85,
+          mid: 0.62,
+          loudness: kick ? 0.13 : 0.12,
+          elapsed: _frame,
+        );
+        if (hit != null) beats++;
+      }
+      expect(beats, inInclusiveRange(9, 13));
+      expect(pulse.level, greaterThan(0));
+    });
+
+    test('la voix qui arrive allume le cercle des mediums', () {
+      final pulse = BeatPulse();
+      for (var i = 0; i < 80; i++) {
+        pulse.add(bass: 0.85, mid: 0.55, loudness: 0.25, elapsed: _frame);
+      }
+      final before = pulse.midLevel;
+      for (var i = 0; i < 10; i++) {
+        pulse.add(bass: 0.85, mid: 0.7, loudness: 0.25, elapsed: _frame);
+      }
+      expect(before, lessThan(0.2));
+      expect(pulse.midLevel, greaterThan(0.5));
+    });
+
+    test('ignore le faux 0 dB d une analyse qui demarre', () {
+      final pulse = BeatPulse();
+      pulse.add(bass: 0.85, mid: 0.6, loudness: 1, elapsed: _frame);
+      var beats = 0;
+      for (var i = 0; i < 100; i++) {
+        final kick = i % 8 == 0;
+        if (pulse.add(
+              bass: kick ? 0.98 : 0.85,
+              mid: 0.6,
+              loudness: 0.12,
+              elapsed: _frame,
+            ) !=
+            null) {
+          beats++;
+        }
+      }
+      expect(beats, greaterThanOrEqualTo(9));
     });
 
     test('le niveau reste entre 0 et 1', () {

@@ -3,9 +3,13 @@ package com.example.vinland
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.audiofx.Visualizer
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -33,6 +37,32 @@ class AudioVisualizer private constructor(private val context: Context) :
     private var sink: EventChannel.EventSink? = null
     private val visualizers = mutableMapOf<Int, Visualizer>()
     private val latest = mutableMapOf<Int, DoubleArray>()
+    private val lastCapture = mutableMapOf<Int, Long>()
+
+    /**
+     * Un Visualizer cree avant que sa session ait une piste (changement de
+     * titre : just_audio annonce la nouvelle session avant de creer
+     * l'AudioTrack) ne capte jamais rien sur certains telephones. On recree
+     * ceux qui se taisent depuis plus de [SILENT_MS].
+     */
+    private val watchdog = object : Runnable {
+        override fun run() {
+            val now = SystemClock.elapsedRealtime()
+            for ((id, last) in lastCapture.toList()) {
+                if (now - last < SILENT_MS) continue
+                release(id)
+                try {
+                    visualizers[id] = create(id)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Visualizer indisponible pour la session $id: $e")
+                    lastCapture[id] = now
+                }
+            }
+            if (visualizers.isNotEmpty() || lastCapture.isNotEmpty()) {
+                main.postDelayed(this, WATCHDOG_MS)
+            }
+        }
+    }
 
     private fun hasPermission(): Boolean =
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
@@ -53,6 +83,8 @@ class AudioVisualizer private constructor(private val context: Context) :
                 Log.w(TAG, "Visualizer indisponible pour la session $id: $e")
             }
         }
+        main.removeCallbacks(watchdog)
+        if (visualizers.isNotEmpty()) main.postDelayed(watchdog, WATCHDOG_MS)
         return visualizers.isNotEmpty()
     }
 
@@ -62,6 +94,10 @@ class AudioVisualizer private constructor(private val context: Context) :
         val range = Visualizer.getCaptureSizeRange()
         v.setCaptureSize(1024.coerceIn(range[0], range[1]))
         v.setScalingMode(Visualizer.SCALING_MODE_NORMALIZED)
+        // Volume reel (RMS, en millibels) : le mode NORMALIZED gonfle un
+        // piano doux autant qu'une grosse caisse, le RMS dit ce qui est fort.
+        v.setMeasurementMode(Visualizer.MEASUREMENT_MODE_PEAK_RMS)
+        val rms = Visualizer.MeasurementPeakRms()
         val rate = Visualizer.getMaxCaptureRate()
         v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
             override fun onWaveFormDataCapture(
@@ -73,16 +109,30 @@ class AudioVisualizer private constructor(private val context: Context) :
             ) {
                 if (fft == null) return
                 val levels = bands(fft, samplingRate)
+                // -60 dB (ou moins) -> 0, 0 dB (plein volume) -> 1. Un
+                // Visualizer tout juste cree rend 0 mB (pas encore de mesure),
+                // pas 0 dB : compter 1 ici bloquait le visuel des minutes
+                // (le pic de volume restait au-dessus de la musique).
+                val loudness = try {
+                    visualizer?.getMeasurementPeakRms(rms)
+                    if (rms.mRms >= 0) 0.0
+                    else ((rms.mRms / 100.0 + 60) / 60).coerceIn(0.0, 1.0)
+                } catch (_: Exception) {
+                    0.0
+                }
+                levels[2] = loudness
                 main.post { publish(sessionId, levels) }
             }
         }, rate, false, true)
         v.setEnabled(true)
+        lastCapture[sessionId] = SystemClock.elapsedRealtime()
         return v
     }
 
     /**
-     * [basses 20-150 Hz, mediums 150-2000 Hz], chacun ramene a 0..1 sur une
-     * echelle logarithmique (l'oreille aussi).
+     * [basses 30-120 Hz (grosse caisse), mediums 150-2000 Hz], chacun
+     * ramene a 0..1 sur une echelle logarithmique (l'oreille aussi), puis
+     * une case pour le volume, remplie par l'appelant.
      */
     private fun bands(fft: ByteArray, samplingRateMilliHz: Int): DoubleArray {
         val n = fft.size
@@ -97,7 +147,7 @@ class AudioVisualizer private constructor(private val context: Context) :
             val hz = k * binHz
             if (hz > 2000) break
             val mag = hypot(fft[2 * k].toDouble(), fft[2 * k + 1].toDouble())
-            if (hz in 20.0..150.0) {
+            if (hz in 30.0..120.0) {
                 bass += mag; bassCount++
             } else if (hz > 150) {
                 mid += mag; midCount++
@@ -108,19 +158,40 @@ class AudioVisualizer private constructor(private val context: Context) :
             val avg = sum / count
             return (ln(1 + avg) / ln(1 + 128.0)).coerceIn(0.0, 1.0)
         }
-        return doubleArrayOf(scale(bass, bassCount), scale(mid, midCount))
+        return doubleArrayOf(scale(bass, bassCount), scale(mid, midCount), 1.0)
+    }
+
+    /**
+     * Retard estime entre l'analyse et le haut-parleur, en ms.
+     *
+     * L'effet Visualizer lit le son avant le grand tampon de sortie
+     * (« deep buffer ») utilise pour la musique : mesure sur le telephone de
+     * Thibault, ~370 ms sur le haut-parleur. Un casque Bluetooth ajoute
+     * encore ~200 ms. Le visuel decale l'affichage d'autant.
+     */
+    private fun outputLatencyMs(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return 350
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val bluetooth = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER
+        }
+        return if (bluetooth) 550 else 350
     }
 
     private fun publish(sessionId: Int, levels: DoubleArray) {
         if (!visualizers.containsKey(sessionId)) return
         latest[sessionId] = levels
+        lastCapture[sessionId] = SystemClock.elapsedRealtime()
         // Pendant un fondu les deux platines jouent : on garde la plus forte.
         var bass = 0.0
         var mid = 0.0
+        var loudness = 0.0
         for (l in latest.values) {
-            bass = max(bass, l[0]); mid = max(mid, l[1])
+            bass = max(bass, l[0]); mid = max(mid, l[1]); loudness = max(loudness, l[2])
         }
-        sink?.success(doubleArrayOf(bass, mid))
+        sink?.success(doubleArrayOf(bass, mid, loudness))
     }
 
     private fun release(sessionId: Int) {
@@ -131,9 +202,11 @@ class AudioVisualizer private constructor(private val context: Context) :
             } catch (_: Exception) {}
         }
         latest.remove(sessionId)
+        lastCapture.remove(sessionId)
     }
 
     private fun stop() {
+        main.removeCallbacks(watchdog)
         for (id in visualizers.keys.toList()) release(id)
     }
 
@@ -148,6 +221,8 @@ class AudioVisualizer private constructor(private val context: Context) :
 
     companion object {
         private const val TAG = "VinlandVisualizer"
+        private const val SILENT_MS = 1500L
+        private const val WATCHDOG_MS = 1000L
 
         fun registerWith(engine: FlutterEngine, context: Context) {
             val visualizer = AudioVisualizer(context)
@@ -162,6 +237,7 @@ class AudioVisualizer private constructor(private val context: Context) :
                                 ?: emptyList()
                             result.success(visualizer.start(ids))
                         }
+                        "latency" -> result.success(visualizer.outputLatencyMs())
                         "stop" -> {
                             visualizer.stop()
                             result.success(null)

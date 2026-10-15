@@ -9,24 +9,43 @@ commit.
 
 ## [Non publié]
 
+## [2.2.0] - 2026-10-14
+
+Visuel animé sur Android, boutons dans la barre des tâches Windows,
+écran télé prêt pour la Chromecast. Notes pour les amis :
+[docs/release-notes/v2.2.0.md](docs/release-notes/v2.2.0.md).
+
 ### Ajouté
 - Chromecast : écran télé Vinland à la place du « Default Media Receiver »
   de Google, avec la grille d'hexagones qui pulse, la pochette, le titre
   et les paroles synchronisées. S'active une fois le récepteur enregistré
   chez Google (voir `cast-receiver/README.md`) ; d'ici là, rien ne change.
-- Android : visuel animé dans le mini lecteur et le grand lecteur, une
-  grille d'hexagones qui s'allume par vagues au rythme des basses. Il
-  prend la couleur de la pochette et se coupe dans Paramètres > Lecture.
+- Android : visuel animé dans le mini lecteur et le grand lecteur : des
+  vagues de lumière douces partent de la pochette sur les vraies basses
+  (pas sur une intro au piano), calées sur le son du haut-parleur, et un
+  cercle lumineux autour de la pochette s'allume avec la voix. Il prend
+  la couleur de la pochette, couvre tout le grand lecteur et se coupe
+  dans Paramètres > Lecture.
   Android demande une fois l'accès au son (« micro ») ; sans lui, le
-  visuel pulse tout seul.
+  visuel respire tout seul. Réservé à Android : rien sur Windows, même dans
+  une fenêtre étroite.
 - Windows : boutons précédent, lecture/pause et suivant dans l'aperçu qui
   s'affiche au survol de l'icône Vinland dans la barre des tâches, comme
   Spotify.
 
 ### Modifié
+- La couleur d'ambiance suit la couleur principale de la pochette plutôt
+  qu'un petit détail coloré, s'affiche dès le lancement de l'app et est
+  préparée d'avance pour les morceaux suivants.
+- Android : les pochettes des deux morceaux suivants sont chargées
+  d'avance, plus de case vide d'une seconde au changement de morceau.
 - Les derniers boutons violets (« Arrêter » et « Retour à la soirée » du
   blind test, boutons des fenêtres de confirmation) passent au vert
   Vinland : le vert est maintenant la couleur par défaut de toute l'app.
+
+### Corrigé
+- Déplacer le curseur juste après un changement de morceau (pendant son
+  chargement) ne fait plus repartir le morceau du début.
 
 ## [2.1.1] - 2026-10-14
 
@@ -437,7 +456,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/ThibaultCauche/vinland/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/ThibaultCauche/vinland/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/ThibaultCauche/vinland/compare/v2.0.1...v2.0.2

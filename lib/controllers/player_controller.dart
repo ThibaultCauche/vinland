@@ -224,6 +224,13 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
       _notify();
       return false;
     }
+    final pendingSeek = _pendingSeek;
+    _pendingSeek = null;
+    if (pendingSeek != null &&
+        pendingSeek.trackId == track.id &&
+        seq == _playbackActionSeq) {
+      await _output.seek(pendingSeek.position);
+    }
     await _tracks.recordPlay(track.id);
     // Attend (contrairement aux autres sauvegardes, fire-and-forget) :
     // c'est la valeur relue par le resume Bluetooth headless
@@ -303,6 +310,14 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
 
   @override
   void seek(Duration pos) {
+    // Pendant un chargement (ou avant le tout premier, apres un redemarrage
+    // de l'app), le moteur n'a pas encore la source du titre : le seek
+    // serait perdu et le titre repartirait de 0 une fois charge. On le garde
+    // pour l'appliquer des que le chargement de CE titre aboutit.
+    final track = currentTrack;
+    if (track != null && (_loading > 0 || !_output.player.hasSource)) {
+      _pendingSeek = (trackId: track.id, position: pos);
+    }
     unawaited(_output.seek(pos));
     _notify();
   }
@@ -398,6 +413,10 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   /// > 0 pendant un chargement : la position recue vient encore du titre
   /// precedent, alors que currentTrack est deja le nouveau.
   int _loading = 0;
+
+  /// Seek demande pendant un chargement, rejoue une fois le titre charge
+  /// (voir seek).
+  ({String trackId, Duration position})? _pendingSeek;
 
   /// Titre qui sera joue a la fin de celui-ci, sans toucher a la file. Null
   /// si on ne peut pas le savoir a l'avance : repetition d'un titre (il est

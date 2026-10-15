@@ -59,8 +59,7 @@ class MiniPlayer extends StatelessWidget {
                 const Positioned.fill(
                   child: PlayerVisualizer(
                     origin: Alignment(-0.88, 0),
-                    cellRadius: 9,
-                    intensity: 0.55,
+                    intensity: 0.45,
                   ),
                 ),
                 Column(
@@ -260,6 +259,13 @@ class _MiniCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final path = coverPath;
     final exists = context.read<AppState>().coverExists(coverPath);
+    final upcoming =
+        context.read<AppState>().queue.take(2).map((t) => t.coverPath).toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) {
+        precacheUpcomingCovers(context, upcoming, size: 40);
+      }
+    });
 
     if (exists && path != null) {
       return Container(

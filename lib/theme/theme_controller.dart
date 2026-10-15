@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 
@@ -152,13 +154,12 @@ class ThemeController extends ChangeNotifier {
   /// sur un detail non representatif et produire une couleur "boueuse"
   /// n'apparaissant nulle part sur la cover.
   ///
-  /// La swatch "vibrant" (la plus saturee) est preferee a la "dominant"
-  /// (la plus etendue en surface) : sur une cover typique -- fond sombre
-  /// uni + logo/texte colore au centre -- la dominante par surface est
-  /// justement ce fond sombre, qui se fond avec le noir de l'ecran une fois
-  /// assombri et donne l'impression que la couleur ne represente pas du
-  /// tout la pochette (retour utilisateur). La vibrante capture l'accent
-  /// colore qui rend vraiment la cover reconnaissable.
+  /// La swatch "dominant" (la plus etendue en surface) est la couleur de la
+  /// pochette : une cover presque blanche avec un petit detail rouge doit
+  /// donner du gris clair, pas du rouge vif (retour de Thibault, 2.2). Seule
+  /// exception : une dominante tres sombre (fond noir + logo colore) se
+  /// fondrait dans le noir de l'ecran, on prend alors l'accent colore
+  /// ("vibrant"), qui rend la cover reconnaissable.
   Future<Color?> _extractDominantColor(String coverPath) async {
     try {
       final ImageProvider provider = rawCoverImageProvider(coverPath);
@@ -166,39 +167,63 @@ class ThemeController extends ChangeNotifier {
         provider,
         size: const Size(100, 100),
       );
-      return palette.vibrantColor?.color ??
+      final dominant = palette.dominantColor?.color;
+      final accent = palette.vibrantColor?.color ??
           palette.lightVibrantColor?.color ??
-          palette.dominantColor?.color ??
           palette.mutedColor?.color;
+      if (dominant == null) return accent;
+      if (HSLColor.fromColor(dominant).lightness < 0.15) {
+        return accent ?? dominant;
+      }
+      return dominant;
     } catch (_) {
       return null;
     }
   }
 
   void updateCoverColor(String? coverPath) {
-    if (coverPath == null) {
-      debugPrint('PALETTE: coverPath null');
+    // Vide = pochette du NAS alors que les identifiants ne sont pas encore
+    // charges (voir SubsonicRefs.resolve).
+    if (coverPath == null || coverPath.isEmpty) {
       dominantColor = null;
       _notify();
       return;
     }
     if (_colorCache.containsKey(coverPath)) {
-      debugPrint('PALETTE: cache hit');
       dominantColor = _colorCache[coverPath];
       _notify();
       return;
     }
     final requestId = ++_lastColorRequest;
-    debugPrint('PALETTE: start extraction (isolate)');
-    _extractDominantColor(coverPath).then((color) {
-      if (_disposed) return;
-      debugPrint('PALETTE: done, color=$color');
-      if (requestId == _lastColorRequest && color != null) {
-        _colorCache[coverPath] = color;
-        dominantColor = color;
-        _notify();
-      }
+    unawaited(_colorFor(coverPath).then((color) {
+      if (_disposed || requestId != _lastColorRequest) return;
+      // Echec (pochette illisible) : pas de couleur plutot que celle du
+      // titre precedent.
+      dominantColor = color;
+      _notify();
+    }));
+  }
+
+  final Map<String, Future<Color?>> _pending = {};
+
+  Future<Color?> _colorFor(String coverPath) {
+    final cached = _colorCache[coverPath];
+    if (cached != null) return Future.value(cached);
+    return _pending.putIfAbsent(coverPath, () async {
+      final color = await _extractDominantColor(coverPath);
+      unawaited(_pending.remove(coverPath));
+      if (color != null) _colorCache[coverPath] = color;
+      return color;
     });
+  }
+
+  /// Calcule a l'avance la couleur des pochettes des prochains titres (et
+  /// charge l'image au passage) : au changement de titre, la couleur est
+  /// deja la, sans passer un instant par celle du titre precedent.
+  void prefetchCoverColors(Iterable<String?> coverPaths) {
+    for (final path in coverPaths) {
+      if (path != null && path.isNotEmpty) unawaited(_colorFor(path));
+    }
   }
 
   @override

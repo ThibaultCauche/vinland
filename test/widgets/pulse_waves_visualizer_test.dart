@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vinland/services/audio_visualizer.dart';
-import 'package:vinland/widgets/visualizer/hex_pulse_visualizer.dart';
+import 'package:vinland/widgets/visualizer/pulse_waves_visualizer.dart';
 
 Widget _host(AudioVisualizer v, {required bool playing}) => MaterialApp(
       home: SizedBox(
         width: 360,
         height: 640,
-        child: HexPulseVisualizer(visualizer: v, playing: playing),
+        child: PulseWavesVisualizer(visualizer: v, playing: playing),
       ),
     );
 
@@ -34,14 +34,16 @@ void main() {
     expect(tester.hasRunningAnimations, isFalse);
   });
 
-  test('couleur : teinte de la pochette, vert Vinland si elle est terne', () {
-    expect(HexPulseVisualizer.colorFromCover(null),
-        HexPulseVisualizer.vinlandGreen);
-    expect(HexPulseVisualizer.colorFromCover(const Color(0xFF808080)),
-        HexPulseVisualizer.vinlandGreen);
+  test('couleur : toujours celle de la pochette, vert sans pochette', () {
+    expect(PulseWavesVisualizer.colorFromCover(null),
+        PulseWavesVisualizer.vinlandGreen);
+    final grey = HSLColor.fromColor(
+        PulseWavesVisualizer.colorFromCover(const Color(0xFF303030)));
+    expect(grey.saturation, lessThan(0.05));
+    expect(grey.lightness, closeTo(0.65, 0.01));
     final blue = HSLColor.fromColor(
-        HexPulseVisualizer.colorFromCover(const Color(0xFF0A2A6A)));
+        PulseWavesVisualizer.colorFromCover(const Color(0xFF0A2A6A)));
     expect(blue.hue, closeTo(220, 5));
-    expect(blue.lightness, closeTo(0.58, 0.01));
+    expect(blue.lightness, closeTo(0.65, 0.01));
   });
 }
