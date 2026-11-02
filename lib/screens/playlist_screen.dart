@@ -1,3 +1,4 @@
+import '../domain/offline_playback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -167,6 +168,9 @@ class PlaylistScreen extends StatelessWidget {
                     const SizedBox(width: 4),
                     DownloadButton(
                       tracks: tracks,
+                      collection: isReadOnly
+                          ? null
+                          : OfflineCollection.playlist(playlist.id),
                       confirmDeleteMessage:
                           'Cette playlist ne sera plus disponible hors connexion.',
                     ),

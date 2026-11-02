@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/track.dart';
 import '../providers/app_state.dart';
 import '../services/download_worker_service.dart';
+import 'offline_actions.dart';
 
 /// Icone de fin de ligne pour un titre non possede localement (album,
 /// artiste...) : cloud barre simple si le service de telechargement
@@ -58,15 +59,19 @@ class DownloadStateIcon extends StatelessWidget {
 
 /// Bouton de telechargement hors-ligne reutilisable (album, playlist,
 /// titres likes...). Gere lui-meme son etat de progression et le dialogue
-/// de confirmation de suppression.
+/// de confirmation de suppression. Avec [collection] (voir
+/// OfflineCollection), les titres ajoutes plus tard a cet album/playlist
+/// sont eux aussi telecharges a chaque synchro.
 class DownloadButton extends StatefulWidget {
   final List<Track> tracks;
+  final String? collection;
   final String confirmDeleteMessage;
   final Color idleColor;
 
   const DownloadButton({
     super.key,
     required this.tracks,
+    this.collection,
     this.confirmDeleteMessage =
         'Ce contenu ne sera plus disponible hors connexion.',
     this.idleColor = Colors.white70,
@@ -83,33 +88,15 @@ class _DownloadButtonState extends State<DownloadButton> {
   Future<void> _toggle(AppState state) async {
     if (widget.tracks.isEmpty || _downloading) return;
 
-    if (state.areTracksOffline(widget.tracks)) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text('Supprimer le téléchargement',
-              style: TextStyle(color: Colors.white)),
-          content: Text(widget.confirmDeleteMessage,
-              style: const TextStyle(color: Colors.white70)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Annuler',
-                  style: TextStyle(color: Colors.white54)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child:
-                  const Text('Supprimer', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
+    if (isDownloadedForOffline(state, widget.tracks,
+        collection: widget.collection)) {
+      final removed = await removeOfflineDownload(
+        context,
+        tracks: widget.tracks,
+        collection: widget.collection,
+        message: widget.confirmDeleteMessage,
       );
-      if (confirm == true) {
-        await state.removeDownloads(widget.tracks);
-        if (mounted) setState(() {});
-      }
+      if (removed && mounted) setState(() {});
       return;
     }
 
@@ -117,9 +104,14 @@ class _DownloadButtonState extends State<DownloadButton> {
       _downloading = true;
       _progress = 0;
     });
-    await state.downloadTracksOffline(widget.tracks, onProgress: (p) {
-      if (mounted) setState(() => _progress = p);
-    });
+    await downloadForOffline(
+      context,
+      tracks: widget.tracks,
+      collection: widget.collection,
+      onProgress: (p) {
+        if (mounted) setState(() => _progress = p);
+      },
+    );
     if (mounted) setState(() => _downloading = false);
   }
 
@@ -142,8 +134,10 @@ class _DownloadButtonState extends State<DownloadButton> {
       );
     }
 
-    final downloaded = state.areTracksOffline(widget.tracks);
+    final downloaded = isDownloadedForOffline(state, widget.tracks,
+        collection: widget.collection);
     return IconButton(
+      tooltip: downloaded ? 'Téléchargé' : 'Télécharger',
       icon: Icon(
         downloaded ? Icons.download_done : Icons.download_outlined,
         color: downloaded ? const Color(0xFF1DB954) : widget.idleColor,

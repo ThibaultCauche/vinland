@@ -1,3 +1,5 @@
+import 'desktop_offline_action.dart';
+import '../domain/offline_playback.dart';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -182,10 +184,13 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
             }
           },
         ),
-        DesktopHeroMenuAction(
-          label: 'Télécharger',
-          icon: Icons.download_outlined,
-          onTap: () => state.downloadTracksOffline(tracks),
+        desktopOfflineAction(
+          context,
+          state,
+          tracks: tracks,
+          collection: OfflineCollection.playlist(playlist.id),
+          removeMessage:
+              'Cette playlist ne sera plus disponible hors connexion.',
         ),
         DesktopHeroMenuAction(
           label: playlist.isPublic ? 'Rendre privée' : 'Rendre publique',
@@ -243,11 +248,7 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
             }
           },
         ),
-        DesktopHeroMenuAction(
-          label: 'Télécharger',
-          icon: Icons.download_outlined,
-          onTap: () => state.downloadTracksOffline(tracks),
-        ),
+        desktopOfflineAction(context, state, tracks: tracks),
       ],
     ));
   }
@@ -314,6 +315,14 @@ class _DesktopAppShellState extends State<DesktopAppShell> {
             title: 'Titres likes',
             subtitle: 'Playlist',
           )),
+        ),
+        desktopOfflineAction(
+          context,
+          state,
+          tracks: tracks,
+          collection: OfflineCollection.liked,
+          removeMessage:
+              'Vos titres likés ne seront plus disponibles hors connexion.',
         ),
       ],
     ));

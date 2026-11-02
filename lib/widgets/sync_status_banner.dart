@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../screens/downloads_screen.dart';
 
 /// Petit cercle vert qui tourne pendant une synchro -- discret, a placer
 /// pres de l'avatar/la recherche (mobile) ou dans la sidebar (desktop,
@@ -13,9 +14,17 @@ class SyncIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, bool>(
-      selector: (_, state) => state.isSyncing,
-      builder: (context, isSyncing, __) {
+    return Selector<AppState, (bool, bool)>(
+      selector: (_, state) => (state.isSyncing, state.isOfflineMode),
+      builder: (context, data, __) {
+        final (isSyncing, offline) = data;
+        if (!isSyncing && offline) {
+          return Tooltip(
+            message: 'Hors ligne : titres téléchargés uniquement',
+            child: Icon(Icons.cloud_off,
+                color: const Color(0xFF1DB954), size: size),
+          );
+        }
         if (!isSyncing) return const SizedBox.shrink();
         return Tooltip(
           message: 'Synchronisation en cours...',
@@ -43,11 +52,36 @@ class SyncStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Selector<AppState, (bool, bool)>(
-      selector: (_, state) => (state.lastSyncEmpty, state.allTracks.isEmpty),
+    return Selector<AppState, (bool, bool, bool, bool)>(
+      selector: (_, state) => (
+        state.lastSyncEmpty,
+        state.allTracks.isEmpty,
+        state.isServerUnreachable,
+        state.offlineOnly,
+      ),
       builder: (context, data, child) {
-        final (lastSyncEmpty, hasNoTracks) = data;
+        final (lastSyncEmpty, hasNoTracks, unreachable, offlineOnly) = data;
         final state = context.read<AppState>();
+
+        // Hors-ligne avec une bibliotheque deja en cache : l'app reste
+        // utilisable avec les titres telecharges, on le dit simplement.
+        if ((unreachable || offlineOnly) && !hasNoTracks) {
+          return _Banner(
+            color: const Color(0xFF1DB954).withValues(alpha: 0.15),
+            icon: Icon(
+                offlineOnly ? Icons.airplanemode_active : Icons.cloud_off,
+                color: const Color(0xFF1DB954),
+                size: 20),
+            text: offlineOnly
+                ? 'Mode hors-ligne : seuls les titres téléchargés sont jouables.'
+                : 'Serveur injoignable : seuls les titres téléchargés sont '
+                    'jouables. Reconnexion automatique dès son retour.',
+            actionLabel: 'Téléchargements',
+            onAction: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DownloadsScreen()),
+            ),
+          );
+        }
 
         if (lastSyncEmpty && hasNoTracks) {
           return _Banner(

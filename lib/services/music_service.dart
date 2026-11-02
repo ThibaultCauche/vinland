@@ -19,9 +19,10 @@ import '../models/collab_playlist.dart';
 import 'legacy_file_migration.dart';
 import 'listening_log.dart';
 import 'navidrome_service.dart';
+import 'offline/offline_covers.dart';
+import 'offline/offline_downloader.dart';
 import 'personal_sync_secret.dart';
 import 'sharing_consent.dart';
-import 'package:http/http.dart' as http;
 
 /// Fusionne un titre fraichement recu du serveur (Navidrome) avec l'etat
 /// local deja connu (cache) et le statut "starred" -- coeur de
@@ -137,7 +138,11 @@ class MusicService {
   /// l'entree Bluetooth headless) puis injectee. [storageRoot] remplace les
   /// dossiers de l'app (cache, covers) dans les tests.
   MusicService(this._navidrome, {Future<Directory> Function()? storageRoot})
-      : _storageRoot = storageRoot;
+      : _storageRoot = storageRoot {
+    // Pochettes telechargees : utilisees partout a la place du NAS (voir
+    // rawCoverImageProvider), y compris hors-ligne.
+    OfflineCovers.lookup = (coverId) => _offlineCovers[coverId];
+  }
 
   final Future<Directory> Function()? _storageRoot;
 
@@ -215,6 +220,10 @@ class MusicService {
   final NavidromeService _navidrome;
   List<Track> _navidromeTracks = [];
   Map<String, String> _offlineFiles = {}; // navidrome_id -> local path
+  // Id de pochette -> fichier local (voir OfflineCovers).
+  Map<String, String> _offlineCovers = {};
+  // Collections suivies hors-ligne (voir OfflineCollection).
+  Set<String> _offlineCollections = {};
 
   // Meme raisonnement que _albumsView ci-dessus.
   List<Track>? _navidromeTracksView;
@@ -403,6 +412,9 @@ class MusicService {
     _albumsView = null;
     _playlists = [];
     _offlineFiles = {};
+    _offlineCovers = {};
+    _offlineCollections = {};
+    _offlineBitRateKbps = offlineMaxBitRateKbps;
     _missingTracks = [];
     _missingTracksView = null;
     _recentPlays = [];
@@ -1189,6 +1201,9 @@ class MusicService {
     _captureTrackStates();
     return {
       'offlineFiles': Map<String, String>.from(_offlineFiles),
+      'offlineCovers': Map<String, String>.from(_offlineCovers),
+      'offlineCollections': _offlineCollections.toList(),
+      'offlineBitRateKbps': _offlineBitRateKbps,
       'missingTracks': _missingTracks,
       'recentPlays': _recentPlays.map((r) => r.toJson()).toList(),
       'playlists': _playlists.map((pl) => pl.toJson()).toList(),
@@ -1275,6 +1290,17 @@ class MusicService {
 
   void _applyUserData(Map<String, dynamic> data) {
     _offlineFiles = Map<String, String>.from(data['offlineFiles'] ?? {});
+    _offlineCovers = Map<String, String>.from(data['offlineCovers'] ?? {});
+    _offlineCollections = {
+      for (final key in (data['offlineCollections'] as List? ?? const []))
+        if (key is String) key,
+    };
+    final bitRate = data['offlineBitRateKbps'];
+    _offlineBitRateKbps =
+        bitRate is int && offlineBitRateChoices.contains(bitRate)
+            ? bitRate
+            : offlineMaxBitRateKbps;
+    unawaited(_pruneMissingOfflineFiles());
     _playlists = (data['playlists'] as List?)
             ?.map((pl) => Playlist.fromJson(Map<String, dynamic>.from(pl)))
             .toList() ??
@@ -1864,72 +1890,209 @@ class MusicService {
     return profiles;
   }
 
-  /// Bitrate cible pour les telechargements hors-ligne : le NAS transcode a
+  /// Debit par defaut des telechargements hors-ligne : le NAS convertit a
   /// la volee, ce qui divise par ~5-10 la taille stockee sur le telephone
-  /// par rapport a la qualite d'origine (FLAC/320kbps).
+  /// par rapport a la qualite d'origine (FLAC/320kbps). Reglable dans la
+  /// page Telechargements (voir offlineBitRateChoices).
   static const int offlineMaxBitRateKbps = 192;
+  static const List<int> offlineBitRateChoices = [128, 192, 320];
 
-  Future<void> downloadTrack(Track track) async {
-    if (!track.id.startsWith('navidrome_')) return;
-    if (isTrackDownloaded(track.id)) return;
+  /// Titres telecharges en meme temps : assez pour aller vite, pas assez
+  /// pour etouffer la lecture en cours ou le NAS.
+  static const int offlineConcurrency = 3;
 
-    final navidromeId = track.id.replaceFirst('navidrome_', '');
-    final url = _navidrome.getStreamUrl(
-      navidromeId,
-      maxBitRateKbps: offlineMaxBitRateKbps,
-      format: 'mp3',
-    );
+  int _offlineBitRateKbps = offlineMaxBitRateKbps;
+  int get offlineBitRateKbps => _offlineBitRateKbps;
+  void setOfflineBitRate(int kbps) {
+    if (!offlineBitRateChoices.contains(kbps)) return;
+    _offlineBitRateKbps = kbps;
+    _debouncedSave();
+  }
 
-    try {
-      final response =
-          await http.get(Uri.parse(url)).timeout(const Duration(minutes: 2));
-      if (response.statusCode == 200) {
-        final appDir = await getApplicationDocumentsDirectory();
-        final offlineDir = Directory('${appDir.path}/offline_music');
-        await offlineDir.create(recursive: true);
+  /// Remplacable dans les tests.
+  @visibleForTesting
+  OfflineDownloader offlineDownloader = OfflineDownloader();
 
-        final filePath = '${offlineDir.path}/${track.id.hashCode}.mp3';
-        await File(filePath).writeAsBytes(response.bodyBytes);
+  /// Dossier des telechargements : dossier de l'app (AppData sous Windows,
+  /// dossier prive sur Android) plutot que Documents, ou les premieres
+  /// versions les rangeaient (chemins deja enregistres gardes tels quels).
+  Future<Directory> _offlineRoot() async =>
+      (await (_storageRoot ?? getApplicationSupportDirectory)());
 
-        _offlineFiles[track.id] = filePath;
-        _debouncedSave();
-        debugPrint('DOWNLOADED: ${track.title} -> $filePath');
-      }
-    } catch (e) {
-      debugPrint('DOWNLOAD ERROR ${track.title}: $e');
+  /// Titres en cours de telechargement (evite de lancer deux fois le meme).
+  final Set<String> _downloadingIds = {};
+  bool isTrackDownloading(String trackId) => _downloadingIds.contains(trackId);
+
+  /// Telecharge un titre et sa pochette. Vrai si le titre est disponible
+  /// hors-ligne a la fin (deja telecharge compris).
+  Future<bool> downloadTrack(Track track) async {
+    final navidromeId = track.subsonicId ??
+        (track.id.startsWith('navidrome_')
+            ? track.id.replaceFirst('navidrome_', '')
+            : null);
+    if (navidromeId == null) return false;
+    if (isTrackDownloaded(track.id)) {
+      await _downloadCover(track);
+      return true;
     }
+    if (!_downloadingIds.add(track.id)) return false;
+    try {
+      final url = _navidrome.getStreamUrl(
+        navidromeId,
+        maxBitRateKbps: _offlineBitRateKbps,
+        format: 'mp3',
+      );
+      final root = await _offlineRoot();
+      final target = File(p.join(root.path, 'offline_music',
+          '${OfflineDownloader.safeFileName(track.id)}.mp3'));
+      final ok = await offlineDownloader.fetchToFile(url, target);
+      if (!ok) return false;
+      _offlineFiles[track.id] = target.path;
+      _debouncedSave();
+      await _downloadCover(track);
+      return true;
+    } finally {
+      _downloadingIds.remove(track.id);
+    }
+  }
+
+  /// Pochettes en cours de telechargement : les titres d'un meme album,
+  /// telecharges en parallele, attendent la meme au lieu de l'ecrire
+  /// chacun dans le meme fichier.
+  final Map<String, Future<void>> _coverDownloads = {};
+
+  /// Pochette du titre, une seule fois par pochette (partagee par l'album).
+  Future<void> _downloadCover(Track track) {
+    final coverId = track.coverArtId;
+    if (coverId == null || _offlineCovers.containsKey(coverId)) {
+      return Future.value();
+    }
+    return _coverDownloads[coverId] ??= () async {
+      try {
+        final url = _navidrome.getCoverUrl(coverId);
+        final root = await _offlineRoot();
+        final target = File(p.join(root.path, 'offline_covers',
+            '${OfflineDownloader.safeFileName(coverId)}.img'));
+        if (await offlineDownloader.fetchToFile(url, target)) {
+          _offlineCovers[coverId] = target.path;
+          _debouncedSave();
+        }
+      } finally {
+        unawaited(_coverDownloads.remove(coverId));
+      }
+    }();
   }
 
   bool areAllDownloaded(List<Track> tracks) =>
       tracks.isNotEmpty && tracks.every((t) => isTrackDownloaded(t.id));
 
-  /// Telecharge une liste de titres (album/playlist) sequentiellement,
-  /// en notifiant la progression (0.0 a 1.0) apres chaque titre.
-  Future<void> downloadTracks(
+  /// Telecharge une liste de titres (album/playlist), [offlineConcurrency]
+  /// a la fois, en notifiant la progression (0.0 a 1.0) apres chaque titre.
+  /// Retourne le nombre de titres qui n'ont pas pu etre telecharges.
+  Future<int> downloadTracks(
     List<Track> tracks, {
     void Function(double progress)? onProgress,
   }) async {
+    if (tracks.isEmpty) return 0;
     var done = 0;
-    for (final track in tracks) {
-      await downloadTrack(track);
+    var failed = 0;
+    await OfflineDownloader.runPool(tracks, offlineConcurrency, (track) async {
+      if (!await downloadTrack(track)) failed++;
       done++;
       onProgress?.call(done / tracks.length);
-    }
+    });
+    return failed;
   }
 
   Future<void> removeDownloads(List<Track> tracks) async {
     for (final track in tracks) {
-      final path = _offlineFiles[track.id];
-      if (path == null) continue;
-      try {
-        final file = File(path);
-        if (await file.exists()) await file.delete();
-      } catch (e) {
-        debugPrint('REMOVE DOWNLOAD ERROR ${track.title}: $e');
-      }
-      _offlineFiles.remove(track.id);
+      final path = _offlineFiles.remove(track.id);
+      if (path != null) await _deleteFileQuietly(path);
+    }
+    await _removeUnusedCovers();
+    _debouncedSave();
+  }
+
+  /// Supprime tous les titres telecharges et oublie les collections suivies.
+  Future<void> removeAllDownloads() async {
+    final paths = [..._offlineFiles.values, ..._offlineCovers.values];
+    _offlineFiles = {};
+    _offlineCovers = {};
+    _offlineCollections = {};
+    for (final path in paths) {
+      await _deleteFileQuietly(path);
     }
     _debouncedSave();
+  }
+
+  /// Pochettes qui ne servent plus a aucun titre telecharge.
+  Future<void> _removeUnusedCovers() async {
+    final used = <String>{};
+    for (final t in _navidromeTracks) {
+      if (!_offlineFiles.containsKey(t.id)) continue;
+      final coverId = t.coverArtId;
+      if (coverId != null) used.add(coverId);
+    }
+    final unused =
+        _offlineCovers.keys.where((id) => !used.contains(id)).toList();
+    for (final id in unused) {
+      final path = _offlineCovers.remove(id);
+      if (path != null) await _deleteFileQuietly(path);
+    }
+  }
+
+  Future<void> _deleteFileQuietly(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (e) {
+      debugPrint('REMOVE DOWNLOAD ERROR $path: $e');
+    }
+  }
+
+  /// Oublie les fichiers disparus du disque (nettoyage de l'OS, dossier
+  /// supprime a la main) : sans ca, le titre passerait pour telecharge et
+  /// resterait muet hors-ligne.
+  Future<void> _pruneMissingOfflineFiles() async {
+    var changed = false;
+    for (final entry in _offlineFiles.entries.toList()) {
+      if (!await File(entry.value).exists()) {
+        _offlineFiles.remove(entry.key);
+        changed = true;
+      }
+    }
+    for (final entry in _offlineCovers.entries.toList()) {
+      if (!await File(entry.value).exists()) {
+        _offlineCovers.remove(entry.key);
+        changed = true;
+      }
+    }
+    if (changed) _debouncedSave();
+  }
+
+  /// Ids des titres telecharges.
+  Iterable<String> get downloadedTrackIds => _offlineFiles.keys;
+
+  /// Place prise sur le disque par les titres et pochettes telecharges.
+  Future<int> offlineBytes() async {
+    var total = 0;
+    for (final path in [..._offlineFiles.values, ..._offlineCovers.values]) {
+      try {
+        final file = File(path);
+        if (await file.exists()) total += await file.length();
+      } catch (_) {}
+    }
+    return total;
+  }
+
+  /// Collections dont le telechargement est suivi (voir OfflineCollection).
+  Set<String> get offlineCollections => Set.unmodifiable(_offlineCollections);
+  bool isOfflineCollection(String key) => _offlineCollections.contains(key);
+  void setOfflineCollection(String key, bool tracked) {
+    final changed = tracked
+        ? _offlineCollections.add(key)
+        : _offlineCollections.remove(key);
+    if (changed) _debouncedSave();
   }
 
   void setMissingTracks(List<Map<String, dynamic>> tracks) {

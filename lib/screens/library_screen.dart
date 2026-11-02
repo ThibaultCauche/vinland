@@ -1,3 +1,5 @@
+import 'downloads_screen.dart';
+import '../domain/offline_playback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -95,6 +97,15 @@ class _LibraryScreenState extends State<LibraryScreen>
                       ),
                     ),
                     const Spacer(),
+                    IconButton(
+                      tooltip: 'Musique téléchargée',
+                      icon: const Icon(Icons.download_for_offline,
+                          color: Colors.white),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const DownloadsScreen()),
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.add, color: Colors.white),
                       onPressed: () => _showImportOptions(context),
@@ -218,6 +229,7 @@ class _LibraryScreenState extends State<LibraryScreen>
               const Spacer(),
               DownloadButton(
                 tracks: playableTracks,
+                collection: OfflineCollection.liked,
                 confirmDeleteMessage:
                     'Vos titres likés ne seront plus disponibles hors connexion.',
               ),

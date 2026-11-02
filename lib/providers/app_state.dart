@@ -16,6 +16,7 @@ import '../domain/home_shelves.dart';
 import '../domain/smart_playlists.dart';
 import '../domain/listening_stats.dart';
 import '../domain/liked_tracks.dart';
+import '../domain/offline_playback.dart';
 import '../models/track.dart';
 import '../models/album.dart';
 import '../models/playlist.dart';
@@ -52,6 +53,7 @@ import '../services/lyrics_service.dart';
 import '../services/cast/cast_receiver.dart';
 import '../domain/lyrics.dart';
 import '../services/media_browser.dart';
+import '../widgets/app_messenger.dart';
 import '../desktop/desktop_theme.dart';
 import '../theme/mobile_theme.dart';
 import '../theme/solid_color_effect.dart';
@@ -341,7 +343,11 @@ class AppState extends ChangeNotifier
     )
       ..onTrackLoading = ((track) => _theme.updateCoverColor(track.coverPath))
       ..onPlayingChanged = _syncNowPlayingMirror
-      ..onTrackStarted = _onTrackStarted;
+      ..onTrackStarted = _onTrackStarted
+      ..isAvailable = isTrackAvailable
+      ..onNothingAvailable = (() =>
+          showAppMessage('Hors ligne : aucun de ces titres n\'est téléchargé.'))
+      ..onLoadFailed = _onTrackLoadFailed;
     _jamCtl = JamController(
       jam: jamService,
       playback: _player,
@@ -563,6 +569,7 @@ class AppState extends ChangeNotifier
     try {
       final prefs = await SharedPreferences.getInstance();
       _autoDownloadLikes = prefs.getBool(_keyAutoDownloadLikes) ?? false;
+      _offlineOnly = prefs.getBool(_keyOfflineOnly) ?? false;
       await _theme.load();
 
       // Pre-charge le dernier nom d'utilisateur Navidrome connu (lecture locale,
@@ -609,6 +616,7 @@ class AppState extends ChangeNotifier
     }
 
     unawaited(_navidrome.authenticate().then((navidromeOk) {
+      if (_navidrome.hasCredentials) _setServerReachable(navidromeOk);
       if (navidromeOk) {
         _refreshRestoredCoverColor();
         // Les URLs des titres en cache sont reconstruites a la demande avec
@@ -635,6 +643,8 @@ class AppState extends ChangeNotifier
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // Retour au premier plan hors-ligne : le reseau est peut-etre revenu.
+      if (_serverUnreachable) unawaited(_retryServer());
       unawaited(checkForUpdate());
       unawaited(loadPendingShares());
       // Retour au premier plan : un autre appareil du compte joue peut-etre
@@ -758,6 +768,8 @@ class AppState extends ChangeNotifier
       _frozenLikedTracks = null;
       _notify();
     }
+    // Albums/playlists telecharges : leurs nouveaux titres aussi.
+    unawaited(_refreshOfflineCollections());
   }
 
   /// Retourne false si GitHub a refuse la verification (limite de requetes
@@ -776,6 +788,7 @@ class AppState extends ChangeNotifier
   @override
   void dispose() {
     _isDisposed = true;
+    _reconnectTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _notifyDebounce?.cancel();
     _nowPlayingHeartbeat?.cancel();
@@ -806,6 +819,7 @@ class AppState extends ChangeNotifier
     _nowPlayingHeartbeat = null;
     _music.updateNowPlaying(null);
     await _navidrome.clearCredentials();
+    _setServerReachable(true);
     _music.setCurrentUser(null);
     SearchHistoryService().setCurrentUser(null);
     await _player.reset();
@@ -1298,6 +1312,7 @@ class AppState extends ChangeNotifier
   Future<bool> configureNavidrome(String url, String user, String pass) async {
     final ok = await _navidrome.saveCredentials(url, user, pass);
     if (ok) {
+      _setServerReachable(true);
       // Reconfigurer depuis Parametres (changement de compte/serveur) peut
       // arriver sans passer par logout() d'abord -- meme nettoyage de
       // session Jam necessaire ici, voir logout().
@@ -1445,28 +1460,213 @@ class AppState extends ChangeNotifier
     );
   }
 
-  Future<void> downloadTrackOffline(Track track) async {
-    await _music.downloadTrack(track);
+  // --- Ecoute hors-ligne ----------------------------------------------
+
+  static const _keyOfflineOnly = 'vinland_offline_only';
+
+  /// « Mode hors-ligne » force par l'utilisateur (economiser la 4G, avion).
+  bool _offlineOnly = false;
+  bool get offlineOnly => _offlineOnly;
+
+  /// Le NAS ne repond plus (dernier ping rate) : retente toutes les 30 s.
+  bool _serverUnreachable = false;
+  bool get isServerUnreachable => _serverUnreachable;
+  Timer? _reconnectTimer;
+  static const _reconnectInterval = Duration(seconds: 30);
+
+  /// Seuls les titres telecharges sont jouables (voir isTrackAvailable).
+  bool get isOfflineMode => _offlineOnly || _serverUnreachable;
+
+  Future<void> setOfflineOnly(bool value) async {
+    _offlineOnly = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyOfflineOnly, value);
     _notify();
+    if (!value && _serverUnreachable) unawaited(_retryServer());
+  }
+
+  /// Faux pour un titre du NAS non telecharge quand on est hors-ligne.
+  bool isTrackAvailable(Track track) =>
+      !isOfflineMode ||
+      isPlayableWithoutServer(track,
+          downloaded: _music.isTrackDownloaded(track.id));
+
+  void _setServerReachable(bool reachable) {
+    if (reachable != _serverUnreachable) return;
+    _serverUnreachable = !reachable;
+    if (_serverUnreachable) {
+      debugPrint('OFFLINE: NAS injoignable, ecoute hors-ligne');
+      _reconnectTimer ??=
+          Timer.periodic(_reconnectInterval, (_) => _retryServer());
+    } else {
+      debugPrint('OFFLINE: NAS de nouveau joignable');
+      _reconnectTimer?.cancel();
+      _reconnectTimer = null;
+    }
+    _notify();
+  }
+
+  bool _retryingServer = false;
+
+  /// Reteste le NAS ; s'il revient, resynchronise ce qui a pu changer.
+  Future<void> _retryServer() async {
+    if (_retryingServer || !_navidrome.hasCredentials || _isDisposed) return;
+    _retryingServer = true;
+    try {
+      final wasUnreachable = _serverUnreachable;
+      final ok = await _navidrome.authenticate();
+      _setServerReachable(ok);
+      if (ok && wasUnreachable) {
+        unawaited(_performSync());
+        unawaited(loadPendingShares());
+      }
+    } finally {
+      _retryingServer = false;
+    }
+  }
+
+  /// Un titre du NAS n'a pas pu etre charge : le NAS est peut-etre tombe
+  /// (sortie du Wi-Fi de la maison...). Un ping tranche, et bascule si
+  /// besoin en hors-ligne pour la suite de la file.
+  void _onTrackLoadFailed(Track track) {
+    if (track.subsonicId == null || _music.isTrackDownloaded(track.id)) return;
+    unawaited(_retryServer());
+  }
+
+  Future<void> downloadTrackOffline(Track track) async {
+    await downloadTracksOffline([track]);
   }
 
   bool isTrackOffline(String trackId) => _music.isTrackDownloaded(trackId);
 
   bool areTracksOffline(List<Track> tracks) => _music.areAllDownloaded(tracks);
 
-  Future<void> downloadTracksOffline(
+  // Progression globale des telechargements en cours (page Telechargements).
+  int _offlineQueued = 0;
+  int _offlineDone = 0;
+  int get offlineQueuedCount => _offlineQueued;
+  int get offlineDoneCount => _offlineDone;
+  bool get isDownloadingOffline => _offlineQueued > _offlineDone;
+
+  /// Telecharge des titres pour l'ecoute hors-ligne. Retourne le nombre de
+  /// titres qui n'ont pas pu l'etre (NAS injoignable...).
+  Future<int> downloadTracksOffline(
     List<Track> tracks, {
     void Function(double progress)? onProgress,
   }) async {
-    await _music.downloadTracks(tracks, onProgress: (p) {
-      onProgress?.call(p);
-      _notify();
-    });
+    final todo = tracks.where((t) => !t.isPlaceholder).toList();
+    if (todo.isEmpty) {
+      onProgress?.call(1);
+      return 0;
+    }
+    _offlineQueued += todo.length;
     _notify();
+    try {
+      return await _music.downloadTracks(todo, onProgress: (p) {
+        _offlineDone++;
+        onProgress?.call(p);
+        _notify();
+      });
+    } finally {
+      if (_offlineDone >= _offlineQueued) {
+        _offlineQueued = 0;
+        _offlineDone = 0;
+      }
+      _notify();
+    }
   }
 
   Future<void> removeDownloads(List<Track> tracks) async {
     await _music.removeDownloads(tracks);
+    _notify();
+  }
+
+  /// Album/playlist/titres likes suivis hors-ligne (voir OfflineCollection) :
+  /// leurs nouveaux titres sont telecharges a chaque synchro.
+  bool isCollectionOffline(String key) => _music.isOfflineCollection(key);
+
+  Future<int> downloadCollection(
+    String key,
+    List<Track> tracks, {
+    void Function(double progress)? onProgress,
+  }) {
+    _music.setOfflineCollection(key, true);
+    return downloadTracksOffline(tracks, onProgress: onProgress);
+  }
+
+  /// Arrete de suivre la collection et supprime ses titres, sauf ceux
+  /// qu'une autre collection telechargee contient encore.
+  Future<void> removeCollection(String key, List<Track> tracks) async {
+    _music.setOfflineCollection(key, false);
+    final stillNeeded = <String>{
+      for (final other in _music.offlineCollections)
+        ..._collectionTrackIds(other),
+    };
+    await removeDownloads(
+        tracks.where((t) => !stillNeeded.contains(t.id)).toList());
+  }
+
+  Iterable<String> _collectionTrackIds(String key) {
+    if (key == OfflineCollection.liked) {
+      return likedTracks.where((t) => !t.isPlaceholder).map((t) => t.id);
+    }
+    final id = OfflineCollection.idOf(key);
+    if (OfflineCollection.isAlbum(key)) {
+      for (final a in _music.albums) {
+        if (a.id == id) return a.trackIds;
+      }
+    } else if (OfflineCollection.isPlaylist(key)) {
+      for (final p in _music.playlists) {
+        if (p.id == id) return p.trackIds;
+      }
+    }
+    return const [];
+  }
+
+  /// Telecharge les titres ajoutes depuis aux collections suivies.
+  Future<void> _refreshOfflineCollections() async {
+    if (isOfflineMode || _music.offlineCollections.isEmpty) return;
+    final byId = {for (final t in allTracks) t.id: t};
+    final missing = <String, Track>{};
+    for (final key in _music.offlineCollections) {
+      for (final id in _collectionTrackIds(key)) {
+        final track = byId[id];
+        if (track == null || track.isPlaceholder) continue;
+        if (!_music.isTrackDownloaded(id)) missing[id] = track;
+      }
+    }
+    if (missing.isEmpty) return;
+    debugPrint('OFFLINE: ${missing.length} nouveau(x) titre(s) a telecharger');
+    await downloadTracksOffline(missing.values.toList());
+  }
+
+  /// Titres telecharges, ranges par artiste puis album puis piste.
+  List<Track> get downloadedTracks {
+    final list = allTracks.where((t) => _music.isTrackDownloaded(t.id)).toList()
+      ..sort((a, b) {
+        final byArtist =
+            a.artist.toLowerCase().compareTo(b.artist.toLowerCase());
+        if (byArtist != 0) return byArtist;
+        final byAlbum = a.album.toLowerCase().compareTo(b.album.toLowerCase());
+        if (byAlbum != 0) return byAlbum;
+        final byDisc = (a.discNumber ?? 0).compareTo(b.discNumber ?? 0);
+        if (byDisc != 0) return byDisc;
+        return (a.trackNumber ?? 0).compareTo(b.trackNumber ?? 0);
+      });
+    return list;
+  }
+
+  /// Place prise par les telechargements (titres + pochettes).
+  Future<int> offlineBytes() => _music.offlineBytes();
+
+  int get offlineBitRateKbps => _music.offlineBitRateKbps;
+  void setOfflineBitRate(int kbps) {
+    _music.setOfflineBitRate(kbps);
+    _notify();
+  }
+
+  Future<void> removeAllDownloads() async {
+    await _music.removeAllDownloads();
     _notify();
   }
 

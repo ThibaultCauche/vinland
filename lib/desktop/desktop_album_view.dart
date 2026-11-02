@@ -1,3 +1,5 @@
+import 'desktop_offline_action.dart';
+import '../domain/offline_playback.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../features/album/album_model.dart';
@@ -129,10 +131,13 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                             }
                           },
                         ),
-                        DesktopHeroMenuAction(
-                          label: 'Télécharger',
-                          icon: Icons.download_outlined,
-                          onTap: () => state.downloadTracksOffline(albumTracks),
+                        desktopOfflineAction(
+                          context,
+                          state,
+                          tracks: albumTracks,
+                          collection: OfflineCollection.album(widget.album.id),
+                          removeMessage: 'Cet album ne sera plus disponible '
+                              'hors connexion.',
                         ),
                         DesktopHeroMenuAction(
                           label: 'Ajouter à une playlist',

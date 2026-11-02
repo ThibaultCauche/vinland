@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/track_repository.dart';
+import '../domain/offline_playback.dart';
 import '../domain/queue.dart';
 import '../domain/replay_gain.dart';
 import '../models/track.dart';
+import '../services/offline/offline_covers.dart';
 import '../services/player_engine.dart';
 import 'jam_playback.dart';
 import 'playback_settings.dart';
@@ -100,6 +102,19 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   /// par AppState sur l'etat du Jam.
   bool Function() allowCrossfade = () => true;
 
+  /// Faux pour un titre qui ne peut pas etre lu en ce moment : en mode
+  /// hors-ligne, un titre du NAS qui n'a pas ete telecharge (voir
+  /// AppState.isOfflineMode). Ces titres sont sautes au lieu d'etre charges
+  /// puis de rester muets.
+  bool Function(Track track) isAvailable = (_) => true;
+
+  /// Aucun titre jouable dans ce qu'on a demande de lancer (hors-ligne,
+  /// rien de telecharge).
+  void Function()? onNothingAvailable;
+
+  /// Le moteur n'a pas reussi a charger ce titre (reseau, fichier).
+  void Function(Track track)? onLoadFailed;
+
   /// Un titre va etre charge (couleur d'ambiance de sa pochette).
   void Function(Track track)? onTrackLoading;
 
@@ -185,9 +200,20 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   /// PlayQueue.start.
   @override
   Future<void> playTrack(Track track, {List<Track>? trackList}) async {
-    _queue.start(track, trackList, shuffled: isShuffled);
+    // Hors-ligne : le titre tape n'est peut-etre pas telecharge. On part du
+    // premier titre jouable qui le suit, et la file ne garde que les titres
+    // jouables (les autres seraient sautes un par un, en silence).
+    final list = trackList ?? [track];
+    final start = firstPlayableFrom(track, list, isAvailable);
+    if (start == null) {
+      onNothingAvailable?.call();
+      return;
+    }
+    final playable = list.where(isAvailable).toList();
+    _queue.start(start, trackList == null ? null : playable,
+        shuffled: isShuffled);
     _consecutiveLoadFailures = 0;
-    await _playSingle(track);
+    await _playSingle(start);
   }
 
   /// Charge et joue un seul titre dans le moteur audio, sans toucher a la
@@ -221,6 +247,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     }
     _setPlayingIntent(loaded, seq);
     if (!loaded) {
+      onLoadFailed?.call(track);
       _notify();
       return false;
     }
@@ -255,7 +282,10 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     final isRemote = path.startsWith('http');
 
     Uri? artUri;
-    if (track.coverPath != null) {
+    final offlineCover = OfflineCovers.pathFor(track.coverArtId);
+    if (offlineCover != null) {
+      artUri = Uri.file(offlineCover);
+    } else if (track.coverPath != null) {
       artUri = track.coverPath!.startsWith('http')
           ? Uri.parse(track.coverPath!)
           : Uri.file(track.coverPath!);
@@ -334,7 +364,17 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
       seek(Duration.zero);
       return;
     }
-    await _playSingle(_queue.back(currentTrack)!);
+    // Hors-ligne : remonte jusqu'au dernier titre jouable de l'historique
+    // (s'il n'y en a aucun, on redemarre simplement le titre en cours).
+    if (!_queue.history.any(isAvailable)) {
+      seek(Duration.zero);
+      return;
+    }
+    var target = _queue.back(currentTrack)!;
+    while (!isAvailable(target)) {
+      target = _queue.back(target)!;
+    }
+    await _playSingle(target);
   }
 
   Future<void> playFromQueue(int index) async {
@@ -429,6 +469,7 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
     if (next.isPlaceholder && _tracks.offlinePath(next.id) == null) {
       return null;
     }
+    if (!isAvailable(next)) return null;
     return next;
   }
 
@@ -511,8 +552,21 @@ class PlayerController extends ChangeNotifier implements JamPlayback {
   /// Passe au titre suivant de la file (regeneree depuis le contexte lance
   /// si elle est vide, voir PlayQueue.advance).
   Future<void> _advanceQueue({Duration crossfade = Duration.zero}) async {
-    final next = _queue.advance(currentTrack, shuffled: isShuffled);
+    var next = _queue.advance(currentTrack, shuffled: isShuffled);
+    // Hors-ligne : saute sans les charger les titres non telecharges (file
+    // remplie avant la coupure, titres ajoutes a la main...). Borne par la
+    // taille de la file pour ne jamais tourner en rond si aucun ne l'est.
+    var skipped = 0;
+    final maxSkips = _queue.upcoming.length + _queue.sourceOrder.length + 1;
+    while (next != null && !isAvailable(next) && skipped < maxSkips) {
+      skipped++;
+      next = _queue.advance(next, shuffled: isShuffled);
+    }
     if (next == null) return;
+    if (!isAvailable(next)) {
+      onNothingAvailable?.call();
+      return;
+    }
     final loaded = await _playSingle(next, crossfade: crossfade);
     if (!loaded) {
       // Titre injouable (reseau/fichier) : plutot que de rester bloque en

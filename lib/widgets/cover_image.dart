@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../services/offline/offline_covers.dart';
 import '../services/subsonic_refs.dart';
 
 /// ImageProvider de base pour une cover (URL ou fichier local). Une pochette
@@ -8,10 +9,15 @@ import '../services/subsonic_refs.dart';
 /// contient le jeton de session, qui change maintenant a chaque demarrage
 /// (et l'URL de serveur peut basculer VPN <-> Funnel) ; avec l'URL comme
 /// cle, chaque changement rechargerait toutes les pochettes deja en memoire.
+///
+/// Une pochette telechargee pour l'ecoute hors-ligne (voir OfflineCovers)
+/// est lue depuis le disque : elle s'affiche sans le NAS, et plus vite.
 ImageProvider rawCoverImageProvider(String path) {
   if (!path.startsWith('http')) return FileImage(File(path));
   final coverId = SubsonicRefs.coverIdOf(path);
   if (coverId == null) return NetworkImage(path);
+  final offline = OfflineCovers.pathFor(coverId);
+  if (offline != null) return FileImage(File(offline));
   return StableNetworkImage(path, cacheKey: SubsonicRefs.cover(coverId));
 }
 
