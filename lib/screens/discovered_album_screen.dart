@@ -210,8 +210,8 @@ class _DiscoveredAlbumScreenState extends State<DiscoveredAlbumScreen> {
                     onTap: () {
                       if (localTrack != null) _model.play(localTrack);
                     },
-                    onDownloadTap: () => _model.downloadTrack(track,
-                        wait: waitWithProgressDialog(context)),
+                    onDownloadTap: () =>
+                        _model.downloadTrack(track, wait: waitInBackground),
                   );
                 },
                 childCount: displayTracks.length,

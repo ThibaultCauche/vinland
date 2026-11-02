@@ -228,7 +228,7 @@ class _ArtistScreenState extends State<ArtistScreen> {
                         // Deezer et la bibliotheque a chaque reconstruction.
                         onDownloadTap: () => model.downloadTrack(
                             popularTracks[index].discovered,
-                            wait: waitWithProgressDialog(context)),
+                            wait: waitInBackground),
                       ),
                       childCount: popularTracks.length,
                     ),

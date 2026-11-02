@@ -329,7 +329,7 @@ class _DesktopSearchViewState extends State<DesktopSearchView> {
                       downloadState: _model.downloadStateOf(t.discovered.id),
                       showDownloadButton: _model.canDownload,
                       onDownloadTap: () => _model.downloadTrack(t.discovered,
-                          wait: waitWithProgressDialog(context)),
+                          wait: waitInBackground),
                     ),
                 ],
               );

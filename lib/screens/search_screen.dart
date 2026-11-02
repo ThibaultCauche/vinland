@@ -345,8 +345,8 @@ class _SearchScreenState extends State<SearchScreen>
               : DownloadStateIcon(
                   state: _model.downloadStateOf(discovered.id),
                   showDownloadButton: _model.canDownload,
-                  onDownloadTap: () => _model.downloadTrack(discovered,
-                      wait: waitWithProgressDialog(context)),
+                  onDownloadTap: () =>
+                      _model.downloadTrack(discovered, wait: waitInBackground),
                 ),
           onTap: !isAvailable
               ? null

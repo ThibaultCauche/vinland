@@ -186,8 +186,8 @@ class _DesktopAlbumViewState extends State<DesktopAlbumView> {
                           track: dt,
                           downloadState: _model.downloadStateOf(dt.id),
                           showDownloadButton: _model.canDownload,
-                          onDownloadTap: () => _model.downloadTrack(dt,
-                              wait: waitWithProgressDialog(context)),
+                          onDownloadTap: () =>
+                              _model.downloadTrack(dt, wait: waitInBackground),
                         );
                       },
                       childCount: items.length,

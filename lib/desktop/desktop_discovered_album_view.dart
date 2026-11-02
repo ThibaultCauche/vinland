@@ -256,7 +256,7 @@ class _DesktopDiscoveredAlbumViewState
                 if (localTrack != null) _model.play(localTrack);
               },
               onDownloadTap: () => _model.downloadTrack(displayTracks[index],
-                  wait: waitWithProgressDialog(context)),
+                  wait: waitInBackground),
             ),
             childCount: displayTracks.length,
           ),
