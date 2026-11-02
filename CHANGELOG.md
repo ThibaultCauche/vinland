@@ -9,6 +9,11 @@ commit.
 
 ## [Non publié]
 
+## [2.3.0] - 2026-11-02
+
+Écoute hors-ligne complète, sur Android et sur PC. Notes pour les amis :
+[docs/release-notes/v2.3.0.md](docs/release-notes/v2.3.0.md).
+
 ### Ajouté
 - Écoute hors-ligne : quand le NAS ne répond plus (ou avec le nouveau
   « Mode hors-ligne », pour économiser la 4G), seuls les titres
@@ -477,7 +482,8 @@ Première version publiée par le workflow de release GitHub Actions.
 - Première version : lecture depuis Navidrome, bibliothèque, page Amis,
   reprise auto Bluetooth, retours via Discord, auto-update Windows.
 
-[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.2.0...HEAD
+[Non publié]: https://github.com/ThibaultCauche/vinland/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/ThibaultCauche/vinland/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/ThibaultCauche/vinland/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/ThibaultCauche/vinland/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/ThibaultCauche/vinland/compare/v2.0.2...v2.1.0
