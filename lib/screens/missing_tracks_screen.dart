@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
 import '../models/track.dart';
 import '../services/download_worker_service.dart';
-import '../widgets/download_progress_dialog.dart';
 import '../widgets/track_tile.dart';
 import '../widgets/bottom_bar_reserve.dart';
 
@@ -74,9 +73,10 @@ class _MissingTracksScreenState extends State<MissingTracksScreen> {
         return;
       }
 
-      if (!mounted) return;
-      final status = await showDownloadProgressDialog(context,
-          worker: worker, jobId: jobId);
+      // En arriere-plan (la ligne affiche deja son indicateur) plutot que
+      // dans une fenetre qui bloquait toute l'app.
+      _showMessage('Téléchargement lancé sur le serveur, tu peux continuer.');
+      final status = await worker.waitForCompletion(jobId);
       if (!mounted) return;
       if (status.state != DownloadJobState.done) {
         _showMessage(status.error ?? 'Échec du téléchargement.');

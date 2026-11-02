@@ -183,7 +183,7 @@ class _DesktopArtistDiscographyViewState
                                     : null,
                                 showDownloadButton: _model.canDownload,
                                 onDownloadTap: () => _model.downloadRelease(rt,
-                                    wait: waitWithProgressDialog(context)),
+                                    wait: waitInBackground),
                               );
                             },
                           );

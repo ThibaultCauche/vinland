@@ -145,7 +145,7 @@ class _DesktopArtistViewState extends State<DesktopArtistView> {
                               showDownloadButton: model.canDownload,
                               onDownloadTap: () => model.downloadTrack(
                                   popularTracks[index].discovered,
-                                  wait: waitWithProgressDialog(context)),
+                                  wait: waitInBackground),
                             ),
                             childCount: popularTracks.length,
                           ),

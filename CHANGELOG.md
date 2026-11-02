@@ -9,6 +9,12 @@ commit.
 
 ## [Non publié]
 
+### Corrigé
+- Demander un titre au serveur (icône ⬇ sur un artiste, un album découvert,
+  une recherche, un titre manquant) n'ouvre plus une grande fenêtre qui
+  bloquait toute l'app : le téléchargement continue en arrière-plan, la
+  ligne montre qu'il avance, et un message prévient quand il est fini.
+
 ## [2.3.0] - 2026-11-02
 
 Écoute hors-ligne complète, sur Android et sur PC. Notes pour les amis :
