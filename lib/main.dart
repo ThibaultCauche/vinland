@@ -1,3 +1,4 @@
+import 'widgets/app_messenger.dart';
 import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
@@ -265,6 +266,7 @@ class VinlandApp extends StatelessWidget {
         ],
         child: MaterialApp(
           navigatorKey: vinlandNavigatorKey,
+          scaffoldMessengerKey: vinlandMessengerKey,
           title: 'Vinland',
           debugShowCheckedModeBanner: false,
           scrollBehavior: _VinlandScrollBehavior(),

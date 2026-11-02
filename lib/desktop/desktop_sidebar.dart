@@ -1,3 +1,4 @@
+import '../screens/downloads_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
@@ -186,6 +187,15 @@ class _ProfileAvatarButton extends StatelessWidget {
           onTap: () {
             Future.microtask(() => navigator.push(
                   MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ));
+          },
+        ),
+        PopupMenuItem(
+          child: const Text('Musique téléchargée',
+              style: TextStyle(color: Colors.white)),
+          onTap: () {
+            Future.microtask(() => navigator.push(
+                  MaterialPageRoute(builder: (_) => const DownloadsScreen()),
                 ));
           },
         ),

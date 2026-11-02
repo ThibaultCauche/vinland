@@ -9,6 +9,27 @@ commit.
 
 ## [Non publié]
 
+### Ajouté
+- Écoute hors-ligne : quand le NAS ne répond plus (ou avec le nouveau
+  « Mode hors-ligne », pour économiser la 4G), seuls les titres
+  téléchargés se lancent ; les autres sont grisés et sautés, un bandeau
+  le signale et l'app se reconnecte seule dès que le NAS revient.
+- Page « Musique téléchargée » (Paramètres, Bibliothèque, menu du profil
+  sur PC) : titres téléchargés, place prise, lecture / aléatoire, qualité
+  des téléchargements (128, 192 ou 320 kbps) et « Tout supprimer ».
+- Un album, une playlist ou les titres likés téléchargés récupèrent tout
+  seuls leurs nouveaux titres à chaque synchro.
+- Petite flèche verte sur les titres disponibles hors connexion ; sur PC,
+  « Supprimer le téléchargement » dans le menu « ... ».
+
+### Corrigé
+- Les pochettes sont téléchargées avec les titres : plus de cases vides
+  sans réseau (ni dans la notification Android).
+- Téléchargements plus rapides (3 à la fois) et plus sûrs : plus de
+  fichier à moitié écrit après une coupure, plus de gros fichier gardé
+  en mémoire ; sur PC ils vont dans le dossier de l'app plutôt que dans
+  « Documents » (les anciens restent lisibles).
+
 ## [2.2.0] - 2026-10-14
 
 Visuel animé sur Android, boutons dans la barre des tâches Windows,

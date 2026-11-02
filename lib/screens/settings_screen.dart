@@ -13,6 +13,7 @@ import '../widgets/bottom_bar_reserve.dart';
 import '../widgets/download_progress_dialog.dart';
 import '../widgets/playback_settings_tiles.dart';
 import '../widgets/update_prompt.dart';
+import 'downloads_screen.dart';
 import 'personalization_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -184,6 +185,23 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ],
                 _buildSection('Téléchargements'),
+                _buildTile(
+                  icon: Icons.download_for_offline,
+                  iconColor: const Color(0xFF1DB954),
+                  title: 'Musique téléchargée',
+                  subtitle: 'Écoute hors-ligne, place prise, qualité',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const DownloadsScreen()),
+                  ),
+                ),
+                _buildSwitchTile(
+                  icon: Icons.airplanemode_active,
+                  title: 'Mode hors-ligne',
+                  subtitle: 'N\'écouter que la musique téléchargée',
+                  value: state.offlineOnly,
+                  onChanged: (v) => state.setOfflineOnly(v),
+                ),
                 _buildSwitchTile(
                   icon: Icons.download_for_offline,
                   title: 'Télécharger automatiquement les likes',

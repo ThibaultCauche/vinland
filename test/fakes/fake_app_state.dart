@@ -42,6 +42,12 @@ class FakeAppState extends ChangeNotifier implements AppState {
   @override
   bool areTracksOffline(List<Track> tracks) => false;
   @override
+  bool isTrackOffline(String trackId) => false;
+  @override
+  bool isTrackAvailable(Track track) => true;
+  @override
+  bool isCollectionOffline(String key) => false;
+  @override
   bool coverExists(String? path) => false;
   @override
   bool isPinned(PinnedItemType type, String id) => false;

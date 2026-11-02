@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../services/deep_link_service.dart';
 import '../widgets/cover_image.dart';
 import '../widgets/player/player_options_sheet.dart' show startTrackRadio;
+import '../widgets/offline_badge.dart';
 import 'glass.dart';
 
 /// Ligne de titre façon reference : cover, titre/artiste(s), album, duree,
@@ -130,6 +131,8 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
     // AppState.likedTracksWithMissing) : pas de fichier reel, donc grise,
     // non cliquable, sans bouton like/menu (rien a jouer ni a liker).
     final isPlaceholder = track.isPlaceholder;
+    // Hors-ligne : un titre non telecharge est grise (il serait saute).
+    final offline = watchTrackOffline(context, track);
     // Plusieurs artistes (feat., collaborations) separes individuellement
     // pour rester cliquables un par un, meme regex que desktop_player_bar.
     final artistNames = track.artist
@@ -147,7 +150,7 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
       child: GestureDetector(
         onTap: isPlaceholder ? null : widget.onTap,
         child: Opacity(
-          opacity: isPlaceholder ? 0.45 : 1.0,
+          opacity: isPlaceholder || !offline.available ? 0.45 : 1.0,
           child: Container(
             height: 60,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -202,6 +205,7 @@ class _DesktopTrackRowState extends State<DesktopTrackRow> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (offline.downloaded) const OfflineBadge(size: 13),
                           for (var i = 0; i < artistNames.length; i++) ...[
                             if (i > 0)
                               const Text(', ',

@@ -618,4 +618,64 @@ void main() {
       expect(prefs.getInt('vinland_crossfade_seconds'), 3);
     });
   });
+
+  group('hors-ligne : seuls les titres disponibles sont joues', () {
+    test('le titre tape non telecharge : part du suivant disponible', () async {
+      player.isAvailable = (t) => t != a && t != b;
+      await player.playTrack(a, trackList: album);
+      expect(player.currentTrack, c);
+      expect(output.loadedTitles, ['c']);
+      expect(player.queue.map((t) => t.id), ['d', 'e']);
+    });
+
+    test('la file ne garde que les titres disponibles', () async {
+      player.isAvailable = (t) => t != c;
+      await player.playTrack(a, trackList: album);
+      expect(player.queue.map((t) => t.id), ['b', 'd', 'e']);
+      engine.emitCompleted();
+      await pumpEventQueue();
+      engine.emitCompleted();
+      await pumpEventQueue();
+      expect(output.loadedTitles, ['a', 'b', 'd']);
+    });
+
+    test('bascule hors-ligne en cours de file : saute sans charger', () async {
+      await player.playTrack(a, trackList: album);
+      player.isAvailable = (t) => t == a || t == e;
+      engine.emitCompleted();
+      await pumpEventQueue();
+      expect(player.currentTrack, e);
+      expect(output.loadedTitles, ['a', 'e']);
+    });
+
+    test('rien de disponible : rien n\'est charge, on previent', () async {
+      var warned = 0;
+      player
+        ..isAvailable = ((_) => false)
+        ..onNothingAvailable = () => warned++;
+      await player.playTrack(a, trackList: album);
+      expect(output.loadedTitles, isEmpty);
+      expect(warned, 1);
+    });
+
+    test('precedent : remonte au dernier titre disponible', () async {
+      await player.playTrack(a, trackList: album);
+      engine.emitCompleted();
+      await pumpEventQueue();
+      engine.emitCompleted();
+      await pumpEventQueue();
+      expect(player.currentTrack, c);
+      player.isAvailable = (t) => t != b;
+      await player.previous();
+      expect(player.currentTrack, a);
+    });
+
+    test('echec de chargement signale (detection du NAS tombe)', () async {
+      final failed = <String>[];
+      player.onLoadFailed = (t) => failed.add(t.id);
+      output.failingTitles.add('a');
+      await player.playTrack(a, trackList: album);
+      expect(failed, ['a']);
+    });
+  });
 }

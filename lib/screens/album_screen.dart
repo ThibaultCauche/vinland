@@ -1,3 +1,4 @@
+import '../domain/offline_playback.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -370,6 +371,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
           ),
           DownloadButton(
             tracks: tracks,
+            collection: OfflineCollection.album(widget.album.id),
             idleColor: Colors.white54,
             confirmDeleteMessage:
                 'Cet album ne sera plus disponible hors connexion.',

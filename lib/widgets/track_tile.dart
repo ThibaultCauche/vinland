@@ -5,6 +5,7 @@ import '../providers/app_state.dart';
 import '../services/music_service.dart';
 import 'cover_image.dart';
 import 'like_heart_button.dart';
+import 'offline_badge.dart';
 
 class TrackTile extends StatelessWidget {
   final Track track;
@@ -63,8 +64,10 @@ class TrackTile extends StatelessWidget {
     // FIX: utilise le cache mémoire de MusicService au lieu de File.exists()
     final coverExists =
         context.read<MusicService>().coverExists(track.coverPath);
+    // Hors-ligne : un titre non telecharge est grise (il serait saute).
+    final offline = watchTrackOffline(context, track);
 
-    return ListTile(
+    final tile = ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: coverExists && track.coverPath != null
           ? Container(
@@ -99,11 +102,18 @@ class TrackTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      subtitle: Text(
-        '${track.artist} • ${track.album}',
-        style: const TextStyle(color: Colors.white54, fontSize: 12),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      subtitle: Row(
+        children: [
+          if (offline.downloaded) const OfflineBadge(),
+          Expanded(
+            child: Text(
+              '${track.artist} • ${track.album}',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -127,5 +137,6 @@ class TrackTile extends StatelessWidget {
       ),
       onTap: onTap,
     );
+    return offline.available ? tile : Opacity(opacity: 0.4, child: tile);
   }
 }
